@@ -81,3 +81,8 @@ jobs:
           git -C "$HOME/remotegpu-mesa" checkout --detach 590bf21d918c86908d96d1f4590ecd25b9657171
       - name: Verify patch applicability
         run: git -C "$HOME/remotegpu-mesa" apply --check "$GITHUB_WORKSPACE/patches/mesa/0001-remotegpu-force-legacy-vtest.patch"
+      - name: Print pinned source context on every result
+        if: always()
+        run: |
+          git -C "$HOME/remotegpu-mesa" show HEAD:src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c | \
+            sed -n '/int virgl_vtest_connect/,/^}/p'
