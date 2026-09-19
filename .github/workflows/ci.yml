@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-proxy:
+    name: Linux proxy and protocol
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: true
+          cache-dependency-path: go.sum
+      - name: Verify module graph
+        run: go mod download
+      - name: Format check
+        run: test -z "$(gofmt -l cmd internal)"
+      - name: Unit tests
+        run: go test ./...
+      - name: Static analysis
+        run: go vet ./...
+
+  ios-protocol:
+    name: iOS protocol package
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore Swift package cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ios/.build
+            ~/Library/Caches/org.swift.swiftpm
+          key: swift-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('ios/Package.swift', 'ios/Package.resolved') }}
+          restore-keys: |
+            swift-${{ runner.os }}-${{ runner.arch }}-
+      - name: Build Swift protocol package
+        run: swift build --package-path ios
+      - name: Test Swift protocol package
+        run: swift test --package-path ios
+
+  mesa-patch-contract:
+    name: Mesa patch contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure the patch contract is documented
+        run: |
+          grep -q 'virgl_vtest_flush_frontbuffer' patches/mesa/README.md
+          grep -q 'byte_offset' patches/mesa/README.md
+          grep -q 'REMOTEGPU_VTEST_LEGACY' patches/mesa/0001-remotegpu-force-legacy-vtest.patch
+
+  mesa-patch-applies:
+    name: Mesa legacy patch applies
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore pinned Mesa source
+        id: mesa-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/remotegpu-mesa
+          key: mesa-source-590bf21d918c86908d96d1f4590ecd25b9657171
+      - name: Fetch pinned Mesa source
+        run: |
+          if [ ! -d "$HOME/remotegpu-mesa/.git" ]; then
+            git clone --filter=blob:none https://gitlab.freedesktop.org/mesa/mesa.git "$HOME/remotegpu-mesa"
+          fi
+          git -C "$HOME/remotegpu-mesa" fetch --depth=1 origin 590bf21d918c86908d96d1f4590ecd25b9657171
+          git -C "$HOME/remotegpu-mesa" checkout --detach 590bf21d918c86908d96d1f4590ecd25b9657171
+      - name: Verify patch applicability
+        run: git -C "$HOME/remotegpu-mesa" apply --check "$GITHUB_WORKSPACE/patches/mesa/0001-remotegpu-force-legacy-vtest.patch"

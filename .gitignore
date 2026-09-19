@@ -1,0 +1,9 @@
+/build/
+/dist/
+*.ipa
+*.xcarchive
+*.mobileprovision
+*.p12
+server.crt
+server.key
+.DS_Store

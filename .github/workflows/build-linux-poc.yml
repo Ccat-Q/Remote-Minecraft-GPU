@@ -1,0 +1,75 @@
+name: Build Linux PoC
+
+on:
+  workflow_dispatch:
+    inputs:
+      mesa_revision:
+        description: Pinned Mesa revision used by the PoC
+        required: false
+        default: 590bf21d918c86908d96d1f4590ecd25b9657171
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-linux-poc-${{ github.ref }}-${{ inputs.mesa_revision }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Mesa virpipe PoC bundle
+    runs-on: ubuntu-24.04
+    env:
+      MESA_REVISION: ${{ inputs.mesa_revision }}
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+      CCACHE_COMPILERCHECK: content
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore Mesa compiler cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/ccache
+          key: ccache-mesa-ubuntu-24.04-${{ inputs.mesa_revision }}-${{ hashFiles('patches/mesa/**', '.github/ci/ccache.ini') }}
+          restore-keys: |
+            ccache-mesa-ubuntu-24.04-${{ inputs.mesa_revision }}-
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: true
+          cache-dependency-path: go.sum
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends build-essential ccache git meson ninja-build pkg-config python3-mako libdrm-dev libegl1-mesa-dev libgbm-dev libgl-dev libgl1-mesa-dev libwayland-dev libx11-dev libxext-dev libxfixes-dev libxrandr-dev libxshmfence-dev libxxf86vm-dev libzstd-dev libglfw3-dev libglew-dev
+      - name: Fetch pinned Mesa source
+        run: |
+          mkdir -p _deps
+          git clone --filter=blob:none https://gitlab.freedesktop.org/mesa/mesa.git _deps/mesa
+          git -C _deps/mesa fetch --depth=1 origin "$MESA_REVISION"
+          git -C _deps/mesa checkout --detach "$MESA_REVISION"
+          git -C _deps/mesa apply "$GITHUB_WORKSPACE/patches/mesa/0001-remotegpu-force-legacy-vtest.patch"
+      - name: Configure Mesa virpipe
+        run: |
+          meson setup _build/mesa _deps/mesa --prefix="$GITHUB_WORKSPACE/_stage/mesa" -Dbuildtype=release -Dgallium-drivers=virgl -Dvulkan-drivers=[] -Dplatforms=x11,wayland -Dglx=dri -Degl=enabled -Dllvm=disabled -Dshared-glapi=enabled -Db_lto=false --native-file "$GITHUB_WORKSPACE/.github/ci/ccache.ini"
+      - name: Build and install Mesa PoC
+        run: |
+          ccache --zero-stats
+          meson compile -C _build/mesa
+          meson install -C _build/mesa
+          ccache --show-stats
+      - name: Build RemoteGPU tools and capability gate
+        run: |
+          mkdir -p _stage/bin
+          go build -trimpath -ldflags='-s -w' -o _stage/bin/remotegpu-proxy ./cmd/remotegpu-proxy
+          cc -O2 -o _stage/bin/gl-capability tests/gl_capability.c -lglfw -lGLEW -lGL
+          cp deploy/run-gl-capability.sh _stage/bin/run-gl-capability
+          chmod +x _stage/bin/run-gl-capability
+      - name: Publish deployable Linux PoC bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-poc-${{ github.sha }}
+          path: _stage
+          if-no-files-found: error
+          retention-days: 14
