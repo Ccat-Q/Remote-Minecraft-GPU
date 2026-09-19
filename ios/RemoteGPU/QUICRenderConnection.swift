@@ -1,5 +1,5 @@
 import Foundation
-import Network
+@preconcurrency import Network
 
 enum RemoteGPUConnectionEvent {
     case ready
@@ -11,7 +11,10 @@ enum RemoteGPUConnectionEvent {
 // One NWConnection is one bidirectional QUIC stream. RemoteGPU intentionally
 // keeps vtest data and PRESENT on this stream; opening another stream would
 // lose their ordering guarantee.
-final class RemoteGPUQUICRenderConnection {
+// Network.framework invokes every callback on `queue`; the object does not
+// expose mutable transport state across queues. The explicit conformance lets
+// Swift 6 accept the framework's @Sendable callback signatures.
+final class RemoteGPUQUICRenderConnection: @unchecked Sendable {
     private let connection: NWConnection
     private let queue = DispatchQueue(label: "org.remotegpu.render", qos: .userInteractive)
     private let pairingToken: Data

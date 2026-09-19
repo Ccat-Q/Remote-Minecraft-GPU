@@ -6,7 +6,10 @@ import PackageDescription
 // Swift package makes the wire contract compile in GitHub Actions now.
 let package = Package(
     name: "RemoteGPU",
-    platforms: [.iOS(.v17)],
+    // SwiftPM compiles this package on the macOS runner as well as targeting
+    // iOS. QUIC is available from macOS 12, so state that baseline explicitly
+    // instead of letting Swift infer an obsolete macOS deployment target.
+    platforms: [.iOS(.v17), .macOS(.v12)],
     products: [
         .library(name: "RemoteGPUProtocol", targets: ["RemoteGPUProtocol"])
     ],
