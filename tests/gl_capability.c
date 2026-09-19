@@ -1,5 +1,6 @@
 /*
- * Build this on the Ubuntu compute client after Mesa virpipe is installed.
+ * GitHub Actions builds this into the Linux PoC artifact. Run the downloaded
+ * artifact on the Ubuntu compute client after Mesa virpipe is installed.
  * It deliberately fails before Minecraft if the remote renderer does not
  * expose the minimum OpenGL 3.2 Core profile required by modern Minecraft.
  */
@@ -29,15 +30,19 @@ int main(void) {
     const char *glsl = (const char *)glGetString(GL_SHADING_LANGUAGE_VERSION);
     GLint profile = 0;
     glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profile);
+    if (!version || !glsl) {
+        fputs("FAIL: renderer did not return GL/GLSL version strings\n", stderr);
+        return 5;
+    }
     printf("GL_VERSION=%s\nGLSL_VERSION=%s\nPROFILE_MASK=0x%x\n", version, glsl, profile);
     if (!version || !at_least_32(version) || !(profile & GL_CONTEXT_CORE_PROFILE_BIT)) {
         fputs("FAIL: RemoteGPU requires OpenGL >= 3.2 Core\n", stderr);
-        return 5;
+        return 6;
     }
     if (!GLEW_ARB_framebuffer_object || !GLEW_ARB_vertex_array_object ||
         !GLEW_ARB_draw_instanced || !GLEW_ARB_sync || !GLEW_ARB_timer_query) {
         fputs("FAIL: required Minecraft capability is absent\n", stderr);
-        return 6;
+        return 7;
     }
     puts("PASS: RemoteGPU GL capability gate");
     glfwDestroyWindow(window);
