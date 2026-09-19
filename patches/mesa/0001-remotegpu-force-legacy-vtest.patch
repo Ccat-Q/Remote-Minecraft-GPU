@@ -7,7 +7,7 @@ protocol-0 resource and inline-transfer path.
 
 --- a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c
 +++ b/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c
-@@ -220,6 +220,15 @@ int virgl_vtest_connect(struct virgl_vtest_winsys *vws)
+@@ -220,4 +220,13 @@ int virgl_vtest_connect(struct virgl_vtest_winsys *vws)
  
     vws->sock_fd = sock;
     virgl_vtest_send_init(vws);

@@ -1,7 +1,7 @@
 import Foundation
 
 // Keep this file byte-for-byte compatible with internal/protocol.
-enum RemoteGPUType: UInt8 { case hello = 1, vtestBytes = 2, present = 3, error = 4 }
+enum RemoteGPUType: UInt8, Equatable { case hello = 1, vtestBytes = 2, present = 3, error = 4 }
 
 enum RemoteGPUProtocolError: Error, Equatable {
     case invalidMagic
@@ -12,7 +12,7 @@ enum RemoteGPUProtocolError: Error, Equatable {
     case sequenceGap(expected: UInt64, received: UInt64)
 }
 
-struct RemoteGPUEnvelope {
+struct RemoteGPUEnvelope: Equatable {
     static let magic = Data([0x52, 0x47, 0x50, 0x31]) // RGP1
     let type: RemoteGPUType
     let flags: UInt8
