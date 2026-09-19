@@ -5,9 +5,10 @@ RemoteGPU transports vtest across QUIC and cannot pass SCM_RIGHTS file
 descriptors or mmap-backed resources. Let deployments explicitly retain the
 protocol-0 resource and inline-transfer path.
 
+diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c
 --- a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c
 +++ b/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c
-@@ -221,2 +221,10 @@ int virgl_vtest_connect(struct virgl_vtest_winsys *vws)
+@@ -221,3 +221,11 @@ int virgl_vtest_connect(struct virgl_vtest_winsys *vws)
    vws->sock_fd = sock;
    virgl_vtest_send_init(vws);
 +
@@ -18,3 +19,4 @@ protocol-0 resource and inline-transfer path.
 +      vws->protocol_version = 0;
 +      return 0;
 +   }
+   vws->protocol_version = virgl_vtest_negotiate_version(vws, VTEST_PROTOCOL_VERSION);
