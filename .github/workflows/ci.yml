@@ -92,4 +92,10 @@ jobs:
           python3 "$GITHUB_WORKSPACE/tools/generate_mesa_legacy_patch.py" \
             "$HOME/remotegpu-mesa/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c"
           git -C "$HOME/remotegpu-mesa" diff -- \
+            src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c > /tmp/remotegpu-generated.patch
+          diff -u \
+            <(sed -n '/^diff --git/,$p' "$GITHUB_WORKSPACE/patches/mesa/0001-remotegpu-force-legacy-vtest.patch") \
+            /tmp/remotegpu-generated.patch || true
+          git -C "$HOME/remotegpu-mesa" checkout -- \
             src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c
+          git -C "$HOME/remotegpu-mesa" apply --check /tmp/remotegpu-generated.patch
