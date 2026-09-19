@@ -85,4 +85,4 @@ jobs:
         if: always()
         run: |
           git -C "$HOME/remotegpu-mesa" show HEAD:src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c | \
-            sed -n '/int virgl_vtest_connect/,/^}/p'
+            grep -n -A45 'int virgl_vtest_connect'
