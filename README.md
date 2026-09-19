@@ -21,9 +21,10 @@ layers does not invalidate it.
 ## Status
 
 This repository contains the Linux protocol/proxy PoC, its test suite, a Mesa
-presentation-hook patch, and the iOS protocol integration target. The iOS
-ANGLE/IOSurface renderer must be built on macOS with Xcode; it cannot be
-verified in this Linux workspace.
+legacy-vtest patch, and the iOS protocol integration target. The Mesa
+presentation-hook patch and the iOS ANGLE/IOSurface renderer are the next
+implementation milestones; they cannot be claimed verified from this Linux
+workspace.
 
 Read [docs/architecture.md](docs/architecture.md) before building.
 

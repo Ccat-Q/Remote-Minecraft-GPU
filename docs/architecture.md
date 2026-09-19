@@ -13,11 +13,12 @@ Minecraft Java 1.21.1 / LWJGL / GLFW
   -> MTLTexture -> CAMetalLayer
 ```
 
-`PRESENT` is emitted by the Mesa vtest winsys presentation path, never by
-GLFW. The hook includes its cumulative vtest byte offset. The Linux proxy waits
-until it has forwarded that offset, assigns `after_sequence`, and emits the
-marker on the same QUIC stream. The iOS endpoint waits for that sequence and
-its renderer fence before displaying the IOSurface.
+The target `PRESENT` design emits from the Mesa vtest winsys presentation path,
+never GLFW. The hook will include its cumulative vtest byte offset. The Linux
+proxy already waits until it has forwarded that offset, assigns
+`after_sequence`, and emits the marker on the same QUIC stream. The iOS
+endpoint already orders markers behind that sequence; the Mesa hook and the
+iOS renderer adapter remain implementation gates before an end-to-end claim.
 
 ## Wire format
 
@@ -53,7 +54,8 @@ a Unix FD is portable over QUIC.
 2. iOS ANGLE/IOSurface render trace replay.
 3. End-to-end GL capability test: GL >= 3.2 Core, GLSL, FBO, VAO, instancing,
    sync and query support.
-4. Mesa presentation hook with zero presentation readback bytes.
+4. Mesa presentation hook with zero presentation readback bytes (not yet
+   implemented in the current patch set).
 5. Vanilla 1.21.1, 720p/30, 10 minutes over Wi-Fi on the 2 vCPU/4 GiB host.
 6. 5G functional run with RTT, jitter, stall and bandwidth reporting.
 
