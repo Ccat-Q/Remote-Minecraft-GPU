@@ -86,3 +86,10 @@ jobs:
         run: |
           git -C "$HOME/remotegpu-mesa" show HEAD:src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c | \
             grep -n -A45 'int virgl_vtest_connect'
+      - name: Generate byte-exact candidate patch on failure
+        if: failure()
+        run: |
+          python3 "$GITHUB_WORKSPACE/tools/generate_mesa_legacy_patch.py" \
+            "$HOME/remotegpu-mesa/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c"
+          git -C "$HOME/remotegpu-mesa" diff -- \
+            src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c
