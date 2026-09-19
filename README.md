@@ -41,6 +41,9 @@ artifact from a successful Action run and start it on the Ubuntu server:
   -pairing-token "replace-with-a-long-random-secret"
 ```
 
+The proxy emits one protocol-statistics line per second by default. Use
+`-stats-interval=5s` for longer intervals or `-stats-interval=0` to disable it.
+
 The iPhone opens one QUIC bidirectional stream and sends a `HELLO` envelope
 with the same pairing token. The proxy then bridges raw vtest bytes in both
 directions. `PRESENT` envelopes can only travel from the Linux side to iOS on

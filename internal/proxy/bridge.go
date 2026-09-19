@@ -9,6 +9,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/Ccat-Q/Remote-Minecraft-GPU/internal/diagnostics"
 	"github.com/Ccat-Q/Remote-Minecraft-GPU/internal/protocol"
 	"github.com/Ccat-Q/Remote-Minecraft-GPU/internal/vtest"
 	quic "github.com/quic-go/quic-go"
@@ -17,6 +18,7 @@ import (
 type Config struct {
 	UnixSocket, PresentSocket, ListenAddr, PairingToken string
 	TLSConfig                                           *tls.Config
+	Diagnostics                                         *diagnostics.Collector
 }
 
 type Bridge struct{ Config Config }
@@ -74,7 +76,7 @@ func (b Bridge) serveSession(ctx context.Context, unix net.Listener, present *ne
 		return err
 	}
 	defer client.Close()
-	return bridge(ctx, client, stream, present)
+	return bridge(ctx, client, stream, present, b.Config.Diagnostics)
 }
 
 func authenticate(stream quic.Stream, token string) error {
@@ -88,7 +90,7 @@ func authenticate(stream quic.Stream, token string) error {
 	return nil
 }
 
-func bridge(ctx context.Context, unix net.Conn, stream quic.Stream, present *net.UnixConn) error {
+func bridge(ctx context.Context, unix net.Conn, stream quic.Stream, present *net.UnixConn, stats *diagnostics.Collector) error {
 	var writeMu sync.Mutex
 	var stateMu sync.Mutex
 	var forwarded uint64
@@ -125,6 +127,9 @@ func bridge(ctx context.Context, unix net.Conn, stream quic.Stream, present *net
 					return
 				}
 				for _, message := range messages {
+					if stats != nil {
+						stats.ObserveUpload(message)
+					}
 					stateMu.Lock()
 					sequence++
 					seq := sequence
@@ -171,6 +176,9 @@ func bridge(ctx context.Context, unix net.Conn, stream quic.Stream, present *net
 				fail(err)
 				return
 			}
+			if stats != nil {
+				stats.ObserveDownload(len(data))
+			}
 		}
 	}()
 
@@ -186,6 +194,9 @@ func bridge(ctx context.Context, unix net.Conn, stream quic.Stream, present *net
 			if err != nil {
 				fail(err)
 				return
+			}
+			if stats != nil {
+				stats.ObservePresent()
 			}
 			stateMu.Lock()
 			for forwarded < signal.ByteOffset {
