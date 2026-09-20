@@ -47,7 +47,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends build-essential ccache git ninja-build pkg-config python3-mako python3-venv libdrm-dev libegl1-mesa-dev libgbm-dev libgl-dev libgl1-mesa-dev libx11-dev libxext-dev libxfixes-dev libxrandr-dev libxshmfence-dev libxxf86vm-dev libzstd-dev libglfw3-dev libglew-dev
+          sudo apt-get install --yes --no-install-recommends build-essential ccache git ninja-build pkg-config python3-mako python3-venv libdrm-dev libegl1-mesa-dev libgbm-dev libgl-dev libgl1-mesa-dev libx11-dev libx11-xcb-dev libxext-dev libxfixes-dev libxrandr-dev libxshmfence-dev libxxf86vm-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-glx0-dev libxcb-present-dev libxcb-randr0-dev libxcb-shm0-dev libxcb-sync-dev libxcb-xfixes0-dev libzstd-dev libglfw3-dev libglew-dev
       - name: Install pinned Meson
         run: |
           if [ ! -x .tools/meson-venv/bin/meson ]; then
