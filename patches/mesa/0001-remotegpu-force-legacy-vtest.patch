@@ -11,8 +11,8 @@ index a74b4c69daf..83822af4f9c 100644
 +++ b/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c
 @@ -220,6 +220,14 @@ int virgl_vtest_connect(struct virgl_vtest_winsys *vws)
  
-   vws->sock_fd = sock;
-   virgl_vtest_send_init(vws);
+    vws->sock_fd = sock;
+    virgl_vtest_send_init(vws);
 +
 +   /* RemoteGPU serializes this protocol over QUIC. Protocol >= 2 uses
 +    * mmap-able resources and Unix FD passing, neither of which crosses a
@@ -21,6 +21,6 @@ index a74b4c69daf..83822af4f9c 100644
 +      vws->protocol_version = 0;
 +      return 0;
 +   }
-   vws->protocol_version = virgl_vtest_negotiate_version(vws, VTEST_PROTOCOL_VERSION);
+    vws->protocol_version = virgl_vtest_negotiate_version(vws, VTEST_PROTOCOL_VERSION);
  
-   /* Version 1 is deprecated. */
+    /* Version 1 is deprecated. */
