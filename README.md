@@ -9,9 +9,10 @@ vtest profile over one ordered QUIC render stream; it is not video streaming.
 All compilation is performed by GitHub Actions. In particular, Mesa and iOS
 dependency builds must never run on the Ubuntu compute host. Use **Actions →
 Build Linux PoC → Run workflow** and download its `linux-poc-<commit>` artifact.
-The workflow preserves Mesa compiler results with `ccache`, Go module/build
-caches, and SwiftPM dependency/build caches. It intentionally does not cache a
-generated Mesa build directory, because that directory is runner-path sensitive.
+The workflow preserves Mesa compiler results with `ccache`, its pinned Meson
+tool environment, Go module/build caches, and SwiftPM dependency/build caches.
+It intentionally does not cache a generated Mesa build directory, because that
+directory is runner-path sensitive.
 
 The cache key includes the pinned Mesa revision, Mesa patches, and compiler
 configuration. A change to any of those correctly causes a cold compiler

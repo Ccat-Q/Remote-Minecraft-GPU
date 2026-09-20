@@ -39,10 +39,22 @@ jobs:
           go-version: "1.22.x"
           cache: true
           cache-dependency-path: go.sum
+      - name: Restore pinned Meson tool
+        uses: actions/cache@v4
+        with:
+          path: .tools/meson-venv
+          key: meson-tool-ubuntu-24.04-${{ hashFiles('tools/ci/meson-requirements.txt') }}
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends build-essential ccache git meson ninja-build pkg-config python3-mako libdrm-dev libegl1-mesa-dev libgbm-dev libgl-dev libgl1-mesa-dev libwayland-dev libx11-dev libxext-dev libxfixes-dev libxrandr-dev libxshmfence-dev libxxf86vm-dev libzstd-dev libglfw3-dev libglew-dev
+          sudo apt-get install --yes --no-install-recommends build-essential ccache git ninja-build pkg-config python3-mako python3-venv libdrm-dev libegl1-mesa-dev libgbm-dev libgl-dev libgl1-mesa-dev libwayland-dev libx11-dev libxext-dev libxfixes-dev libxrandr-dev libxshmfence-dev libxxf86vm-dev libzstd-dev libglfw3-dev libglew-dev
+      - name: Install pinned Meson
+        run: |
+          if [ ! -x .tools/meson-venv/bin/meson ]; then
+            python3 -m venv .tools/meson-venv
+            .tools/meson-venv/bin/pip install --requirement tools/ci/meson-requirements.txt
+          fi
+          .tools/meson-venv/bin/meson --version
       - name: Fetch pinned Mesa source
         run: |
           mkdir -p _deps
@@ -52,12 +64,12 @@ jobs:
           git -C _deps/mesa apply "$GITHUB_WORKSPACE/patches/mesa/0001-remotegpu-force-legacy-vtest.patch"
       - name: Configure Mesa virpipe
         run: |
-          meson setup _build/mesa _deps/mesa --prefix="$GITHUB_WORKSPACE/_stage/mesa" -Dbuildtype=release -Dgallium-drivers=virgl -Dvulkan-drivers=[] -Dplatforms=x11,wayland -Dglx=dri -Degl=enabled -Dllvm=disabled -Dshared-glapi=enabled -Db_lto=false --native-file "$GITHUB_WORKSPACE/.github/ci/ccache.ini"
+          .tools/meson-venv/bin/meson setup _build/mesa _deps/mesa --prefix="$GITHUB_WORKSPACE/_stage/mesa" -Dbuildtype=release -Dgallium-drivers=virgl -Dvulkan-drivers=[] -Dplatforms=x11,wayland -Dglx=dri -Degl=enabled -Dllvm=disabled -Dshared-glapi=enabled -Db_lto=false --native-file "$GITHUB_WORKSPACE/.github/ci/ccache.ini"
       - name: Build and install Mesa PoC
         run: |
           ccache --zero-stats
-          meson compile -C _build/mesa
-          meson install -C _build/mesa
+          .tools/meson-venv/bin/meson compile -C _build/mesa
+          .tools/meson-venv/bin/meson install -C _build/mesa
           ccache --show-stats
       - name: Build RemoteGPU tools and capability gate
         run: |

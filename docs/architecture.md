@@ -64,9 +64,10 @@ downloaded CI artifacts and target-environment checks; it does not build Mesa,
 ANGLE, the proxy or the iOS application.
 
 GitHub Actions caches Go modules/build output using `go.sum`, SwiftPM's build
-and dependency directories using its resolved dependency manifest, and Mesa
-compiler output using `ccache`. The Mesa cache key contains the pinned commit,
-our Mesa patch set, and ccache compiler configuration; it intentionally omits
-generated Meson build directories, which contain absolute runner paths. Future
-Mesa/ANGLE build workflows must likewise key compiler caches on pinned commits,
-toolchain version and build flags; never key them only by branch name.
+and dependency directories using its resolved dependency manifest, the pinned
+Meson tool virtual environment, and Mesa compiler output using `ccache`. The
+Mesa cache key contains the pinned commit, our Mesa patch set, and ccache
+compiler configuration; it intentionally omits generated Meson build
+directories, which contain absolute runner paths. Future Mesa/ANGLE build
+workflows must likewise key compiler caches on pinned commits, toolchain
+version and build flags; never key them only by branch name.
