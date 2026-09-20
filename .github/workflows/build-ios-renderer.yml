@@ -1,0 +1,61 @@
+name: Build iOS renderer sysroot
+
+on:
+  workflow_dispatch:
+    inputs:
+      utm_revision:
+        description: Pinned UTM reference revision
+        required: false
+        default: 9d00a54833184628c696bcbfafbf344cea566e59
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-ios-renderer-${{ inputs.utm_revision }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: UTM ANGLE/virglrenderer iOS arm64 sysroot
+    runs-on: macos-14
+    env:
+      UTM_REVISION: ${{ inputs.utm_revision }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore iOS renderer sysroot
+        id: sysroot
+        uses: actions/cache@v4
+        with:
+          path: _deps/UTM/sysroot-ios-arm64
+          key: ios-renderer-sysroot-${{ runner.os }}-${{ inputs.utm_revision }}-${{ hashFiles('.github/workflows/build-ios-renderer.yml') }}
+          restore-keys: |
+            ios-renderer-sysroot-${{ runner.os }}-${{ inputs.utm_revision }}-
+      - name: Fetch pinned UTM reference source
+        run: |
+          mkdir -p _deps
+          git clone --recursive https://github.com/utmapp/UTM.git _deps/UTM
+          git -C _deps/UTM checkout --detach "$UTM_REVISION"
+          git -C _deps/UTM submodule update --init --recursive
+      - name: Install UTM dependency-build prerequisites
+        if: steps.sysroot.outputs.cache-hit != 'true'
+        run: |
+          brew install bison pkg-config gettext glib libgpg-error nasm meson
+          python3 -m pip install --user six pyparsing
+      - name: Build iOS arm64 renderer dependencies
+        if: steps.sysroot.outputs.cache-hit != 'true'
+        working-directory: _deps/UTM
+        run: ./scripts/build_dependencies.sh -p ios -a arm64
+      - name: Verify ANGLE and virglrenderer sysroot outputs
+        run: |
+          test -d _deps/UTM/sysroot-ios-arm64
+          find _deps/UTM/sysroot-ios-arm64 -iname '*virglrenderer*' -print -quit | grep .
+          find _deps/UTM/sysroot-ios-arm64 -iname 'EGL.framework' -print -quit | grep .
+          find _deps/UTM/sysroot-ios-arm64 -iname 'GLESv2.framework' -print -quit | grep .
+      - name: Publish iOS renderer sysroot
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-renderer-sysroot-${{ github.sha }}
+          path: _deps/UTM/sysroot-ios-arm64
+          if-no-files-found: error
+          retention-days: 14

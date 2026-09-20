@@ -2,7 +2,8 @@
 
 GitHub Actions builds the Swift protocol package on macOS. The complete renderer
 target is also built only in GitHub Actions once its pinned C/C++ dependencies
-are added; do not compile it locally.
+are added; do not compile it locally. The pinned GitHub Actions-only sysroot
+procedure is documented in [DEPENDENCIES.md](DEPENDENCIES.md).
 
 The implementation must embed the pinned `virglrenderer-ios` and ANGLE Metal
 dependencies, render to an IOSurface-backed EGL surface, then wrap that
