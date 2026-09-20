@@ -113,7 +113,7 @@ jobs:
           LD_LIBRARY_PATH="$virgl_lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" _stage/virglrenderer/bin/virgl_test_server --no-fork --use-egl-surfaceless --use-gles --socket-path="$renderer_socket" > "$server_log" 2>&1 &
           server_pid=$!
           openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost -keyout "$private_key" -out "$certificate" >/dev/null 2>&1
-          _stage/bin/remotegpu-proxy -unix "$proxy_socket" -present-socket "$present_socket" -listen 127.0.0.1:4433 -cert "$certificate" -key "$private_key" -pairing-token "$pairing_token" -stats-interval=0 > "$proxy_log" 2>&1 &
+          _stage/bin/remotegpu-proxy -unix "$proxy_socket" -present-socket "$present_socket" -listen 127.0.0.1:4433 -cert "$certificate" -key "$private_key" -pairing-token "$pairing_token" -stats-interval=100ms > "$proxy_log" 2>&1 &
           proxy_pid=$!
           receiver_pid=
           cleanup() {
@@ -154,6 +154,11 @@ jobs:
             exit 1
           fi
           cat "$probe_log"
+          if ! grep -q 'upload=[1-9][0-9]*B' "$proxy_log" || ! grep -q 'download=[1-9][0-9]*B' "$proxy_log"; then
+            echo 'FAIL: capability probe did not traverse both RemoteGPU directions' >&2
+            cat "$proxy_log" >&2 || true
+            exit 1
+          fi
       - name: Publish deployable Linux PoC bundle
         uses: actions/upload-artifact@v4
         with:
