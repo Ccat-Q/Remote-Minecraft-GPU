@@ -42,7 +42,7 @@ jobs:
         run: |
           brew install bison pkg-config gettext glib libgpg-error nasm meson
           python3 -m venv .tools/utm-python
-          .tools/utm-python/bin/pip install six pyparsing
+          .tools/utm-python/bin/pip install setuptools six pyparsing
           echo "$GITHUB_WORKSPACE/.tools/utm-python/bin" >> "$GITHUB_PATH"
       - name: Build iOS arm64 renderer dependencies
         if: steps.sysroot.outputs.cache-hit != 'true'
