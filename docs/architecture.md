@@ -71,3 +71,15 @@ compiler configuration; it intentionally omits generated Meson build
 directories, which contain absolute runner paths. Future Mesa/ANGLE build
 workflows must likewise key compiler caches on pinned commits, toolchain
 version and build flags; never key them only by branch name.
+
+# Initial Linux PoC display scope
+
+The downloadable Linux PoC artifact deliberately builds Mesa with the **X11**
+platform only.  Its purpose is to prove the `virpipe → vtest → RemoteGPU`
+transport path with the smallest useful OpenGL capability test; it is not yet
+the Minecraft windowing environment.  Keeping Weston and Xwayland outside this
+first gate avoids conflating a compositor/backend failure with a transport or
+renderer failure, and avoids Mesa's unrelated `wayland-egl-backend` dependency.
+
+Weston headless plus Xwayland remains the planned Minecraft integration stage,
+after the remote renderer has passed the GL 3.2 Core and presentation gates.
