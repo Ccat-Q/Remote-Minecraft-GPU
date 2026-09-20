@@ -40,10 +40,14 @@ jobs:
       - name: Install UTM dependency-build prerequisites
         if: steps.sysroot.outputs.cache-hit != 'true'
         run: |
-          brew install bison pkg-config gettext glib libgpg-error nasm meson
+          brew install bison pkg-config gettext glib libgpg-error nasm meson llvm spirv-llvm-translator libxcb libxrandr
           python3 -m venv .tools/utm-python
-          .tools/utm-python/bin/pip install setuptools six pyparsing pyyaml
+          .tools/utm-python/bin/pip install setuptools six pyparsing pyyaml distlib mako
           echo "$GITHUB_WORKSPACE/.tools/utm-python/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix glib)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix libgpg-error)/bin" >> "$GITHUB_PATH"
       - name: Build iOS arm64 renderer dependencies
         if: steps.sysroot.outputs.cache-hit != 'true'
         working-directory: _deps/UTM
