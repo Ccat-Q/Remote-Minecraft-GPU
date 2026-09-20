@@ -57,7 +57,8 @@ change, not an assumed property of the existing driver.
 
 ## Validation gates
 
-1. Local virpipe/vtest trace and supported-profile report.
+1. Linux diagnostic receiver test: Mesa virpipe -> RemoteGPU Unix proxy -> one
+   ordered QUIC stream -> Linux vtest receiver -> virgl_test_server.
 2. iOS ANGLE/IOSurface render trace replay.
 3. End-to-end GL capability test: GL >= 3.2 Core, GLSL, FBO, VAO, instancing,
    sync and query support.

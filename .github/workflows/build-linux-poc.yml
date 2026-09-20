@@ -92,35 +92,63 @@ jobs:
         run: |
           mkdir -p _stage/bin
           go build -trimpath -ldflags='-s -w' -o _stage/bin/remotegpu-proxy ./cmd/remotegpu-proxy
+          go build -trimpath -ldflags='-s -w' -o _stage/bin/remotegpu-vtest-receiver ./cmd/remotegpu-vtest-receiver
           cc -O2 -o _stage/bin/gl-capability tests/gl_capability.c -lglfw -lGLEW -lGL
           cp deploy/run-gl-capability.sh _stage/bin/run-gl-capability
           chmod +x _stage/bin/run-gl-capability
       - name: Run Mesa virpipe to virglrenderer GL capability gate
         run: |
-          socket_path=/tmp/.virgl_test
-          rm -f "$socket_path"
+          proxy_socket=/tmp/.virgl_test
+          renderer_socket="$RUNNER_TEMP/virglrenderer-vtest.sock"
+          present_socket="$RUNNER_TEMP/remotegpu-present.sock"
+          rm -f "$proxy_socket" "$renderer_socket" "$present_socket"
           server_log="$RUNNER_TEMP/virgl_test_server.log"
+          proxy_log="$RUNNER_TEMP/remotegpu-proxy.log"
+          receiver_log="$RUNNER_TEMP/remotegpu-vtest-receiver.log"
           probe_log="$RUNNER_TEMP/gl_capability.log"
+          certificate="$RUNNER_TEMP/remotegpu-cert.pem"
+          private_key="$RUNNER_TEMP/remotegpu-key.pem"
+          pairing_token=github-actions-vtest-poc
           virgl_lib="$GITHUB_WORKSPACE/_stage/virglrenderer/lib/x86_64-linux-gnu"
-          LD_LIBRARY_PATH="$virgl_lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" _stage/virglrenderer/bin/virgl_test_server --no-fork --use-egl-surfaceless --use-gles --socket-path="$socket_path" > "$server_log" 2>&1 &
+          LD_LIBRARY_PATH="$virgl_lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" _stage/virglrenderer/bin/virgl_test_server --no-fork --use-egl-surfaceless --use-gles --socket-path="$renderer_socket" > "$server_log" 2>&1 &
           server_pid=$!
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost -keyout "$private_key" -out "$certificate" >/dev/null 2>&1
+          _stage/bin/remotegpu-proxy -unix "$proxy_socket" -present-socket "$present_socket" -listen 127.0.0.1:4433 -cert "$certificate" -key "$private_key" -pairing-token "$pairing_token" -stats-interval=0 > "$proxy_log" 2>&1 &
+          proxy_pid=$!
+          receiver_pid=
           cleanup() {
-            kill "$server_pid" 2>/dev/null || true
-            wait "$server_pid" 2>/dev/null || true
+            [ -z "$receiver_pid" ] || kill "$receiver_pid" 2>/dev/null || true
+            kill "$proxy_pid" "$server_pid" 2>/dev/null || true
+            [ -z "$receiver_pid" ] || wait "$receiver_pid" 2>/dev/null || true
+            wait "$proxy_pid" "$server_pid" 2>/dev/null || true
           }
           trap cleanup EXIT
           for _ in $(seq 1 50); do
-            [ -S "$socket_path" ] && break
+            [ -S "$renderer_socket" ] && [ -S "$proxy_socket" ] && break
             sleep 0.1
           done
-          if [ ! -S "$socket_path" ]; then
-            echo '=== virgl_test_server failed to create its socket ===' >&2
+          if [ ! -S "$renderer_socket" ] || [ ! -S "$proxy_socket" ]; then
+            echo '=== vtest server or RemoteGPU proxy failed to create its socket ===' >&2
             cat "$server_log" >&2 || true
+            cat "$proxy_log" >&2 || true
+            cat "$receiver_log" >&2 || true
+            exit 1
+          fi
+          _stage/bin/remotegpu-vtest-receiver -connect 127.0.0.1:4433 -socket "$renderer_socket" -pairing-token "$pairing_token" -insecure-skip-verify > "$receiver_log" 2>&1 &
+          receiver_pid=$!
+          sleep 0.2
+          if ! kill -0 "$receiver_pid" 2>/dev/null; then
+            echo '=== RemoteGPU Linux vtest receiver failed to start ===' >&2
+            cat "$receiver_log" >&2 || true
             exit 1
           fi
           if ! timeout 45s xvfb-run --auto-servernum env LIBGL_DEBUG=verbose GALLIUM_DRIVER=virpipe _stage/bin/run-gl-capability > "$probe_log" 2>&1; then
             echo '=== virgl_test_server ===' >&2
             cat "$server_log" >&2 || true
+            echo '=== RemoteGPU proxy ===' >&2
+            cat "$proxy_log" >&2 || true
+            echo '=== RemoteGPU Linux vtest receiver ===' >&2
+            cat "$receiver_log" >&2 || true
             echo '=== GL capability probe ===' >&2
             cat "$probe_log" >&2 || true
             exit 1
