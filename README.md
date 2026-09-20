@@ -21,11 +21,20 @@ layers does not invalidate it.
 
 ## Status
 
-This repository contains the Linux protocol/proxy PoC, its test suite, a Mesa
-legacy-vtest patch, and the iOS protocol integration target. The Mesa
-presentation-hook patch and the iOS ANGLE/IOSurface renderer are the next
-implementation milestones; they cannot be claimed verified from this Linux
-workspace.
+This repository contains a verified Linux transport PoC, its test suite, a
+Mesa legacy-vtest patch, and the iOS protocol integration target. GitHub
+Actions builds Mesa virpipe and virglrenderer, then verifies this exact path:
+
+```text
+Mesa virpipe -> RemoteGPU Unix proxy -> QUIC/TLS -> Linux diagnostic receiver
+              -> virgl_test_server -> OpenGL 4.3 Core capability probe
+```
+
+The gate also requires non-zero vtest traffic in both proxy directions. The
+diagnostic receiver is intentionally Linux-only and rejects `PRESENT`; it is
+evidence for the transport, not an iPhone renderer. The Mesa presentation-hook
+patch and the iOS ANGLE/IOSurface renderer remain the next implementation
+milestones.
 
 Read [docs/architecture.md](docs/architecture.md) before building.
 

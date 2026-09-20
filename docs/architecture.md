@@ -72,6 +72,11 @@ change, not an assumed property of the existing driver.
 5. Vanilla 1.21.1, 720p/30, 10 minutes over Wi-Fi on the 2 vCPU/4 GiB host.
 6. 5G functional run with RTT, jitter, stall and bandwidth reporting.
 
+Gate 1 is currently verified in GitHub Actions with protocol 0: the remote
+renderer exposes OpenGL 4.3 Core / GLSL 4.30 and the proxy records non-zero
+traffic in both directions. It is a transport/capability proof only: it uses a
+Linux diagnostic receiver and has no `PRESENT` path.
+
 All builds and compilation run in GitHub Actions. The Ubuntu server only runs
 downloaded CI artifacts and target-environment checks; it does not build Mesa,
 ANGLE, the proxy or the iOS application.
