@@ -99,7 +99,9 @@ jobs:
         run: |
           socket_path=/tmp/.virgl_test
           rm -f "$socket_path"
-          _stage/virglrenderer/bin/virgl_test_server --no-fork --use-egl-surfaceless --use-gles --socket-path="$socket_path" > "$RUNNER_TEMP/virgl_test_server.log" 2>&1 &
+          server_log="$RUNNER_TEMP/virgl_test_server.log"
+          probe_log="$RUNNER_TEMP/gl_capability.log"
+          _stage/virglrenderer/bin/virgl_test_server --no-fork --use-egl-surfaceless --use-gles --socket-path="$socket_path" > "$server_log" 2>&1 &
           server_pid=$!
           cleanup() {
             kill "$server_pid" 2>/dev/null || true
@@ -111,7 +113,14 @@ jobs:
             sleep 0.1
           done
           [ -S "$socket_path" ]
-          timeout 45s xvfb-run --auto-servernum env GALLIUM_DRIVER=virpipe _stage/bin/run-gl-capability
+          if ! timeout 45s xvfb-run --auto-servernum env LIBGL_DEBUG=verbose GALLIUM_DRIVER=virpipe _stage/bin/run-gl-capability > "$probe_log" 2>&1; then
+            echo '=== virgl_test_server ===' >&2
+            cat "$server_log" >&2 || true
+            echo '=== GL capability probe ===' >&2
+            cat "$probe_log" >&2 || true
+            exit 1
+          fi
+          cat "$probe_log"
       - name: Publish deployable Linux PoC bundle
         uses: actions/upload-artifact@v4
         with:
