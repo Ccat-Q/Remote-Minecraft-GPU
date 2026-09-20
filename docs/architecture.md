@@ -48,6 +48,13 @@ commands. Before Minecraft is attempted, a trace determines whether protocol
 stops at this gate and expands Mesa's network-safe winsys; it must not pretend
 a Unix FD is portable over QUIC.
 
+At the pinned Mesa revision, the legacy virpipe winsys connects to the literal
+Unix path `/tmp/.virgl_test`; it does not honour a `VTEST_SOCKET` environment
+variable. The first Linux gate therefore intentionally starts
+`virgl_test_server` at that path. Remote deployment retains that local path
+between Mesa and the proxy; making it configurable is a later Mesa winsys
+change, not an assumed property of the existing driver.
+
 ## Validation gates
 
 1. Local virpipe/vtest trace and supported-profile report.
@@ -65,12 +72,12 @@ ANGLE, the proxy or the iOS application.
 
 GitHub Actions caches Go modules/build output using `go.sum`, SwiftPM's build
 and dependency directories using its resolved dependency manifest, the pinned
-Meson tool virtual environment, and Mesa compiler output using `ccache`. The
-Mesa cache key contains the pinned commit, our Mesa patch set, and ccache
-compiler configuration; it intentionally omits generated Meson build
-directories, which contain absolute runner paths. Future Mesa/ANGLE build
-workflows must likewise key compiler caches on pinned commits, toolchain
-version and build flags; never key them only by branch name.
+Meson tool virtual environment, and the Mesa/virglrenderer compiler output
+using `ccache`. The cache namespace includes both pinned source revisions, the
+Mesa patch set and ccache compiler configuration; it intentionally omits
+generated Meson build directories, which contain absolute runner paths. Future
+Mesa/ANGLE build workflows must likewise key compiler caches on pinned commits,
+toolchain version and build flags; never key them only by branch name.
 
 # Initial Linux PoC display scope
 

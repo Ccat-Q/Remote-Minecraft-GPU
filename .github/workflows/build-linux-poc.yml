@@ -7,12 +7,16 @@ on:
         description: Pinned Mesa revision used by the PoC
         required: false
         default: 590bf21d918c86908d96d1f4590ecd25b9657171
+      virglrenderer_revision:
+        description: Pinned virglrenderer revision used by the PoC
+        required: false
+        default: 32dac0c627fba374709102c114f2896b7c899f46
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-linux-poc-${{ github.ref }}-${{ inputs.mesa_revision }}
+  group: build-linux-poc-${{ github.ref }}-${{ inputs.mesa_revision }}-${{ inputs.virglrenderer_revision }}
   cancel-in-progress: false
 
 jobs:
@@ -21,6 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       MESA_REVISION: ${{ inputs.mesa_revision }}
+      VIRGLRENDERER_REVISION: ${{ inputs.virglrenderer_revision }}
       CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
       CCACHE_COMPILERCHECK: content
       CCACHE_BASEDIR: ${{ github.workspace }}
@@ -31,8 +36,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .cache/ccache
-          key: ccache-mesa-ubuntu-24.04-${{ inputs.mesa_revision }}-${{ hashFiles('patches/mesa/**', '.github/ci/ccache.ini') }}
+          key: ccache-mesa-virgl-ubuntu-24.04-${{ inputs.mesa_revision }}-${{ inputs.virglrenderer_revision }}-${{ hashFiles('patches/mesa/**', '.github/ci/ccache.ini') }}
           restore-keys: |
+            ccache-mesa-virgl-ubuntu-24.04-${{ inputs.mesa_revision }}-${{ inputs.virglrenderer_revision }}-
             ccache-mesa-ubuntu-24.04-${{ inputs.mesa_revision }}-
       - uses: actions/setup-go@v5
         with:
@@ -47,7 +53,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends build-essential ccache git ninja-build pkg-config python3-mako python3-venv libdrm-dev libegl1-mesa-dev libgbm-dev libgl-dev libgl1-mesa-dev libx11-dev libx11-xcb-dev libxext-dev libxfixes-dev libxrandr-dev libxshmfence-dev libxxf86vm-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-glx0-dev libxcb-present-dev libxcb-randr0-dev libxcb-shm0-dev libxcb-sync-dev libxcb-xfixes0-dev libzstd-dev libglfw3-dev libglew-dev
+          sudo apt-get install --yes --no-install-recommends build-essential ccache git ninja-build pkg-config python3-mako python3-venv libdrm-dev libegl1-mesa-dev libepoxy-dev libgbm-dev libgl-dev libgl1-mesa-dev libx11-dev libx11-xcb-dev libxext-dev libxfixes-dev libxrandr-dev libxshmfence-dev libxxf86vm-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-glx0-dev libxcb-present-dev libxcb-randr0-dev libxcb-shm0-dev libxcb-sync-dev libxcb-xfixes0-dev libzstd-dev libglfw3-dev libglew-dev xvfb
       - name: Install pinned Meson
         run: |
           if [ ! -x .tools/meson-venv/bin/meson ]; then
@@ -62,6 +68,12 @@ jobs:
           git -C _deps/mesa fetch --depth=1 origin "$MESA_REVISION"
           git -C _deps/mesa checkout --detach "$MESA_REVISION"
           git -C _deps/mesa apply "$GITHUB_WORKSPACE/patches/mesa/0001-remotegpu-force-legacy-vtest.patch"
+      - name: Fetch pinned virglrenderer source
+        run: |
+          mkdir -p _deps
+          git clone --filter=blob:none https://gitlab.freedesktop.org/virgl/virglrenderer.git _deps/virglrenderer
+          git -C _deps/virglrenderer fetch --depth=1 origin "$VIRGLRENDERER_REVISION"
+          git -C _deps/virglrenderer checkout --detach "$VIRGLRENDERER_REVISION"
       - name: Configure Mesa virpipe
         run: |
           .tools/meson-venv/bin/meson setup _build/mesa _deps/mesa --prefix="$GITHUB_WORKSPACE/_stage/mesa" -Dbuildtype=release -Dgallium-drivers=virgl -Dvulkan-drivers=[] -Dplatforms=x11 -Dglx=dri -Degl=enabled -Dllvm=disabled -Dshared-glapi=enabled -Db_lto=false --native-file "$GITHUB_WORKSPACE/.github/ci/ccache.ini"
@@ -71,6 +83,11 @@ jobs:
           .tools/meson-venv/bin/meson compile -C _build/mesa
           .tools/meson-venv/bin/meson install -C _build/mesa
           ccache --show-stats
+      - name: Build and install virglrenderer vtest server
+        run: |
+          .tools/meson-venv/bin/meson setup _build/virglrenderer _deps/virglrenderer --prefix="$GITHUB_WORKSPACE/_stage/virglrenderer" -Dbuildtype=release -Dplatforms=egl -Dvenus=false -Dtests=false --native-file "$GITHUB_WORKSPACE/.github/ci/ccache.ini"
+          .tools/meson-venv/bin/meson compile -C _build/virglrenderer
+          .tools/meson-venv/bin/meson install -C _build/virglrenderer
       - name: Build RemoteGPU tools and capability gate
         run: |
           mkdir -p _stage/bin
@@ -78,6 +95,23 @@ jobs:
           cc -O2 -o _stage/bin/gl-capability tests/gl_capability.c -lglfw -lGLEW -lGL
           cp deploy/run-gl-capability.sh _stage/bin/run-gl-capability
           chmod +x _stage/bin/run-gl-capability
+      - name: Run Mesa virpipe to virglrenderer GL capability gate
+        run: |
+          socket_path=/tmp/.virgl_test
+          rm -f "$socket_path"
+          _stage/virglrenderer/bin/virgl_test_server --no-fork --use-egl-surfaceless --use-gles --socket-path="$socket_path" > "$RUNNER_TEMP/virgl_test_server.log" 2>&1 &
+          server_pid=$!
+          cleanup() {
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          for _ in $(seq 1 50); do
+            [ -S "$socket_path" ] && break
+            sleep 0.1
+          done
+          [ -S "$socket_path" ]
+          timeout 45s xvfb-run --auto-servernum env GALLIUM_DRIVER=virpipe _stage/bin/run-gl-capability
       - name: Publish deployable Linux PoC bundle
         uses: actions/upload-artifact@v4
         with:
