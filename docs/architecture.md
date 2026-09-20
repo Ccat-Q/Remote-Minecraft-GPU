@@ -48,6 +48,11 @@ commands. Before Minecraft is attempted, a trace determines whether protocol
 stops at this gate and expands Mesa's network-safe winsys; it must not pretend
 a Unix FD is portable over QUIC.
 
+The current Mesa compatibility patch selects that profile only when
+`REMOTEGPU_VTEST_LEGACY=1` is present in the compute-client environment. This
+is mandatory for every RemoteGPU launch; without it Mesa negotiates its newer
+local-only vtest protocol and the proxy intentionally closes the session.
+
 At the pinned Mesa revision, the legacy virpipe winsys connects to the literal
 Unix path `/tmp/.virgl_test`; it does not honour a `VTEST_SOCKET` environment
 variable. The first Linux gate therefore intentionally starts
