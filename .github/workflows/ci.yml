@@ -94,6 +94,13 @@ jobs:
         run: |
           git -C "$HOME/remotegpu-mesa" show HEAD:src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c | \
             grep -n -A45 'int virgl_vtest_connect'
+      - name: Export pinned winsys source for presentation development
+        uses: actions/upload-artifact@v4
+        with:
+          name: mesa-vtest-source-${{ github.sha }}
+          path: ~/remotegpu-mesa/src/gallium/winsys/virgl/vtest/
+          if-no-files-found: error
+          retention-days: 7
       - name: Generate byte-exact candidate patch on failure
         if: failure()
         run: |
