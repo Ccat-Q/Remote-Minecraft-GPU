@@ -2,20 +2,28 @@ import unittest
 
 from prepare_utm_renderer import fix_renderer, prepare_script
 
+RENDERER_CONTEXT = '''angle_done:
+
+   /* glamor reject llvmpipe, and since the renderer string is
+    * composed of "virgl" and this renderer string we have to
+    * hide the "llvmpipe" part */
+   char *llvmpipe_string = strstr(caps->v2.renderer, "llvmpipe");'''
+
 
 class UTMCompatibilityTests(unittest.TestCase):
     def test_c11_label_requires_statement(self):
-        original = 'done:\n   char *llvmpipe_string = strstr(caps->v2.renderer, "llvmpipe");\n'
-        self.assertEqual(fix_renderer(original), original.replace("done:", "done: ;"))
+        self.assertEqual(
+            fix_renderer(RENDERER_CONTEXT),
+            RENDERER_CONTEXT.replace("angle_done:", "angle_done: ;"),
+        )
 
     def test_changed_renderer_fails_closed(self):
         with self.assertRaises(ValueError):
             fix_renderer("int unrelated;\n")
 
     def test_duplicate_renderer_context_fails_closed(self):
-        source = 'done:\nchar *llvmpipe_string = strstr(caps->v2.renderer, "llvmpipe");\n'
         with self.assertRaises(ValueError):
-            fix_renderer(source * 2)
+            fix_renderer(RENDERER_CONTEXT * 2)
 
     def test_build_hook_runs_before_renderer_build(self):
         source = (

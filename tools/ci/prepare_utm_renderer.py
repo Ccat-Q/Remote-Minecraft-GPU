@@ -3,17 +3,20 @@
 
 import argparse
 from pathlib import Path
-import re
 
 
 def fix_renderer(source: str) -> str:
     # C11 requires a statement after a label; a declaration is not a statement.
     # TODO: remove when the pinned UTM virglrenderer includes the upstream fix.
-    pattern = r"(?m)^([ \t]*[A-Za-z_]\w*:)([ \t]*\n[ \t]*char \*llvmpipe_string = strstr\(caps->v2.renderer, \"llvmpipe\"\);)"
-    fixed, count = re.subn(pattern, r"\1 ;\2", source)
-    if count != 1:
+    context = '''angle_done:
+
+   /* glamor reject llvmpipe, and since the renderer string is
+    * composed of "virgl" and this renderer string we have to
+    * hide the "llvmpipe" part */
+   char *llvmpipe_string = strstr(caps->v2.renderer, "llvmpipe");'''
+    if source.count(context) != 1 or source.count("angle_done:\n") != 1:
         raise ValueError("Pinned virglrenderer label/declaration context changed")
-    return fixed
+    return source.replace(context, context.replace("angle_done:", "angle_done: ;", 1))
 
 
 def prepare_script(source: str) -> str:
