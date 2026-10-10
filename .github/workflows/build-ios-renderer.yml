@@ -94,6 +94,16 @@ jobs:
           find _deps/UTM/sysroot-iOS-arm64 -iname '*virglrenderer*' -print -quit | grep .
           find _deps/UTM/sysroot-iOS-arm64 -iname 'EGL.framework' -print -quit | grep .
           find _deps/UTM/sysroot-iOS-arm64 -iname 'GLESv2.framework' -print -quit | grep .
+      - name: Verify iPhoneOS ANGLE and VirGL linkage
+        run: |
+          sysroot="$GITHUB_WORKSPACE/_deps/UTM/sysroot-iOS-arm64"
+          mkdir -p _stage/ios
+          xcrun --sdk iphoneos clang -arch arm64 -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -miphoneos-version-min=15.0 -dynamiclib tests/ios_renderer_link.c \
+            -I"$sysroot/include" -I"$sysroot/include/virgl" -L"$sysroot/lib" \
+            -lvirglrenderer -lEGL -lGLESv2 -o _stage/ios/renderer-link-probe.dylib
+          xcrun vtool -show-build _stage/ios/renderer-link-probe.dylib
+          otool -L _stage/ios/renderer-link-probe.dylib
       - name: Publish iOS renderer sysroot
         uses: actions/upload-artifact@v4
         with:
@@ -108,6 +118,7 @@ jobs:
           name: ios-renderer-diagnostics-${{ github.run_id }}
           path: |
             ios-renderer-build.log
+            _stage/ios/renderer-link-probe.dylib
             _deps/UTM/build-iOS-arm64/**/meson-logs/meson-log.txt
             _deps/UTM/build-iOS-arm64/**/config.log
           if-no-files-found: warn

@@ -11,6 +11,10 @@ the upstream toolchain, ANGLE build and framework fixups. It caches the resultin
 `sysroot-iOS-arm64` (the upstream path is case-sensitive) by UTM revision,
 runner architecture and build recipe, and checks that the sysroot contains
 virglrenderer plus `EGL.framework` and `GLESv2.framework`.
+Before publishing, the workflow compiles and links `tests/ios_renderer_link.c`
+with the iPhoneOS SDK against ANGLE and virglrenderer. This verifies device
+architecture and the public API linkage; it does not execute the renderer,
+prove iPhone GL capability, or test presentation.
 
 The pinned virglrenderer has a label immediately before a local declaration,
 which Apple Clang rejects in C11. `tools/ci/prepare_utm_renderer.py` inserts an
