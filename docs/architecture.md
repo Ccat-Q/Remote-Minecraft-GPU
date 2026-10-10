@@ -53,12 +53,11 @@ The current Mesa compatibility patch selects that profile only when
 is mandatory for every RemoteGPU launch; without it Mesa negotiates its newer
 local-only vtest protocol and the proxy intentionally closes the session.
 
-At the pinned Mesa revision, the legacy virpipe winsys connects to the literal
-Unix path `/tmp/.virgl_test`; it does not honour a `VTEST_SOCKET` environment
-variable. The first Linux gate therefore intentionally starts
-`virgl_test_server` at that path. Remote deployment retains that local path
-between Mesa and the proxy; making it configurable is a later Mesa winsys
-change, not an assumed property of the existing driver.
+At the pinned Mesa revision, the virpipe winsys reads `VTEST_SOCKET_NAME`
+and falls back to `/tmp/.virgl_test`. It does not honour `VTEST_SOCKET`.
+The Linux gate uses the default path between Mesa and the proxy; deployments
+can select another local path with `VTEST_SOCKET_NAME`. This was verified from
+the pinned winsys source exported by CI.
 
 ## Validation gates
 

@@ -49,6 +49,7 @@ jobs:
           key: ios-ccache-v1-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ inputs.utm_revision }}-${{ hashFiles('tools/ci/prepare_utm_renderer.py') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             ios-ccache-v1-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ inputs.utm_revision }}-${{ hashFiles('tools/ci/prepare_utm_renderer.py') }}-
+            ios-ccache-v1-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ inputs.utm_revision }}-
       - name: Fetch pinned UTM reference source
         run: |
           mkdir -p _deps
@@ -57,7 +58,9 @@ jobs:
           git -C _deps/UTM submodule update --init --recursive
       - name: Apply checked Apple Clang compatibility hook
         if: steps.sysroot.outputs.cache-hit != 'true'
-        run: python3 "$REMOTEGPU_UTM_COMPAT" --script _deps/UTM/scripts/build_dependencies.sh
+        run: |
+          python3 "$REMOTEGPU_UTM_COMPAT" --script _deps/UTM/scripts/build_dependencies.sh
+          bash -n _deps/UTM/scripts/build_dependencies.sh
       - name: Install UTM dependency-build prerequisites
         if: steps.sysroot.outputs.cache-hit != 'true'
         run: |

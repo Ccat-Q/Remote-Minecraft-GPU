@@ -9,6 +9,29 @@ RENDERER_CONTEXT = '''angle_done:
     * hide the "llvmpipe" part */
    char *llvmpipe_string = strstr(caps->v2.renderer, "llvmpipe");'''
 
+BUILD_CONTEXT = '''download_all () {
+    download $QEMU_SRC
+}
+copy_private_headers() {
+}
+build_qemu_dependencies () {
+    meson_darwin_build $VIRGLRENDERER_REPO -Dtests=false
+}
+build_spice_client () {
+}
+export CC
+export CPP
+export CXX
+export OBJCC
+build_qemu_dependencies
+build $QEMU_DIR --cross-prefix="" $QEMU_PLATFORM_BUILD_FLAGS $QEMU_DEBUG_FLAGS
+build_spice_client
+build_vulkan_drivers
+build_d3d_drivers
+fixup_all
+remove_shared_gst_plugins # another hack...
+'''
+
 
 class UTMCompatibilityTests(unittest.TestCase):
     def test_c11_label_requires_statement(self):
@@ -26,15 +49,14 @@ class UTMCompatibilityTests(unittest.TestCase):
             fix_renderer(RENDERER_CONTEXT * 2)
 
     def test_build_hook_runs_before_renderer_build(self):
-        source = (
-            "    meson_darwin_build $VIRGLRENDERER_REPO -Dtests=false\n"
-            "export CC\nexport CPP\nexport CXX\nexport OBJCC\n"
-        )
-        result = prepare_script(source)
+        result = prepare_script(BUILD_CONTEXT)
         self.assertLess(result.index("--renderer"), result.index("meson_darwin_build"))
         self.assertIn('CC="ccache $CC"', result)
         self.assertIn('CXX="ccache $CXX"', result)
-        self.assertTrue(result.endswith("export CC\nexport CPP\nexport CXX\nexport OBJCC\n"))
+        self.assertNotIn("download $QEMU_SRC", result)
+        self.assertNotIn("build $QEMU_DIR", result)
+        self.assertIn("-Dvenus=false -Dneptune=false", result)
+        self.assertIn("fixup_all", result)
 
     def test_changed_build_entry_fails_closed(self):
         with self.assertRaises(ValueError):
