@@ -12,6 +12,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ios-build-compatibility:
+    name: Pinned iOS build compatibility
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify compatibility patch guards
+        run: python3 -m unittest discover -s tools/ci -p 'test_utm_renderer.py'
+
   linux-proxy:
     name: Linux proxy and protocol
     runs-on: ubuntu-24.04
