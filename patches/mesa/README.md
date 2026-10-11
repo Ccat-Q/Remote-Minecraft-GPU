@@ -44,11 +44,14 @@ pinned winsys files and rejects changed source contexts. The changes retain
 the winsys's existing requirement that callers serialize its socket writes;
 the v1 path does not introduce concurrent command/resource streams.
 
-The Linux CI demo swaps three 64x64 frames, validates ordered PRESENT markers
+The Linux CI demo swaps three 64x64 frames, validates at least three ordered PRESENT markers
 at a diagnostic receiver, and requires zero `TRANSFER_GET`. A separate run
 requests a red pixel with `glReadPixels` and verifies it still returns the GPU
 result. The diagnostic receiver never displays or fences PRESENT; these gates
 do not prove iOS presentation.
+Mesa can also flush a frontbuffer at initialization. `frame_id` counts winsys
+presentation events, not GLFW swap calls; the test checks consecutive IDs and
+dimensions rather than assuming a one-to-one relationship.
 
 The patch is deliberately opt-in through `REMOTEGPU_VTEST_LEGACY=1`. GitHub
 Actions must run `git apply --check` against the pinned Mesa revision before

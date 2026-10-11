@@ -72,8 +72,8 @@ def run_case(stage, readback):
                 time.sleep(0.01)
             receiver_log = logs["receiver"].read_text()
             presents = re.findall(r"INSPECT_PRESENT frame=(\d+) resource=(\d+) after=(\d+) processed=(\d+) size=64x64", receiver_log)
-            if [int(p[0]) for p in presents] != [1, 2, 3]:
-                raise AssertionError("Expected three ordered 64x64 PRESENTs: " + receiver_log)
+            if len(presents) < 3 or [int(p[0]) for p in presents] != list(range(1, len(presents) + 1)):
+                raise AssertionError("Expected at least three consecutive 64x64 PRESENTs: " + receiver_log)
             if any(int(p[2]) > int(p[3]) for p in presents):
                 raise AssertionError("PRESENT overtook vtest commands")
             proxy_log = logs["proxy"].read_text()
@@ -83,7 +83,7 @@ def run_case(stage, readback):
                     raise AssertionError("Application glReadPixels was suppressed")
             elif gets:
                 raise AssertionError("Presentation issued TRANSFER_GET: " + proxy_log)
-            print(f"PASS: present markers=3, application_readback={readback}, TRANSFER_GET={gets}")
+            print(f"PASS: present markers={len(presents)}, application_readback={readback}, TRANSFER_GET={gets}")
         finally:
             for p in reversed(processes):
                 if p.poll() is None:

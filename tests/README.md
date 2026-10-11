@@ -14,7 +14,7 @@ compatibility-profile context.
 
 `gl-present` and `mesa_present_gate.py` verify the opt-in Mesa frontbuffer hook
 in GitHub Actions. This gate starts a fresh renderer/proxy/diagnostic receiver
-for each case, checks three ordered frame markers and zero TRANSFER_GET for
+for each case, checks at least three consecutive ordered frame markers and zero TRANSFER_GET for
 presentation, then repeats with an explicit application glReadPixels request.
 The red-pixel result verifies rendering and readback compatibility. This is
 not a display test: the Linux endpoint logs PRESENT without presenting it.
@@ -23,3 +23,5 @@ the explicit readback samples the rendered triangle's center, not a clear color.
 The harness applies virpipe environment variables only to the demo, after
 `xvfb-run` starts its local software X server; applying them to Xvfb itself
 would make the compositor consume the remote renderer session.
+An initialization frontbuffer flush can emit an additional marker before the
+three swaps; frame IDs count presentation events rather than application swaps.
