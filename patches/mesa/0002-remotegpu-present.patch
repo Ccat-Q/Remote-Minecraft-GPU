@@ -32,7 +32,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
  #include <errno.h>
  #include <stdio.h>
  #include <netinet/in.h>
-@@ -35,21 +36,92 @@
+@@ -35,21 +36,94 @@
  #include "virgl_vtest_public.h"
  
  /* block read/write routines */
@@ -43,6 +43,8 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
     int left;
     int ret;
     left = size;
++   if (!size)
++      return 0;
     do {
 -      ret = write(fd, ptr, left);
 -      if (ret < 0)
@@ -129,7 +131,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
  }
  
  static int virgl_block_read(int fd, void *buf, int size)
-@@ -140,8 +212,8 @@
+@@ -140,8 +214,8 @@
     buf[VTEST_CMD_LEN] = strlen(cmdline) + 1;
     buf[VTEST_CMD_ID] = VCMD_CREATE_RENDERER;
  
@@ -140,7 +142,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
     return 0;
  }
  
-@@ -155,14 +227,14 @@
+@@ -155,14 +229,14 @@
  
     vtest_hdr[VTEST_CMD_LEN] = VCMD_PING_PROTOCOL_VERSION_SIZE;
     vtest_hdr[VTEST_CMD_ID] = VCMD_PING_PROTOCOL_VERSION;
@@ -158,7 +160,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
  
     ret = virgl_block_read(vws->sock_fd, vtest_hdr, sizeof(vtest_hdr));
     assert(ret);
-@@ -177,8 +249,8 @@
+@@ -177,8 +251,8 @@
       vtest_hdr[VTEST_CMD_LEN] = VCMD_PROTOCOL_VERSION_SIZE;
       vtest_hdr[VTEST_CMD_ID] = VCMD_PROTOCOL_VERSION;
       version_buf[VCMD_PROTOCOL_VERSION_VERSION] = version;
@@ -169,7 +171,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
  
       ret = virgl_block_read(vws->sock_fd, vtest_hdr, sizeof(vtest_hdr));
       assert(ret);
-@@ -241,7 +313,7 @@
+@@ -241,7 +315,7 @@
     get_caps_buf[VTEST_CMD_LEN + 2] = 0;
     get_caps_buf[VTEST_CMD_ID + 2] = VCMD_GET_CAPS;
  
@@ -178,7 +180,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
  
     ret = virgl_block_read(vws->sock_fd, resp_buf, sizeof(resp_buf));
     if (ret <= 0)
-@@ -316,8 +388,8 @@
+@@ -316,8 +390,8 @@
     res_create_buf[VCMD_RES_CREATE2_NR_SAMPLES] = nr_samples;
     res_create_buf[VCMD_RES_CREATE2_DATA_SIZE] = size;
  
@@ -189,7 +191,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
  
     if (vws->protocol_version >= 3) {
        virgl_block_read(vws->sock_fd, vtest_hdr, sizeof(vtest_hdr));
-@@ -375,8 +447,8 @@
+@@ -375,8 +449,8 @@
     res_create_buf[VCMD_RES_CREATE_LAST_LEVEL] = last_level;
     res_create_buf[VCMD_RES_CREATE_NR_SAMPLES] = nr_samples;
  
@@ -200,7 +202,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
  
     return handle;
  }
-@@ -388,8 +460,8 @@
+@@ -388,8 +462,8 @@
     vtest_hdr[VTEST_CMD_LEN] = buf_len;
     vtest_hdr[VTEST_CMD_ID] = VCMD_SUBMIT_CMD;
  
@@ -211,7 +213,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
     return 0;
  }
  
-@@ -402,8 +474,8 @@
+@@ -402,8 +476,8 @@
     vtest_hdr[VTEST_CMD_ID] = VCMD_RESOURCE_UNREF;
  
     cmd[0] = handle;
@@ -222,7 +224,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
     return 0;
  }
  
-@@ -436,8 +508,8 @@
+@@ -436,8 +510,8 @@
     cmd[8] = box->height;
     cmd[9] = box->depth;
     cmd[10] = data_size;
@@ -233,7 +235,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
  
     return 0;
  }
-@@ -470,8 +542,8 @@
+@@ -470,8 +544,8 @@
     cmd[VCMD_TRANSFER2_DEPTH] = box->depth;
     cmd[VCMD_TRANSFER2_DATA_SIZE] = data_size;
     cmd[VCMD_TRANSFER2_OFFSET] = offset;
@@ -244,7 +246,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
  
     return 0;
  }
-@@ -514,7 +586,7 @@
+@@ -514,7 +588,7 @@
                                         void *data,
                                         uint32_t data_size)
  {
@@ -253,7 +255,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
  }
  
  int virgl_vtest_recv_transfer_get_data(struct virgl_vtest_winsys *vws,
-@@ -551,8 +623,8 @@
+@@ -551,8 +625,8 @@
     cmd[VCMD_BUSY_WAIT_HANDLE] = handle;
     cmd[VCMD_BUSY_WAIT_FLAGS] = flags;
  
@@ -264,7 +266,7 @@ diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/w
  
     ret = virgl_block_read(vws->sock_fd, vtest_hdr, sizeof(vtest_hdr));
     assert(ret);
-@@ -579,8 +651,8 @@
+@@ -579,8 +653,8 @@
     vcmd_res_create_blob[VCMD_RES_CREATE_BLOB_ID_LO] = (uint32_t)blob_id;
     vcmd_res_create_blob[VCMD_RES_CREATE_BLOB_ID_HI] = 0;
  

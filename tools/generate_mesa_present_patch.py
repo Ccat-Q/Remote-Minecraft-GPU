@@ -94,6 +94,8 @@ int virgl_vtest_connect(struct virgl_vtest_winsys *vws);""")
         source = once(source, "#include <sys/socket.h>", "#include <sys/socket.h>\n#include <sys/time.h>")
         source = once(source, "static int virgl_block_write(int fd, void *buf, int size)",
                       "static int virgl_block_write(struct virgl_vtest_winsys *vws, void *buf, int size)")
+        source = once(source, "   left = size;\n   do {\n      ret = write(fd, ptr, left);",
+                      "   left = size;\n   if (!size)\n      return 0;\n   do {\n      ret = write(fd, ptr, left);")
         source = once(source, """      ret = write(fd, ptr, left);
       if (ret < 0)
          return -errno;
