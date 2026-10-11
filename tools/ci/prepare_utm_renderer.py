@@ -68,7 +68,7 @@ def prepare_script(source: str) -> str:
     angle_link = "GCC_TREAT_WARNINGS_AS_ERRORS=NO \\\n"
     if source.count(angle_link) != 1:
         raise ValueError("Pinned UTM ANGLE build settings changed")
-    source = source.replace(angle_link, angle_link + '                                         LD_DYLIB_ALLOWABLE_CLIENTS="" \\\n')
+    source = source.replace(angle_link, angle_link + '                                         ANGLE_ALLOWABLE_CLIENTS="" \\\n')
     source = replace_function(source, "download_all", "copy_private_headers", DOWNLOAD_RENDERER)
     source = replace_function(source, "build_qemu_dependencies", "build_spice_client", BUILD_RENDERER)
     tail = '''build_qemu_dependencies

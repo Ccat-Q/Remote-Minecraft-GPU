@@ -57,7 +57,7 @@ class UTMCompatibilityTests(unittest.TestCase):
         self.assertNotIn("download $QEMU_SRC", result)
         self.assertNotIn("build $QEMU_DIR", result)
         self.assertIn("-Dvenus=false -Dneptune=false", result)
-        self.assertIn('LD_DYLIB_ALLOWABLE_CLIENTS=""', result)
+        self.assertIn('ANGLE_ALLOWABLE_CLIENTS=""', result)
         self.assertIn("fixup_all", result)
 
     def test_changed_build_entry_fails_closed(self):
