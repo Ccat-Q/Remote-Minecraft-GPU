@@ -4,9 +4,15 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
+static void glfw_error(int code, const char *description)
+{
+    fprintf(stderr, "GLFW error %d: %s\n", code, description);
+}
+
 int main(int argc, char **argv)
 {
     int readback = argc == 2 && strcmp(argv[1], "--readback") == 0;
+    glfwSetErrorCallback(glfw_error);
     if (!glfwInit()) return 2;
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);

@@ -52,7 +52,8 @@ def run_case(stage, readback):
                 wait_socket(path, processes)
             start("receiver", [str(stage / "bin/remotegpu-vtest-receiver"), "-connect", address, "-socket", renderer_socket, "-pairing-token", "present-ci", "-insecure-skip-verify", "-inspect-present"])
             mesa_dri = next((stage / "mesa").rglob("dri"))
-            app_env = dict(env, GALLIUM_DRIVER="virpipe", REMOTEGPU_VTEST_LEGACY="1", REMOTEGPU_PRESENT_SOCKET=present_socket, VTEST_SOCKET_NAME=proxy_socket, LIBGL_DRIVERS_PATH=str(mesa_dri), LD_LIBRARY_PATH=str(mesa_dri.parent) + ":" + env.get("LD_LIBRARY_PATH", ""))
+            app_env = dict(env, GALLIUM_DRIVER="virpipe", REMOTEGPU_VTEST_LEGACY="1", REMOTEGPU_PRESENT_SOCKET=present_socket, VTEST_SOCKET_NAME=proxy_socket, LIBGL_DEBUG="verbose", LIBGL_DRIVERS_PATH=str(mesa_dri), LD_LIBRARY_PATH=str(mesa_dri.parent) + ":" + env.get("LD_LIBRARY_PATH", ""))
+            print("Mesa driver directory:", mesa_dri, flush=True)
             command = ["xvfb-run", "--auto-servernum", str(stage / "bin/gl-present")]
             if readback:
                 command.append("--readback")

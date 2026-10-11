@@ -33,10 +33,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Restore Mesa compiler cache
-        uses: actions/cache@v4
+        id: compiler-cache
+        uses: actions/cache/restore@v4
         with:
           path: .cache/ccache
-          key: ccache-mesa-virgl-ubuntu-24.04-${{ inputs.mesa_revision }}-${{ inputs.virglrenderer_revision }}-${{ hashFiles('patches/mesa/**', '.github/ci/ccache.ini') }}
+          key: ccache-mesa-virgl-ubuntu-24.04-${{ inputs.mesa_revision }}-${{ inputs.virglrenderer_revision }}-${{ hashFiles('patches/mesa/**', '.github/ci/ccache.ini') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             ccache-mesa-virgl-ubuntu-24.04-${{ inputs.mesa_revision }}-${{ inputs.virglrenderer_revision }}-
             ccache-mesa-ubuntu-24.04-${{ inputs.mesa_revision }}-
@@ -171,3 +172,9 @@ jobs:
           path: _stage
           if-no-files-found: error
           retention-days: 14
+      - name: Preserve compiler cache even if a rendering gate fails
+        if: always() && steps.compiler-cache.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/ccache
+          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
