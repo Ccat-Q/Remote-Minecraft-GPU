@@ -1,0 +1,53 @@
+name: Build iOS interop prototype
+on:
+  workflow_dispatch:
+    inputs:
+      renderer_run_id:
+        description: Successful Build iOS renderer sysroot run (including link gate)
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RENDERER_RUN_ID: ${{ inputs.renderer_run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch verified device renderer dependencies
+        run: |
+          test "$(gh run view "$RENDERER_RUN_ID" --json conclusion --jq .conclusion)" = success
+          test "$(gh run view "$RENDERER_RUN_ID" --json workflowName --jq .workflowName)" = 'Build iOS renderer sysroot'
+          test "$(gh run view "$RENDERER_RUN_ID" --json jobs --jq '[.jobs[].steps[] | select(.name == "Verify iPhoneOS ANGLE and VirGL linkage" and .conclusion == "success")] | length')" = 1
+          revision=$(gh run view "$RENDERER_RUN_ID" --json headSha --jq .headSha)
+          gh run download "$RENDERER_RUN_ID" --name "ios-renderer-sysroot-$revision" --dir _deps/ios-sysroot
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate --spec ios/project.yml --project ios
+      - name: Build unsigned iPhone device app
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/RemoteGPUPrototype.xcodeproj -scheme RemoteGPUPrototype \
+            -sdk iphoneos -configuration Release -derivedDataPath _build/ios-prototype \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee ios-prototype-build.log
+      - name: Package device app for external signing
+        run: |
+          mkdir -p _stage/ios-prototype/Payload
+          cp -R _build/ios-prototype/Build/Products/Release-iphoneos/RemoteGPUPrototype.app _stage/ios-prototype/Payload/
+          cd _stage/ios-prototype
+          zip -r RemoteGPUPrototype-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-interop-prototype-${{ github.sha }}
+          path: _stage/ios-prototype/RemoteGPUPrototype-unsigned.ipa
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-interop-prototype-diagnostics-${{ github.run_id }}
+          path: ios-prototype-build.log
+          if-no-files-found: warn

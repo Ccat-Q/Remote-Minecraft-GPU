@@ -21,3 +21,24 @@ before an IOSurface may be submitted to `CAMetalLayer`.
 
 The first implementation gate is a captured vtest trace replay plus the GL
 3.2 Core capability report. Do not add Minecraft/JVM/launcher code here.
+
+## Device interop probe
+
+`App/` and `Renderer/RGPUIOSurfaceProbe` contain a one-shot device diagnostic:
+ANGLE Metal draws a triangle into an IOSurface-backed EGL pbuffer, Metal wraps
+the same IOSurface and blits it into a CAMetalLayer drawable. No pixel readback
+or CPU framebuffer copy is used. The device displays host GLES/GLSL/renderer
+strings. These host strings do not prove guest OpenGL 3.2 Core support.
+
+Run **Build iOS interop prototype** in GitHub Actions with the run ID of a
+successful **Build iOS renderer sysroot** run that passed the iPhoneOS link
+gate. The workflow reuses those artifacts, builds for iPhoneOS arm64 and
+publishes an unsigned IPA. It needs external device signing before installation;
+the repository contains no signing identity. Launch it on an iPhone and tap
+**Render Probe**; expect an orange triangle on a dark background and a capability
+report. Failures are shown in the report.
+
+This probe has no network or vtest adapter. It uses host-only synchronous GPU
+completion to isolate IOSurface interoperability. Async presentation fences,
+remote resource lifetime management and guest capability testing belong to the
+subsequent renderer adapter gate; the probe is not the production frame loop.

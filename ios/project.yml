@@ -1,0 +1,40 @@
+name: RemoteGPUPrototype
+options:
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CLANG_CXX_LANGUAGE_STANDARD: c++17
+    CLANG_ENABLE_OBJC_ARC: YES
+    HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../_deps/ios-sysroot/include"
+    SWIFT_OBJC_BRIDGING_HEADER: "$(SRCROOT)/App/RemoteGPU-Bridging-Header.h"
+    CODE_SIGNING_ALLOWED: NO
+targets:
+  RemoteGPUPrototype:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Renderer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.remotegpu.prototype
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: Generated/Info.plist
+      properties:
+        CFBundleDisplayName: RemoteGPU Probe
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    dependencies:
+      - framework: ../_deps/ios-sysroot/Frameworks/EGL.framework
+        embed: true
+      - framework: ../_deps/ios-sysroot/Frameworks/GLESv2.framework
+        embed: true
+schemes:
+  RemoteGPUPrototype:
+    build:
+      targets:
+        RemoteGPUPrototype: all

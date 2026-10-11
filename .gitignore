@@ -7,3 +7,8 @@
 server.crt
 server.key
 .DS_Store
+/_deps/
+/_build/
+/_stage/
+/ios/Generated/
+/ios/RemoteGPUPrototype.xcodeproj/
