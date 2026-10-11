@@ -18,3 +18,6 @@ for each case, checks three ordered frame markers and zero TRANSFER_GET for
 presentation, then repeats with an explicit application glReadPixels request.
 The red-pixel result verifies rendering and readback compatibility. This is
 not a display test: the Linux endpoint logs PRESENT without presenting it.
+The harness applies virpipe environment variables only to the demo, after
+`xvfb-run` starts its local software X server; applying them to Xvfb itself
+would make the compositor consume the remote renderer session.
