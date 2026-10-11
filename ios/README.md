@@ -32,7 +32,8 @@ strings. These host strings do not prove guest OpenGL 3.2 Core support.
 
 Run **Build iOS interop prototype** in GitHub Actions with the run ID of a
 successful **Build iOS renderer sysroot** run that passed the iPhoneOS link
-gate. The workflow reuses those artifacts, builds for iPhoneOS arm64 and
+gate. The prototype workflow also starts automatically when that dependency
+workflow succeeds on main. It reuses those artifacts, builds for iPhoneOS arm64 and
 publishes an unsigned IPA. It needs external device signing before installation;
 the repository contains no signing identity. Launch it on an iPhone and tap
 **Render Probe**; expect an orange triangle on a dark background and a capability
