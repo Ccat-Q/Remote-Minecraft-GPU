@@ -17,6 +17,10 @@ architecture and the public API linkage; it does not execute the renderer,
 prove iPhone GL capability, or test presentation.
 ANGLE is linked as `EGL.framework` and `GLESv2.framework` from the sysroot,
 not with `-lGLESv2`, which can select an iOS SDK private library instead.
+The WebKit ANGLE build also sets a WebCore-only library client list. The
+RemoteGPU recipe overrides `LD_DYLIB_ALLOWABLE_CLIENTS` to an empty list while
+building our open-source ANGLE libraries. The link gate inspects Mach-O load
+commands and rejects a GLESv2 framework that still restricts its clients.
 
 The pinned virglrenderer has a label immediately before a local declaration,
 which Apple Clang rejects in C11. `tools/ci/prepare_utm_renderer.py` inserts an

@@ -158,6 +158,12 @@ jobs:
             exit 1
           fi
           cat "$probe_log"
+          kill -USR1 "$proxy_pid"
+          for _ in $(seq 1 100); do
+            grep -q 'STAT_FLUSH completed' "$proxy_log" && break
+            sleep 0.01
+          done
+          grep -q 'STAT_FLUSH completed' "$proxy_log"
           if ! grep -q 'upload=[1-9][0-9]*B' "$proxy_log" || ! grep -q 'download=[1-9][0-9]*B' "$proxy_log"; then
             echo 'FAIL: capability probe did not traverse both RemoteGPU directions' >&2
             cat "$proxy_log" >&2 || true

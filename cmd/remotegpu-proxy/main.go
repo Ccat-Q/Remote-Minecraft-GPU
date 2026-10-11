@@ -46,23 +46,32 @@ func main() {
 func reportStats(ctx context.Context, stats *diagnostics.Collector, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	flush := make(chan os.Signal, 1)
+	signal.Notify(flush, syscall.SIGUSR1)
+	defer signal.Stop(flush)
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-flush:
+			writeStats(interval, stats.Take())
+			log.Print("STAT_FLUSH completed")
 		case <-ticker.C:
-			s := stats.Take()
-			if s.UploadBytes == 0 && s.DownloadBytes == 0 && s.PresentEvents == 0 {
-				continue
-			}
-			ids := make([]int, 0, len(s.VTestCommands))
-			for id := range s.VTestCommands {
-				ids = append(ids, int(id))
-			}
-			sort.Ints(ids)
-			log.Printf("vtest interval=%s upload=%dB download=%dB presents=%d commands=%v", interval, s.UploadBytes, s.DownloadBytes, s.PresentEvents, orderedCounts(ids, s.VTestCommands))
+			writeStats(interval, stats.Take())
 		}
 	}
+}
+
+func writeStats(interval time.Duration, s diagnostics.Snapshot) {
+	if s.UploadBytes == 0 && s.DownloadBytes == 0 && s.PresentEvents == 0 {
+		return
+	}
+	ids := make([]int, 0, len(s.VTestCommands))
+	for id := range s.VTestCommands {
+		ids = append(ids, int(id))
+	}
+	sort.Ints(ids)
+	log.Printf("vtest interval=%s upload=%dB download=%dB presents=%d commands=%v", interval, s.UploadBytes, s.DownloadBytes, s.PresentEvents, orderedCounts(ids, s.VTestCommands))
 }
 
 func orderedCounts(ids []int, counts map[uint32]uint64) []string {

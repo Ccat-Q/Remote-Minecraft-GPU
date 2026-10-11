@@ -97,6 +97,8 @@ jobs:
       - name: Verify iPhoneOS ANGLE and VirGL linkage
         run: |
           sysroot="$GITHUB_WORKSPACE/_deps/UTM/sysroot-iOS-arm64"
+          python3 tools/ci/inspect_macho.py "$sysroot/Frameworks/GLESv2.framework/GLESv2" "$sysroot/Frameworks/EGL.framework/EGL"
+          ! python3 tools/ci/inspect_macho.py "$sysroot/Frameworks/GLESv2.framework/GLESv2" | grep -q 'allowed-client:'
           mkdir -p _stage/ios
           xcrun --sdk iphoneos clang -arch arm64 -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
             -miphoneos-version-min=15.0 -dynamiclib tests/ios_renderer_link.c \

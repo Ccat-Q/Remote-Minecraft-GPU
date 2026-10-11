@@ -4,6 +4,7 @@ import argparse
 import os
 from pathlib import Path
 import re
+import signal
 import socket
 import subprocess
 import tempfile
@@ -47,7 +48,7 @@ def run_case(stage, readback):
             virgl_lib = stage / "virglrenderer/lib/x86_64-linux-gnu"
             renderer_env["LD_LIBRARY_PATH"] = str(virgl_lib) + ":" + env.get("LD_LIBRARY_PATH", "")
             start("renderer", [str(stage / "virglrenderer/bin/virgl_test_server"), "--no-fork", "--use-egl-surfaceless", "--use-gles", "--socket-path=" + renderer_socket], renderer_env)
-            start("proxy", [str(stage / "bin/remotegpu-proxy"), "-unix", proxy_socket, "-present-socket", present_socket, "-listen", address, "-cert", str(root / "cert.pem"), "-key", str(root / "key.pem"), "-pairing-token", "present-ci", "-stats-interval=10ms"])
+            proxy_process = start("proxy", [str(stage / "bin/remotegpu-proxy"), "-unix", proxy_socket, "-present-socket", present_socket, "-listen", address, "-cert", str(root / "cert.pem"), "-key", str(root / "key.pem"), "-pairing-token", "present-ci", "-stats-interval=10ms"])
             for path in (renderer_socket, proxy_socket, present_socket):
                 wait_socket(path, processes)
             start("receiver", [str(stage / "bin/remotegpu-vtest-receiver"), "-connect", address, "-socket", renderer_socket, "-pairing-token", "present-ci", "-insecure-skip-verify", "-inspect-present"])
@@ -61,8 +62,12 @@ def run_case(stage, readback):
             print(result.stdout, end="")
             if result.returncode:
                 raise RuntimeError(f"GL present demo failed ({result.returncode}): {result.stderr}")
-            # Allow the diagnostic ticker to flush its final short interval.
-            time.sleep(0.1)
+            proxy_process.send_signal(signal.SIGUSR1)
+            deadline = time.monotonic() + 5
+            while "STAT_FLUSH completed" not in logs["proxy"].read_text():
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("Proxy did not flush diagnostic counters")
+                time.sleep(0.01)
             receiver_log = logs["receiver"].read_text()
             presents = re.findall(r"INSPECT_PRESENT frame=(\d+) resource=(\d+) after=(\d+) processed=(\d+) size=64x64", receiver_log)
             if [int(p[0]) for p in presents] != [1, 2, 3]:
