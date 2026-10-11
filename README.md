@@ -31,10 +31,10 @@ Mesa virpipe -> RemoteGPU Unix proxy -> QUIC/TLS -> Linux diagnostic receiver
 ```
 
 The gate also requires non-zero vtest traffic in both proxy directions. The
-diagnostic receiver is intentionally Linux-only and rejects `PRESENT`; it is
-evidence for the transport, not an iPhone renderer. The Mesa presentation-hook
-patch and the iOS ANGLE/IOSurface renderer remain the next implementation
-milestones.
+diagnostic receiver is intentionally Linux-only and rejects `PRESENT` by
+default. Its CI-only `-inspect-present` mode validates markers without displaying
+them. The Mesa presentation-hook patch is undergoing Linux validation; the
+iOS ANGLE/IOSurface renderer remains an implementation milestone.
 
 Read [docs/architecture.md](docs/architecture.md) before building.
 

@@ -88,7 +88,7 @@ jobs:
           git -C "$HOME/remotegpu-mesa" fetch --depth=1 origin 590bf21d918c86908d96d1f4590ecd25b9657171
           git -C "$HOME/remotegpu-mesa" checkout --detach 590bf21d918c86908d96d1f4590ecd25b9657171
       - name: Verify patch applicability
-        run: git -C "$HOME/remotegpu-mesa" apply --check "$GITHUB_WORKSPACE/patches/mesa/0001-remotegpu-force-legacy-vtest.patch"
+        run: git -C "$HOME/remotegpu-mesa" apply --check "$GITHUB_WORKSPACE/patches/mesa/0001-remotegpu-force-legacy-vtest.patch" "$GITHUB_WORKSPACE/patches/mesa/0002-remotegpu-present.patch"
       - name: Print pinned source context on every result
         if: always()
         run: |

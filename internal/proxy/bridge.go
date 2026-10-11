@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/Ccat-Q/Remote-Minecraft-GPU/internal/diagnostics"
 	"github.com/Ccat-Q/Remote-Minecraft-GPU/internal/protocol"
@@ -91,6 +92,18 @@ func authenticate(stream quic.Stream, token string) error {
 }
 
 func bridge(ctx context.Context, unix net.Conn, stream quic.Stream, present *net.UnixConn, stats *diagnostics.Collector) error {
+	ctx, cancel := context.WithCancel(ctx)
+	var workers sync.WaitGroup
+	workers.Add(3)
+	defer func() {
+		cancel()
+		_ = unix.Close()
+		stream.CancelRead(0)
+		stream.CancelWrite(0)
+		_ = present.SetReadDeadline(time.Now())
+		workers.Wait()
+		_ = present.SetReadDeadline(time.Time{})
+	}()
 	var writeMu sync.Mutex
 	var stateMu sync.Mutex
 	var forwarded uint64
@@ -116,6 +129,7 @@ func bridge(ctx context.Context, unix net.Conn, stream quic.Stream, present *net
 	// Mesa-to-iPhone raw vtest bytes. Chunks are sequence-numbered by this
 	// proxy, preserving exact byte order on the QUIC render stream.
 	go func() {
+		defer workers.Done()
 		buf := make([]byte, 32*1024)
 		var decoder vtest.LegacyDecoder
 		for {
@@ -130,21 +144,22 @@ func bridge(ctx context.Context, unix net.Conn, stream quic.Stream, present *net
 					if stats != nil {
 						stats.ObserveUpload(message)
 					}
-					stateMu.Lock()
-					sequence++
-					seq := sequence
-					stateMu.Unlock()
 					writeMu.Lock()
+					stateMu.Lock()
+					seq := sequence + 1
+					stateMu.Unlock()
 					err2 := protocol.Write(stream, protocol.VTestChunk(seq, message))
-					writeMu.Unlock()
 					if err2 != nil {
+						writeMu.Unlock()
 						fail(err2)
 						return
 					}
 					stateMu.Lock()
+					sequence = seq
 					forwarded += uint64(len(message))
 					notifyStateLocked()
 					stateMu.Unlock()
+					writeMu.Unlock()
 				}
 			}
 			if err != nil {
@@ -157,6 +172,7 @@ func bridge(ctx context.Context, unix net.Conn, stream quic.Stream, present *net
 	// Renderer-to-Mesa replies must be vtest bytes only; iOS may not inject a
 	// presentation marker into the reverse direction.
 	go func() {
+		defer workers.Done()
 		for {
 			e, err := protocol.Read(stream)
 			if err != nil {
@@ -183,9 +199,10 @@ func bridge(ctx context.Context, unix net.Conn, stream quic.Stream, present *net
 	}()
 
 	go func() {
-		buf := make([]byte, presentSignalSize)
+		defer workers.Done()
+		buf := make([]byte, presentSignalSize+1)
 		for {
-			n, _, err := present.ReadFromUnix(buf)
+			n, sender, err := present.ReadFromUnix(buf)
 			if err != nil {
 				fail(err)
 				return
@@ -213,13 +230,24 @@ func bridge(ctx context.Context, unix net.Conn, stream quic.Stream, present *net
 				}
 				stateMu.Lock()
 			}
+			stateMu.Unlock()
+			writeMu.Lock()
+			stateMu.Lock()
 			after := sequence
 			stateMu.Unlock()
 			p := protocol.Present{FrameID: signal.FrameID, ResourceID: signal.ResourceID, AfterSequence: after, Level: signal.Level, Layer: signal.Layer, X: signal.X, Y: signal.Y, Width: signal.Width, Height: signal.Height}
-			writeMu.Lock()
 			err = protocol.Write(stream, protocol.Envelope{Type: protocol.TypePresent, Payload: p.MarshalBinary()})
 			writeMu.Unlock()
 			if err != nil {
+				fail(err)
+				return
+			}
+			if sender == nil {
+				fail(errors.New("remotegpu: Mesa present sender has no reply address"))
+				return
+			}
+			ack := PresentAck(signal.FrameID)
+			if _, err := present.WriteToUnix(ack, sender); err != nil {
 				fail(err)
 				return
 			}

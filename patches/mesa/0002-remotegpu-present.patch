@@ -1,0 +1,308 @@
+diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_winsys.h b/src/gallium/winsys/virgl/vtest/virgl_vtest_winsys.h
+--- a/src/gallium/winsys/virgl/vtest/virgl_vtest_winsys.h
++++ b/src/gallium/winsys/virgl/vtest/virgl_vtest_winsys.h
+@@ -45,6 +45,8 @@
+ 
+    /* fd to remote renderer */
+    int sock_fd;
++   uint64_t raw_stream_bytes;
++   uint64_t present_frame_id;
+ 
+    struct virgl_resource_cache cache;
+    mtx_t mutex;
+@@ -101,6 +103,10 @@
+ }
+ 
+ 
++int virgl_vtest_send_present(struct virgl_vtest_winsys *vws,
++                            struct virgl_hw_res *res,
++                            unsigned level, unsigned layer,
++                            const struct pipe_box *box);
+ int virgl_vtest_connect(struct virgl_vtest_winsys *vws);
+ int virgl_vtest_send_get_caps(struct virgl_vtest_winsys *vws,
+                               struct virgl_drm_caps *caps);
+diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c b/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c
+--- a/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c
++++ b/src/gallium/winsys/virgl/vtest/virgl_vtest_socket.c
+@@ -22,6 +22,7 @@
+  */
+ 
+ #include <sys/socket.h>
++#include <sys/time.h>
+ #include <errno.h>
+ #include <stdio.h>
+ #include <netinet/in.h>
+@@ -35,21 +36,92 @@
+ #include "virgl_vtest_public.h"
+ 
+ /* block read/write routines */
+-static int virgl_block_write(int fd, void *buf, int size)
++static int virgl_block_write(struct virgl_vtest_winsys *vws, void *buf, int size)
+ {
+    void *ptr = buf;
+    int left;
+    int ret;
+    left = size;
+    do {
+-      ret = write(fd, ptr, left);
+-      if (ret < 0)
+-         return -errno;
++      ret = write(vws->sock_fd, ptr, left);
++      if (ret < 0 && errno == EINTR)
++         continue;
++      if (ret <= 0)
++         return ret < 0 ? -errno : -EIO;
+       assert(ret <= left);
++      vws->raw_stream_bytes += ret;
+       left -= ret;
+       ptr += ret;
+    } while (left);
+    return size;
++}
++
++
++/* Explicit little-endian wire layout, without native struct padding. */
++static void rgpu_store_le(uint8_t *dst, uint64_t value, unsigned bytes)
++{
++   for (unsigned i = 0; i < bytes; i++)
++      dst[i] = value >> (8 * i);
++}
++
++int virgl_vtest_send_present(struct virgl_vtest_winsys *vws,
++                            struct virgl_hw_res *res,
++                            unsigned level, unsigned layer,
++                            const struct pipe_box *box)
++{
++   const char *path = os_get_option("REMOTEGPU_PRESENT_SOCKET");
++   struct sockaddr_un addr = { .sun_family = AF_UNIX };
++   uint8_t signal[52] = { 'R', 'G', 'P', 'F' };
++   if (!path || !os_get_option("REMOTEGPU_VTEST_LEGACY") || vws->protocol_version != 0)
++      return -EINVAL;
++   if (strlen(path) >= sizeof(addr.sun_path))
++      return -ENAMETOOLONG;
++   memcpy(addr.sun_path, path, strlen(path) + 1);
++   rgpu_store_le(signal + 4, vws->raw_stream_bytes, 8);
++   rgpu_store_le(signal + 12, vws->present_frame_id + 1, 8);
++   rgpu_store_le(signal + 20, res->res_handle, 8);
++   rgpu_store_le(signal + 28, level, 4);
++   rgpu_store_le(signal + 32, layer, 4);
++   rgpu_store_le(signal + 36, box->x, 4);
++   rgpu_store_le(signal + 40, box->y, 4);
++   rgpu_store_le(signal + 44, box->width, 4);
++   rgpu_store_le(signal + 48, box->height, 4);
++   int fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
++   if (fd < 0)
++      return -errno;
++   /* Linux autobind gives the proxy a unique local return address. */
++   struct sockaddr_un local = { .sun_family = AF_UNIX };
++   struct timeval timeout = { .tv_sec = 5 };
++   if (bind(fd, (struct sockaddr *)&local, sizeof(local.sun_family)) < 0 ||
++       setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
++      int err = -errno;
++      close(fd);
++      return err;
++   }
++   ssize_t written;
++   do {
++      written = sendto(fd, signal, sizeof(signal), 0,
++                       (struct sockaddr *)&addr, sizeof(addr));
++   } while (written < 0 && errno == EINTR);
++   int result = written < 0 ? -errno : (written == sizeof(signal) ? 0 : -EIO);
++   if (!result) {
++      /* ACK means the proxy queued this marker, not GPU completion. Without
++       * this local barrier, RESOURCE_UNREF could overtake the datagram. */
++      uint8_t ack[13], expected[12] = { 'R', 'G', 'P', 'A' };
++      rgpu_store_le(expected + 4, vws->present_frame_id + 1, 8);
++      ssize_t received;
++      do {
++         received = recv(fd, ack, sizeof(ack), 0);
++      } while (received < 0 && errno == EINTR);
++      if (received < 0)
++         result = -errno;
++      else if (received != sizeof(expected) || memcmp(ack, expected, sizeof(expected)))
++         result = -EPROTO;
++   }
++   close(fd);
++   if (!result)
++      vws->present_frame_id++;
++   return result;
+ }
+ 
+ static int virgl_block_read(int fd, void *buf, int size)
+@@ -140,8 +212,8 @@
+    buf[VTEST_CMD_LEN] = strlen(cmdline) + 1;
+    buf[VTEST_CMD_ID] = VCMD_CREATE_RENDERER;
+ 
+-   virgl_block_write(vws->sock_fd, &buf, sizeof(buf));
+-   virgl_block_write(vws->sock_fd, (void *)cmdline, strlen(cmdline) + 1);
++   virgl_block_write(vws, &buf, sizeof(buf));
++   virgl_block_write(vws, (void *)cmdline, strlen(cmdline) + 1);
+    return 0;
+ }
+ 
+@@ -155,14 +227,14 @@
+ 
+    vtest_hdr[VTEST_CMD_LEN] = VCMD_PING_PROTOCOL_VERSION_SIZE;
+    vtest_hdr[VTEST_CMD_ID] = VCMD_PING_PROTOCOL_VERSION;
+-   virgl_block_write(vws->sock_fd, &vtest_hdr, sizeof(vtest_hdr));
++   virgl_block_write(vws, &vtest_hdr, sizeof(vtest_hdr));
+ 
+    vtest_hdr[VTEST_CMD_LEN] = VCMD_BUSY_WAIT_SIZE;
+    vtest_hdr[VTEST_CMD_ID] = VCMD_RESOURCE_BUSY_WAIT;
+    busy_wait_buf[VCMD_BUSY_WAIT_HANDLE] = 0;
+    busy_wait_buf[VCMD_BUSY_WAIT_FLAGS] = 0;
+-   virgl_block_write(vws->sock_fd, &vtest_hdr, sizeof(vtest_hdr));
+-   virgl_block_write(vws->sock_fd, &busy_wait_buf, sizeof(busy_wait_buf));
++   virgl_block_write(vws, &vtest_hdr, sizeof(vtest_hdr));
++   virgl_block_write(vws, &busy_wait_buf, sizeof(busy_wait_buf));
+ 
+    ret = virgl_block_read(vws->sock_fd, vtest_hdr, sizeof(vtest_hdr));
+    assert(ret);
+@@ -177,8 +249,8 @@
+      vtest_hdr[VTEST_CMD_LEN] = VCMD_PROTOCOL_VERSION_SIZE;
+      vtest_hdr[VTEST_CMD_ID] = VCMD_PROTOCOL_VERSION;
+      version_buf[VCMD_PROTOCOL_VERSION_VERSION] = version;
+-     virgl_block_write(vws->sock_fd, &vtest_hdr, sizeof(vtest_hdr));
+-     virgl_block_write(vws->sock_fd, &version_buf, sizeof(version_buf));
++     virgl_block_write(vws, &vtest_hdr, sizeof(vtest_hdr));
++     virgl_block_write(vws, &version_buf, sizeof(version_buf));
+ 
+      ret = virgl_block_read(vws->sock_fd, vtest_hdr, sizeof(vtest_hdr));
+      assert(ret);
+@@ -241,7 +313,7 @@
+    get_caps_buf[VTEST_CMD_LEN + 2] = 0;
+    get_caps_buf[VTEST_CMD_ID + 2] = VCMD_GET_CAPS;
+ 
+-   virgl_block_write(vws->sock_fd, &get_caps_buf, sizeof(get_caps_buf));
++   virgl_block_write(vws, &get_caps_buf, sizeof(get_caps_buf));
+ 
+    ret = virgl_block_read(vws->sock_fd, resp_buf, sizeof(resp_buf));
+    if (ret <= 0)
+@@ -316,8 +388,8 @@
+    res_create_buf[VCMD_RES_CREATE2_NR_SAMPLES] = nr_samples;
+    res_create_buf[VCMD_RES_CREATE2_DATA_SIZE] = size;
+ 
+-   virgl_block_write(vws->sock_fd, &vtest_hdr, sizeof(vtest_hdr));
+-   virgl_block_write(vws->sock_fd, &res_create_buf, sizeof(res_create_buf));
++   virgl_block_write(vws, &vtest_hdr, sizeof(vtest_hdr));
++   virgl_block_write(vws, &res_create_buf, sizeof(res_create_buf));
+ 
+    if (vws->protocol_version >= 3) {
+       virgl_block_read(vws->sock_fd, vtest_hdr, sizeof(vtest_hdr));
+@@ -375,8 +447,8 @@
+    res_create_buf[VCMD_RES_CREATE_LAST_LEVEL] = last_level;
+    res_create_buf[VCMD_RES_CREATE_NR_SAMPLES] = nr_samples;
+ 
+-   virgl_block_write(vws->sock_fd, &vtest_hdr, sizeof(vtest_hdr));
+-   virgl_block_write(vws->sock_fd, &res_create_buf, sizeof(res_create_buf));
++   virgl_block_write(vws, &vtest_hdr, sizeof(vtest_hdr));
++   virgl_block_write(vws, &res_create_buf, sizeof(res_create_buf));
+ 
+    return handle;
+ }
+@@ -388,8 +460,8 @@
+    vtest_hdr[VTEST_CMD_LEN] = buf_len;
+    vtest_hdr[VTEST_CMD_ID] = VCMD_SUBMIT_CMD;
+ 
+-   virgl_block_write(vws->sock_fd, &vtest_hdr, sizeof(vtest_hdr));
+-   virgl_block_write(vws->sock_fd, buf, 4 * buf_len);
++   virgl_block_write(vws, &vtest_hdr, sizeof(vtest_hdr));
++   virgl_block_write(vws, buf, 4 * buf_len);
+    return 0;
+ }
+ 
+@@ -402,8 +474,8 @@
+    vtest_hdr[VTEST_CMD_ID] = VCMD_RESOURCE_UNREF;
+ 
+    cmd[0] = handle;
+-   virgl_block_write(vws->sock_fd, &vtest_hdr, sizeof(vtest_hdr));
+-   virgl_block_write(vws->sock_fd, &cmd, sizeof(cmd));
++   virgl_block_write(vws, &vtest_hdr, sizeof(vtest_hdr));
++   virgl_block_write(vws, &cmd, sizeof(cmd));
+    return 0;
+ }
+ 
+@@ -436,8 +508,8 @@
+    cmd[8] = box->height;
+    cmd[9] = box->depth;
+    cmd[10] = data_size;
+-   virgl_block_write(vws->sock_fd, &vtest_hdr, sizeof(vtest_hdr));
+-   virgl_block_write(vws->sock_fd, &cmd, sizeof(cmd));
++   virgl_block_write(vws, &vtest_hdr, sizeof(vtest_hdr));
++   virgl_block_write(vws, &cmd, sizeof(cmd));
+ 
+    return 0;
+ }
+@@ -470,8 +542,8 @@
+    cmd[VCMD_TRANSFER2_DEPTH] = box->depth;
+    cmd[VCMD_TRANSFER2_DATA_SIZE] = data_size;
+    cmd[VCMD_TRANSFER2_OFFSET] = offset;
+-   virgl_block_write(vws->sock_fd, &vtest_hdr, sizeof(vtest_hdr));
+-   virgl_block_write(vws->sock_fd, &cmd, sizeof(cmd));
++   virgl_block_write(vws, &vtest_hdr, sizeof(vtest_hdr));
++   virgl_block_write(vws, &cmd, sizeof(cmd));
+ 
+    return 0;
+ }
+@@ -514,7 +586,7 @@
+                                        void *data,
+                                        uint32_t data_size)
+ {
+-   return virgl_block_write(vws->sock_fd, data, data_size);
++   return virgl_block_write(vws, data, data_size);
+ }
+ 
+ int virgl_vtest_recv_transfer_get_data(struct virgl_vtest_winsys *vws,
+@@ -551,8 +623,8 @@
+    cmd[VCMD_BUSY_WAIT_HANDLE] = handle;
+    cmd[VCMD_BUSY_WAIT_FLAGS] = flags;
+ 
+-   virgl_block_write(vws->sock_fd, &vtest_hdr, sizeof(vtest_hdr));
+-   virgl_block_write(vws->sock_fd, &cmd, sizeof(cmd));
++   virgl_block_write(vws, &vtest_hdr, sizeof(vtest_hdr));
++   virgl_block_write(vws, &cmd, sizeof(cmd));
+ 
+    ret = virgl_block_read(vws->sock_fd, vtest_hdr, sizeof(vtest_hdr));
+    assert(ret);
+@@ -579,8 +651,8 @@
+    vcmd_res_create_blob[VCMD_RES_CREATE_BLOB_ID_LO] = (uint32_t)blob_id;
+    vcmd_res_create_blob[VCMD_RES_CREATE_BLOB_ID_HI] = 0;
+ 
+-   virgl_block_write(vws->sock_fd, vtest_hdr, sizeof(vtest_hdr));
+-   virgl_block_write(vws->sock_fd, vcmd_res_create_blob, sizeof(vcmd_res_create_blob));
++   virgl_block_write(vws, vtest_hdr, sizeof(vtest_hdr));
++   virgl_block_write(vws, vcmd_res_create_blob, sizeof(vcmd_res_create_blob));
+ 
+    vtest_hdr[0] = 0;
+    virgl_block_read(vws->sock_fd, vtest_hdr, sizeof(vtest_hdr));
+diff --git a/src/gallium/winsys/virgl/vtest/virgl_vtest_winsys.c b/src/gallium/winsys/virgl/vtest/virgl_vtest_winsys.c
+--- a/src/gallium/winsys/virgl/vtest/virgl_vtest_winsys.c
++++ b/src/gallium/winsys/virgl/vtest/virgl_vtest_winsys.c
+@@ -27,6 +27,7 @@
+ #include "util/format/u_format.h"
+ #include "util/u_inlines.h"
+ #include "util/os_time.h"
++#include "util/u_process.h"
+ #include "frontend/sw_winsys.h"
+ #include "util/os_mman.h"
+ 
+@@ -707,6 +708,18 @@
+       box.depth = 1;
+    }
+ 
++   if (os_get_option("REMOTEGPU_PRESENT_SOCKET")) {
++      /* The caller already flushed rendering commands before frontbuffer
++       * presentation. Order the marker behind the exact vtest byte offset.
++       * Failure must never silently restore the CPU presentation path. */
++      int err = virgl_vtest_send_present(vtws, res, level, layer, &box);
++      if (err) {
++         fprintf(stderr, "RemoteGPU: present notification failed (%d)\n", err);
++         abort();
++      }
++      return;
++   }
++
+    virgl_vtest_transfer_get_internal(vws, res, &box, res->stride, 0, offset,
+                                      level, true);
+ 
+

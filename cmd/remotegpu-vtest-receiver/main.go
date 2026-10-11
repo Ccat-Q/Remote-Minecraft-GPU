@@ -23,12 +23,13 @@ import (
 
 func main() {
 	var connectAddr, unixSocket, token, serverName string
-	var insecure bool
+	var insecure, inspectPresent bool
 	flag.StringVar(&connectAddr, "connect", "127.0.0.1:4433", "RemoteGPU proxy QUIC address")
 	flag.StringVar(&unixSocket, "socket", "/tmp/.virgl_test", "virgl_test_server Unix socket")
 	flag.StringVar(&token, "pairing-token", "", "required proxy pairing token")
 	flag.StringVar(&serverName, "server-name", "", "TLS server name")
 	flag.BoolVar(&insecure, "insecure-skip-verify", false, "disable TLS verification (CI-only)")
+	flag.BoolVar(&inspectPresent, "inspect-present", false, "validate and log PRESENT without displaying it (CI-only)")
 	flag.Parse()
 	if token == "" {
 		fmt.Fprintln(os.Stderr, "remotegpu-vtest-receiver: -pairing-token is required")
@@ -36,13 +37,13 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := run(ctx, connectAddr, unixSocket, token, serverName, insecure); err != nil && !errors.Is(err, context.Canceled) {
+	if err := run(ctx, connectAddr, unixSocket, token, serverName, insecure, inspectPresent); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "remotegpu-vtest-receiver:", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, connectAddr, unixSocket, token, serverName string, insecure bool) error {
+func run(ctx context.Context, connectAddr, unixSocket, token, serverName string, insecure, inspectPresent bool) error {
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS13,
 		NextProtos:         []string{"remotegpu/1"},
@@ -73,6 +74,7 @@ func run(ctx context.Context, connectAddr, unixSocket, token, serverName string,
 	var writeMu sync.Mutex
 
 	go func() {
+		var lastSequence, lastFrame uint64
 		for {
 			envelope, err := protocol.Read(stream)
 			if err != nil {
@@ -80,14 +82,24 @@ func run(ctx context.Context, connectAddr, unixSocket, token, serverName string,
 				return
 			}
 			if envelope.Type == protocol.TypePresent {
-				errCh <- errors.New("PRESENT reached Linux diagnostic receiver")
-				return
+				if !inspectPresent {
+					errCh <- errors.New("PRESENT reached Linux diagnostic receiver")
+					return
+				}
+				p, err := protocol.ParsePresent(envelope.Payload)
+				if err != nil || p.FrameID <= lastFrame || p.AfterSequence > lastSequence || p.ResourceID == 0 || p.Width == 0 || p.Height == 0 {
+					errCh <- errors.New("invalid or out-of-order PRESENT")
+					return
+				}
+				lastFrame = p.FrameID
+				fmt.Printf("INSPECT_PRESENT frame=%d resource=%d after=%d processed=%d size=%dx%d\n", p.FrameID, p.ResourceID, p.AfterSequence, lastSequence, p.Width, p.Height)
+				continue
 			}
 			if envelope.Type != protocol.TypeVTest {
 				errCh <- fmt.Errorf("unexpected RemoteGPU envelope %d", envelope.Type)
 				return
 			}
-			_, data, err := protocol.ParseVTestChunk(envelope.Payload)
+			sequence, data, err := protocol.ParseVTestChunk(envelope.Payload)
 			if err != nil {
 				errCh <- err
 				return
@@ -96,6 +108,7 @@ func run(ctx context.Context, connectAddr, unixSocket, token, serverName string,
 				errCh <- err
 				return
 			}
+			lastSequence = sequence
 		}
 	}()
 

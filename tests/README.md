@@ -5,9 +5,16 @@ workflow. Download and extract its `linux-poc-<commit>` artifact to the Ubuntu
 compute client; do not compile it there. Run it through the supplied launcher:
 
 ```sh
-LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=virpipe ./bin/run-gl-capability
+GALLIUM_DRIVER=virpipe REMOTEGPU_VTEST_LEGACY=1 ./bin/run-gl-capability
 ```
 
 Run it only after the RemoteGPU proxy and iPhone renderer are connected. A
 failure is a stop condition for Minecraft work, not something to bypass with a
 compatibility-profile context.
+
+`gl-present` and `mesa_present_gate.py` verify the opt-in Mesa frontbuffer hook
+in GitHub Actions. This gate starts a fresh renderer/proxy/diagnostic receiver
+for each case, checks three ordered frame markers and zero TRANSFER_GET for
+presentation, then repeats with an explicit application glReadPixels request.
+The red-pixel result verifies rendering and readback compatibility. This is
+not a display test: the Linux endpoint logs PRESENT without presenting it.

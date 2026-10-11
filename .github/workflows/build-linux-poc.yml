@@ -68,6 +68,8 @@ jobs:
           git -C _deps/mesa fetch --depth=1 origin "$MESA_REVISION"
           git -C _deps/mesa checkout --detach "$MESA_REVISION"
           git -C _deps/mesa apply "$GITHUB_WORKSPACE/patches/mesa/0001-remotegpu-force-legacy-vtest.patch"
+          git -C _deps/mesa apply --check "$GITHUB_WORKSPACE/patches/mesa/0002-remotegpu-present.patch"
+          git -C _deps/mesa apply "$GITHUB_WORKSPACE/patches/mesa/0002-remotegpu-present.patch"
       - name: Fetch pinned virglrenderer source
         run: |
           mkdir -p _deps
@@ -94,6 +96,7 @@ jobs:
           go build -trimpath -ldflags='-s -w' -o _stage/bin/remotegpu-proxy ./cmd/remotegpu-proxy
           go build -trimpath -ldflags='-s -w' -o _stage/bin/remotegpu-vtest-receiver ./cmd/remotegpu-vtest-receiver
           cc -O2 -o _stage/bin/gl-capability tests/gl_capability.c -lglfw -lGLEW -lGL
+          cc -O2 -o _stage/bin/gl-present tests/gl_present.c -lglfw -lGLEW -lGL
           cp deploy/run-gl-capability.sh _stage/bin/run-gl-capability
           chmod +x _stage/bin/run-gl-capability
       - name: Run Mesa virpipe to virglrenderer GL capability gate
@@ -159,6 +162,8 @@ jobs:
             cat "$proxy_log" >&2 || true
             exit 1
           fi
+      - name: Verify Mesa PRESENT without presentation readback
+        run: python3 tests/mesa_present_gate.py _stage
       - name: Publish deployable Linux PoC bundle
         uses: actions/upload-artifact@v4
         with:

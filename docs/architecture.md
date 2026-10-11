@@ -17,8 +17,15 @@ The target `PRESENT` design emits from the Mesa vtest winsys presentation path,
 never GLFW. The hook will include its cumulative vtest byte offset. The Linux
 proxy already waits until it has forwarded that offset, assigns
 `after_sequence`, and emits the marker on the same QUIC stream. The iOS
-endpoint already orders markers behind that sequence; the Mesa hook and the
-iOS renderer adapter remain implementation gates before an end-to-end claim.
+endpoint already orders markers behind that sequence. The Mesa hook patch is
+now implemented and undergoing its Linux presentation gate; the iOS renderer
+adapter remains an implementation gate before an end-to-end claim.
+
+Mesa waits for a local Unix datagram acknowledgement after sending the marker.
+The proxy responds only once the marker is queued on QUIC. This prevents later
+resource destruction from overtaking the marker and adds no phone/GPU round
+trip. The phone must still retain presentation resources through its renderer
+fence and Metal display submission.
 
 ## Wire format
 
@@ -66,8 +73,10 @@ the pinned winsys source exported by CI.
 2. iOS ANGLE/IOSurface render trace replay.
 3. End-to-end GL capability test: GL >= 3.2 Core, GLSL, FBO, VAO, instancing,
    sync and query support.
-4. Mesa presentation hook with zero presentation readback bytes (not yet
-   implemented in the current patch set).
+4. Mesa presentation hook with zero presentation readback bytes. The Linux
+   diagnostic test inspects three ordered markers, requires zero TRANSFER_GET,
+   and separately verifies that application glReadPixels still reads a red
+   pixel. Device presentation and fence completion remain separate gates.
 5. Vanilla 1.21.1, 720p/30, 10 minutes over Wi-Fi on the 2 vCPU/4 GiB host.
 6. 5G functional run with RTT, jitter, stall and bandwidth reporting.
 

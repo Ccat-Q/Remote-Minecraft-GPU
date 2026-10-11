@@ -21,6 +21,15 @@ type PresentSignal struct {
 
 const presentSignalSize = 52
 
+// PresentAck permits Mesa to continue after the marker enters the QUIC stream.
+// This is a local transport barrier, never an acknowledgement from the GPU.
+func PresentAck(frameID uint64) []byte {
+	b := make([]byte, 12)
+	copy(b, "RGPA")
+	binary.LittleEndian.PutUint64(b[4:], frameID)
+	return b
+}
+
 func ParsePresentSignal(b []byte) (PresentSignal, error) {
 	if len(b) != presentSignalSize || string(b[:4]) != "RGPF" {
 		return PresentSignal{}, fmt.Errorf("remotegpu: malformed Mesa present signal")
