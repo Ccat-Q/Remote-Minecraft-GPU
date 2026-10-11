@@ -101,7 +101,9 @@ jobs:
           xcrun --sdk iphoneos clang -arch arm64 -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
             -miphoneos-version-min=15.0 -dynamiclib tests/ios_renderer_link.c \
             -I"$sysroot/include" -I"$sysroot/include/virgl" -L"$sysroot/lib" \
-            -lvirglrenderer -lEGL -lGLESv2 -o _stage/ios/renderer-link-probe.dylib
+            -F"$sysroot/lib" -F"$sysroot/Frameworks" \
+            -lvirglrenderer -framework EGL -framework GLESv2 \
+            -o _stage/ios/renderer-link-probe.dylib
           xcrun vtool -show-build _stage/ios/renderer-link-probe.dylib
           otool -L _stage/ios/renderer-link-probe.dylib
       - name: Publish iOS renderer sysroot

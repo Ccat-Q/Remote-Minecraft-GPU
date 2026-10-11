@@ -15,6 +15,8 @@ Before publishing, the workflow compiles and links `tests/ios_renderer_link.c`
 with the iPhoneOS SDK against ANGLE and virglrenderer. This verifies device
 architecture and the public API linkage; it does not execute the renderer,
 prove iPhone GL capability, or test presentation.
+ANGLE is linked as `EGL.framework` and `GLESv2.framework` from the sysroot,
+not with `-lGLESv2`, which can select an iOS SDK private library instead.
 
 The pinned virglrenderer has a label immediately before a local declaration,
 which Apple Clang rejects in C11. `tools/ci/prepare_utm_renderer.py` inserts an
