@@ -6,6 +6,7 @@ on:
       - ios/Renderer/RGPUVirglAPI.hpp
       - linux/tools/native-vtest-server.cpp
       - tests/mesa_present_gate.py
+      - tests/native_vtest_lifetime.cpp
       - .github/workflows/native-vtest-gate.yml
   workflow_dispatch:
     inputs:
@@ -52,6 +53,14 @@ jobs:
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iios/Renderer -I_stage/virglrenderer/include \
             ios/Renderer/RGPUVTestSession.cpp linux/tools/native-vtest-server.cpp \
             -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -o _stage/bin/native-vtest-server
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iios/Renderer -I_stage/virglrenderer/include \
+            ios/Renderer/RGPUVTestSession.cpp tests/native_vtest_lifetime.cpp \
+            -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -o _stage/bin/native-vtest-lifetime
+      - name: Verify real renderer presentation resource lifetime
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="$GITHUB_WORKSPACE/_stage/virglrenderer/lib/x86_64-linux-gnu" \
+            timeout 45s _stage/bin/native-vtest-lifetime 2>&1 | tee native-vtest-lifetime.log
       - name: Run native decoder with actual GL through QUIC
         run: |
           set -o pipefail
@@ -60,5 +69,7 @@ jobs:
         if: always()
         with:
           name: native-vtest-gate-${{ github.run_id }}
-          path: native-vtest-gate.log
+          path: |
+            native-vtest-gate.log
+            native-vtest-lifetime.log
           if-no-files-found: warn

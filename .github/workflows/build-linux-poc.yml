@@ -101,6 +101,9 @@ jobs:
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iios/Renderer -I_stage/virglrenderer/include \
             ios/Renderer/RGPUVTestSession.cpp linux/tools/native-vtest-server.cpp \
             -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -o _stage/bin/native-vtest-server
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iios/Renderer -I_stage/virglrenderer/include \
+            ios/Renderer/RGPUVTestSession.cpp tests/native_vtest_lifetime.cpp \
+            -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -o _stage/bin/native-vtest-lifetime
           cp deploy/run-gl-capability.sh _stage/bin/run-gl-capability
           chmod +x _stage/bin/run-gl-capability
       - name: Run Mesa virpipe to virglrenderer GL capability gate
@@ -176,6 +179,8 @@ jobs:
         run: python3 tests/mesa_present_gate.py _stage
       - name: Verify native iOS vtest decoder with real GL through QUIC
         run: python3 tests/mesa_present_gate.py _stage --native
+      - name: Verify real renderer presentation resource lifetime
+        run: LD_LIBRARY_PATH="$GITHUB_WORKSPACE/_stage/virglrenderer/lib/x86_64-linux-gnu" timeout 45s _stage/bin/native-vtest-lifetime
       - name: Publish deployable Linux PoC bundle
         uses: actions/upload-artifact@v4
         with:
