@@ -18,7 +18,7 @@ never GLFW. The hook will include its cumulative vtest byte offset. The Linux
 proxy already waits until it has forwarded that offset, assigns
 `after_sequence`, and emits the marker on the same QUIC stream. The iOS
 endpoint already orders markers behind that sequence. The Mesa hook patch is
-now implemented and undergoing its Linux presentation gate; the iOS renderer
+now implemented and verified in its Linux presentation gate; the iOS renderer
 adapter remains an implementation gate before an end-to-end claim.
 
 Mesa waits for a local Unix datagram acknowledgement after sending the marker.
@@ -74,7 +74,7 @@ the pinned winsys source exported by CI.
 3. End-to-end GL capability test: GL >= 3.2 Core, GLSL, FBO, VAO, instancing,
    sync and query support.
 4. Mesa presentation hook with zero presentation readback bytes. The Linux
-   diagnostic test inspects three ordered markers, requires zero TRANSFER_GET,
+   diagnostic test inspects consecutive ordered markers, requires zero TRANSFER_GET,
    and separately verifies that application glReadPixels still reads a red
    pixel. Device presentation and fence completion remain separate gates.
 5. Vanilla 1.21.1, 720p/30, 10 minutes over Wi-Fi on the 2 vCPU/4 GiB host.
@@ -84,6 +84,18 @@ Gate 1 is currently verified in GitHub Actions with protocol 0: the remote
 renderer exposes OpenGL 4.3 Core / GLSL 4.30 and the proxy records non-zero
 traffic in both directions. It is a transport/capability proof only: it uses a
 Linux diagnostic receiver and has no `PRESENT` path.
+
+The Mesa presentation gate is now verified in [Linux PoC run 38186021966](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38186021966):
+three GLSL 1.50/Core VAO triangle draws produce four ordered 64x64 presentation
+events (including initialization), with zero TRANSFER_GET. A separate explicit
+glReadPixels run returns the triangle's red center pixel with one TRANSFER_GET.
+The Linux diagnostic endpoint inspects markers only and the CI host uses
+software rendering; this does not establish iPhone hardware rendering.
+
+The pinned iOS dependency recipe and iPhoneOS ANGLE/VirGL link gate passed in
+[run 38185353942](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38185353942).
+The device interop probe must still be built and run on a signed iPhone app;
+remote vtest replay and guest OpenGL 3.2 Core remain unverified on iOS.
 
 All builds and compilation run in GitHub Actions. The Ubuntu server only runs
 downloaded CI artifacts and target-environment checks; it does not build Mesa,
