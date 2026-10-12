@@ -101,6 +101,10 @@ probe is destroyed first, and both buttons are disabled until the native gate
 finishes, preventing two diagnostics from sharing/terminating the same EGL
 display or initializing virglrenderer concurrently. Record the report or error
 after signing and installing the Actions-built IPA on a real iPhone.
+Use a sysroot produced with the `--winsys` compatibility fix: the pinned fork
+otherwise frees its borrowed external EGL wrapper only when GBM is enabled.
+The checked patch frees the wrapper on non-GBM iOS too, without terminating the
+caller's display. Repeated native diagnostics require this fixed sysroot.
 
 `VTestSession` offers `retainForPresent`/`releaseFromPresent` and
 `fenceForPresent`/`isFenceComplete`. A marker must arrive at a command boundary;

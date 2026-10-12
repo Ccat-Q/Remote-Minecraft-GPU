@@ -27,6 +27,7 @@ BUILD_RENDERER = '''build_qemu_dependencies () {
     build_angle
     meson_build $EPOXY_REPO -Dtests=false -Dglx=no -Degl=yes
     python3 "$REMOTEGPU_UTM_COMPAT" --renderer "$BUILD_DIR/virglrenderer.git/src/vrend/vrend_renderer.c"
+    python3 "$REMOTEGPU_UTM_COMPAT" --winsys "$BUILD_DIR/virglrenderer.git/src/vrend/vrend_winsys.c"
     meson_darwin_build $VIRGLRENDERER_REPO -Dtests=false -Dcheck-gl-errors=false -Dvenus=false -Dneptune=false -Dvulkan-dload=false -Drender-server-mode=thread
 }
 
@@ -59,6 +60,33 @@ def fix_renderer(source: str) -> str:
     if source.count(context) != 1 or source.count("angle_done:\n") != 1:
         raise ValueError("Pinned virglrenderer label/declaration context changed")
     return source.replace(context, context.replace("angle_done:", "angle_done: ;", 1))
+
+
+def fix_winsys(source: str) -> str:
+    # The borrowed EGL wrapper exists without GBM (notably on iOS). Only the
+    # internally owned GBM display belongs behind ENABLE_GBM. Never terminate
+    # the caller's EGLDisplay here.
+    # TODO: drop when the pinned fork releases external EGL without GBM.
+    context = '''   } else if (use_context == CONTEXT_EGL_EXTERNAL) {
+      free(egl);
+      egl = NULL;
+      use_context = CONTEXT_NONE;
+   }
+#endif
+#ifdef HAVE_EPOXY_GLX_H'''
+    replacement = '''   }
+#endif
+#ifdef HAVE_EPOXY_EGL_H
+   if (use_context == CONTEXT_EGL_EXTERNAL) {
+      free(egl);
+      egl = NULL;
+      use_context = CONTEXT_NONE;
+   }
+#endif
+#ifdef HAVE_EPOXY_GLX_H'''
+    if source.count(context) != 1:
+        raise ValueError("Pinned external EGL winsys cleanup context changed")
+    return source.replace(context, replacement)
 
 
 def prepare_script(source: str) -> str:
@@ -100,9 +128,10 @@ def main() -> None:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--script", type=Path)
     group.add_argument("--renderer", type=Path)
+    group.add_argument("--winsys", type=Path)
     args = parser.parse_args()
-    path = args.script or args.renderer
-    transform = prepare_script if args.script else fix_renderer
+    path = args.script or args.renderer or args.winsys
+    transform = prepare_script if args.script else (fix_renderer if args.renderer else fix_winsys)
     path.write_text(transform(path.read_text()))
 
 

@@ -73,7 +73,7 @@ uint32_t VTestSession::fenceForPresent() {
     return fence;
 }
 void VTestSession::retainForPresent(uint32_t resource) {
-    require(atCommandBoundary() && resources_.count(resource) && !retired_.count(resource),
+    require(!failed_ && atCommandBoundary() && resources_.count(resource) && !retired_.count(resource),
             "invalid PRESENT resource or incomplete vtest command");
     ++presentReferences_[resource];
 }

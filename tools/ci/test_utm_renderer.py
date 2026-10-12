@@ -1,6 +1,6 @@
 import unittest
 
-from prepare_utm_renderer import fix_renderer, prepare_script
+from prepare_utm_renderer import fix_renderer, fix_winsys, prepare_script
 
 RENDERER_CONTEXT = '''angle_done:
 
@@ -35,6 +35,26 @@ BUILD_CONTEXT += "GCC_TREAT_WARNINGS_AS_ERRORS=NO \\\n"
 
 
 class UTMCompatibilityTests(unittest.TestCase):
+    def test_external_egl_cleanup_does_not_require_gbm(self):
+        source = '''#ifdef ENABLE_GBM
+   if (use_context == CONTEXT_EGL) {
+      destroy_owned();
+   } else if (use_context == CONTEXT_EGL_EXTERNAL) {
+      free(egl);
+      egl = NULL;
+      use_context = CONTEXT_NONE;
+   }
+#endif
+#ifdef HAVE_EPOXY_GLX_H
+'''
+        result = fix_winsys(source)
+        self.assertIn('#endif\n#ifdef HAVE_EPOXY_EGL_H\n   if (use_context == CONTEXT_EGL_EXTERNAL)', result)
+        self.assertEqual(result.count('free(egl);'), 1)
+        self.assertNotIn('eglTerminate', result)
+        with self.assertRaises(ValueError):
+            fix_winsys(source * 2)
+        with self.assertRaises(ValueError):
+            fix_winsys('changed upstream')
     def test_c11_label_requires_statement(self):
         self.assertEqual(
             fix_renderer(RENDERER_CONTEXT),
@@ -52,6 +72,7 @@ class UTMCompatibilityTests(unittest.TestCase):
     def test_build_hook_runs_before_renderer_build(self):
         result = prepare_script(BUILD_CONTEXT)
         self.assertLess(result.index("--renderer"), result.index("meson_darwin_build"))
+        self.assertLess(result.index("--winsys"), result.index("meson_darwin_build"))
         self.assertIn('CC="ccache $CC"', result)
         self.assertIn('CXX="ccache $CXX"', result)
         self.assertNotIn("download $QEMU_SRC", result)
