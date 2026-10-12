@@ -40,8 +40,11 @@ final class ProbeController: UIViewController {
         let native = UIButton(type: .system)
         native.setTitle("VirGL Context + Caps", for: .normal)
         native.addTarget(self, action: #selector(nativeCaps), for: .touchUpInside)
-        controls = [button, native]
-        for item in [display, report, button, native] {
+        let share = UIButton(type: .system)
+        share.setTitle("Share Report", for: .normal)
+        share.addTarget(self, action: #selector(shareReport), for: .touchUpInside)
+        controls = [button, native, share]
+        for item in [display, report, button, native, share] {
             item.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(item)
         }
@@ -54,11 +57,21 @@ final class ProbeController: UIViewController {
             button.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             native.topAnchor.constraint(equalTo: button.bottomAnchor, constant: 8),
             native.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            report.topAnchor.constraint(equalTo: native.bottomAnchor, constant: 12),
+            share.topAnchor.constraint(equalTo: native.bottomAnchor, constant: 8),
+            share.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            report.topAnchor.constraint(equalTo: share.bottomAnchor, constant: 12),
             report.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             report.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             report.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
+    }
+
+    @objc private func shareReport(_ sender: UIButton) {
+        guard !nativeBusy, let text = report.text, !text.isEmpty else { return }
+        let sheet = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        sheet.popoverPresentationController?.sourceView = sender
+        sheet.popoverPresentationController?.sourceRect = sender.bounds
+        present(sheet, animated: true)
     }
 
     @objc private func nativeCaps() {
