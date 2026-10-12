@@ -46,3 +46,11 @@ This probe has no network or vtest adapter. It uses host-only synchronous GPU
 completion to isolate IOSurface interoperability. Async presentation fences,
 remote resource lifetime management and guest capability testing belong to the
 subsequent renderer adapter gate; the probe is not the production frame loop.
+
+The unsigned iPhoneOS arm64 IPA build passed in
+[run 38188117904](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38188117904).
+Download its `ios-interop-prototype-*` artifact, extract the unsigned IPA, sign
+and install it using your device provisioning method (iOS 17 or newer), then
+tap **Render Probe**. Record the triangle's appearance and the capability report
+or displayed error. CI verifies compilation/linkage only; physical Metal/
+IOSurface operation and the guest GL 3.2 Core gate remain unverified.

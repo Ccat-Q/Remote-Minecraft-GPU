@@ -94,8 +94,10 @@ software rendering; this does not establish iPhone hardware rendering.
 
 The pinned iOS dependency recipe and iPhoneOS ANGLE/VirGL link gate passed in
 [run 38185353942](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38185353942).
-The device interop probe must still be built and run on a signed iPhone app;
-remote vtest replay and guest OpenGL 3.2 Core remain unverified on iOS.
+The device interop probe compiled and produced an unsigned iPhoneOS arm64 IPA
+in [run 38188117904](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38188117904).
+It must still be signed and run on an iPhone. Remote vtest replay and guest
+OpenGL 3.2 Core remain unverified on iOS, and Minecraft integration is not started.
 
 All builds and compilation run in GitHub Actions. The Ubuntu server only runs
 downloaded CI artifacts and target-environment checks; it does not build Mesa,
