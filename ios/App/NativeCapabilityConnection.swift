@@ -60,7 +60,11 @@ final class NativeCapabilityConnection: @unchecked Sendable {
             switch event {
             case .ready:
                 report("QUIC ready; waiting for Ubuntu capability probe.", finished: false)
-            case .failed(let error): finish("CONNECTION FAILED: \(error.localizedDescription)")
+            case .failed(let error):
+                // NWError's description preserves DNS/TLS/POSIX error codes;
+                // localizedDescription alone can reduce them to a generic UI
+                // message. Neither field includes the pairing token.
+                finish("CONNECTION FAILED: \(String(describing: error))\n\(error.localizedDescription)\nCheck DNS-only routing, UDP reachability and trusted TLS certificate.")
             case .closed: finish("Ubuntu closed capability session")
             case .envelope(let envelope):
                 guard envelope.type == .vtestBytes else {

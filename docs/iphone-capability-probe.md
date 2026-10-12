@@ -83,3 +83,11 @@ native submit succeeds; already queued messages are ignored after closure.
 
 This verifies transport/capabilities only. Ordered GPU snapshot at PRESENT,
 independent fence completion and Metal display scheduling remain future work.
+
+The local **VirGL Context + Caps** diagnostic also tries GLES 3.2, 3.1 and 3.0
+before virgl initialization and reports the actual versions. Rejected contexts
+or unexpected downgrades distinguish backend support from renderer selection;
+they do not change the production feature level or pass the guest Core gate.
+The fixed orientation shader is compiled into `default.metallib` by Actions,
+and packaging verifies that the library is present. Corrected orientation still
+needs a device screenshot; CI cannot assert final pixel orientation.
