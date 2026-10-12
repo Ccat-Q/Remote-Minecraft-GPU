@@ -74,11 +74,19 @@ int main() {
     }
     assert(destroys == 1);
     { auto data = create(); command(data, 1); command(data, 9);
-      rgpu::VTestSession session; assert(session.feed(data.data(), data.size()).size() == 2); }
+      command(data, 2, {1, 0, 0, 0, 1, 1, 1, 1, 0, 0});
+      rgpu::VTestSession session; assert(session.feed(data.data(), data.size()).size() == 2);
+      assert(resources == 1); }
+    assert(resources == 0); // disconnect releases resources without UNREF
     std::vector<uint8_t> bad; command(bad, 12); rejects(bad);
     bad.clear(); command(bad, 1); rejects(bad);
     bad.clear(); word(bad, 0xffffffffu); word(bad, 6); rejects(bad);
     bad = create(); command(bad, 5, {1}); rejects(bad);
     bad = create(); command(bad, 3, {99}); rejects(bad);
+    bad.clear(); word(bad, 1000000); word(bad, 1); rejects(bad);
+    bad = create();
+    command(bad, 2, {1, 0, 0, 0, 1, 1, 1, 1, 0, 0});
+    command(bad, 2, {1, 0, 0, 0, 1, 1, 1, 1, 0, 0});
+    rejects(bad); assert(resources == 0);
     std::cout << "PASS: fragmented/coalesced legacy vtest, caps bytes, unpadded PUT, raw GET, fences, fail-closed\n";
 }

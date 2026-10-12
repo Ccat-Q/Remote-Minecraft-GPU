@@ -24,6 +24,20 @@ void check(int result, const char* operation) {
 void require(bool ok, const char* message) {
     if (!ok) throw std::runtime_error(message);
 }
+void validateHeader(uint32_t command, uint32_t length) {
+    require(command >= 1 && command <= 9, "REMOTEGPU_ERR_UNSUPPORTED_VTEST_COMMAND");
+    switch (command) {
+    case 1: case 9: require(length == 0, "invalid caps request length"); break;
+    case 2: require(length == 10, "invalid resource create length"); break;
+    case 3: require(length == 1, "invalid resource unref length"); break;
+    case 4: require(length == 11, "invalid transfer get length"); break;
+    case 5: require(length >= 11 && size_t(length) <= (limit - 8) / 4 + 1,
+                    "invalid transfer put length"); break;
+    case 6: require(size_t(length) <= (limit - 8) / 4, "oversized command buffer"); break;
+    case 7: require(length == 2, "invalid busy wait length"); break;
+    case 8: require(length > 0 && length <= 4096, "invalid renderer name length"); break;
+    }
+}
 }
 
 VTestSession::VTestSession(uint32_t context) : context_(context) {
@@ -52,7 +66,7 @@ std::vector<std::vector<uint8_t>> VTestSession::feed(const uint8_t* bytes, size_
             size_t need = pending_.size() < 8 ? 8 : 8 + size_t(word(pending_.data())) * 4;
             if (pending_.size() >= 8) {
                 const auto command = word(pending_.data() + 4);
-                require(command >= 1 && command <= 9, "REMOTEGPU_ERR_UNSUPPORTED_VTEST_COMMAND");
+                validateHeader(command, word(pending_.data()));
                 if (command == 8) need = 8 + size_t(word(pending_.data()));
                 if (command == 5) {
                     if (pending_.size() < 52) need = 52;
@@ -72,7 +86,7 @@ std::vector<std::vector<uint8_t>> VTestSession::feed(const uint8_t* bytes, size_
             const auto command = word(pending_.data() + 4);
             // Recompute after reading the header/TRANSFER_PUT arguments.
             size_t total = 8 + size_t(word(pending_.data())) * 4;
-            require(command >= 1 && command <= 9, "REMOTEGPU_ERR_UNSUPPORTED_VTEST_COMMAND");
+            validateHeader(command, word(pending_.data()));
             if (command == 8) total = 8 + size_t(word(pending_.data()));
             if (command == 5) {
                 require(word(pending_.data()) >= 11, "short TRANSFER_PUT header");
