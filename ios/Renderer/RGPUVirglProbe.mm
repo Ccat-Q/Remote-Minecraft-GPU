@@ -1,6 +1,7 @@
 #import "RGPUVirglProbe.h"
 #include "RGPUVirglAPI.hpp"
 #include "RGPUVTestSession.hpp"
+#include "RGPUCapabilities.hpp"
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <EGL/eglext_angle.h>
@@ -164,6 +165,12 @@ NSString* glName(GLenum name) {
             if (reply.size() < 8 || word(reply, 0) != reply.size() - 7 || word(reply, 4) != (index == 0 ? 2u : 1u))
                 throw std::runtime_error("Invalid native vtest capset framing");
             NSData *caps = [NSData dataWithBytes:reply.data() + 8 length:reply.size() - 8];
+            const auto summary = rgpu::summarizeCaps(word(reply, 4), reply.data() + 8, caps.length);
+            [report appendFormat:@"\nGuest GLSL feature level: %u (planned minimum: 150)\nRender targets: %u, samples: %u, uniform blocks: %u\n%@\n",
+                summary.glslLevel, summary.renderTargets, summary.samples, summary.uniformBlocks,
+                !summary.meetsGlslThreshold() ?
+                    @"BLOCKED: GLSL level below the Minecraft capability gate. No version override applied." :
+                    @"GLSL threshold met; guest GL 3.2 Core still needs the Ubuntu probe."];
             [report appendFormat:@"\nCapset %u: %lu bytes\nBase64: %@\n", word(reply, 4),
                 (unsigned long)caps.length, [caps base64EncodedStringWithOptions:0]];
         }

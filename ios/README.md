@@ -139,5 +139,20 @@ The unsigned iPhoneOS arm64 IPA build passed in
 Download its `ios-interop-prototype-*` artifact, extract the unsigned IPA, sign
 and install it using your device provisioning method (iOS 17 or newer), then
 tap **Render Probe**. Record the triangle's appearance and the capability report
-or displayed error. CI verifies compilation/linkage only; physical Metal/
-IOSurface operation and the guest GL 3.2 Core gate remain unverified.
+or displayed error. The original host Metal/IOSurface path is user-confirmed
+(with inverted Y). The sampling-pass correction and network guest GL 3.2 Core
+gate remain pending device acceptance.
+
+## Network capability endpoint
+
+**Connect Capability Probe** starts the native iPhone vtest endpoint over one
+QUIC stream. It requires normal iOS TLS trust and a pairing token. It rejects
+PRESENT and all GPU readback in this diagnostic mode; it is not remote display.
+Follow [the Ubuntu deployment/probe instructions](../docs/iphone-capability-probe.md).
+Native calls are serialized and restore/unbind their EGL context on every
+entry/exit, since DispatchQueue does not pin an OS thread. Local triangle,
+native capset and network modes cannot overlap.
+
+The native diagnostic now decodes the actual capset GLSL feature level and
+reports a BLOCKED warning below 150. No capability bits or version strings
+are overridden. Even a level >=150 does not prove a guest Core context exists.

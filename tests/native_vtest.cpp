@@ -1,5 +1,7 @@
 #include "RGPUVTestSession.hpp"
 #include "RGPUVirglAPI.hpp"
+#include "RGPUCapabilities.hpp"
+#include <string>
 #include <sys/uio.h>
 #include <cassert>
 #include <cstring>
@@ -49,6 +51,17 @@ static void rejects(std::vector<uint8_t> data) {
     try { session.feed(nullptr, 0); assert(false); } catch (const std::runtime_error&) {}
 }
 int main() {
+    {
+        std::vector<uint8_t> caps(308);
+        caps[264] = 130; caps[280] = 8; caps[284] = 8; caps[296] = 15;
+        auto summary = rgpu::summarizeCaps(1, caps.data(), caps.size());
+        assert(summary.glslLevel == 130 && !summary.meetsGlslThreshold());
+        assert(summary.renderTargets == 8 && summary.samples == 8 && summary.uniformBlocks == 15);
+        caps[264] = 150;
+        assert(rgpu::summarizeCaps(2, caps.data(), caps.size()).meetsGlslThreshold());
+        try { rgpu::summarizeCaps(1, caps.data(), 307); assert(false); } catch (const std::runtime_error&) {}
+        try { rgpu::summarizeCaps(3, caps.data(), caps.size()); assert(false); } catch (const std::runtime_error&) {}
+    }
     {
         auto data = create();
         command(data, 9); command(data, 1);
