@@ -105,6 +105,8 @@ Use a sysroot produced with the `--winsys` compatibility fix: the pinned fork
 otherwise frees its borrowed external EGL wrapper only when GBM is enabled.
 The checked patch frees the wrapper on non-GBM iOS too, without terminating the
 caller's display. Repeated native diagnostics require this fixed sysroot.
+The app packaging workflow checks the successful sysroot run's source recipe
+for that fix and rejects earlier artifacts before downloading them.
 
 `VTestSession` offers `retainForPresent`/`releaseFromPresent` and
 `fenceForPresent`/`isFenceComplete`. A marker must arrive at a command boundary;

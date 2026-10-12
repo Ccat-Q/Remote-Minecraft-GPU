@@ -28,6 +28,10 @@ jobs:
           test "$(gh run view "$RENDERER_RUN_ID" --json workflowName --jq .workflowName)" = 'Build iOS renderer sysroot'
           test "$(gh run view "$RENDERER_RUN_ID" --json jobs --jq '[.jobs[].steps[] | select(.name == "Verify iPhoneOS ANGLE and VirGL linkage" and .conclusion == "success")] | length')" = 1
           revision=$(gh run view "$RENDERER_RUN_ID" --json headSha --jq .headSha)
+          # The native diagnostic borrows an external EGLDisplay. Do not
+          # package it with the earlier recipe that leaked on non-GBM iOS.
+          gh api "repos/$GITHUB_REPOSITORY/contents/tools/ci/prepare_utm_renderer.py?ref=$revision" --jq .content | \
+            python3 -c 'import base64,sys; source=base64.b64decode(sys.stdin.read()).decode(); sys.exit(0 if "def fix_winsys(" in source and "--winsys" in source else "Renderer sysroot predates external-EGL cleanup fix; run updated Build iOS renderer sysroot first.")'
           gh run download "$RENDERER_RUN_ID" --name "ios-renderer-sysroot-$revision" --dir _deps/ios-sysroot
       - name: Generate Xcode project
         run: |
