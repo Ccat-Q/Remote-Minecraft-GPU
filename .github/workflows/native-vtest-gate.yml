@@ -40,7 +40,7 @@ jobs:
       - name: Install runtime and adapter build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends build-essential libepoxy0 libgbm1 libglfw3 libglew2.2 libgl1-mesa-dri xvfb xauth
+          sudo apt-get install --yes --no-install-recommends build-essential libepoxy0 libgbm1 libegl1 libegl-mesa0 libgles2 libglfw3 libglew2.2 libgl1-mesa-dri xvfb xauth
       - name: Compile only the new native adapter
         run: |
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iios/Renderer -I_stage/virglrenderer/include \
