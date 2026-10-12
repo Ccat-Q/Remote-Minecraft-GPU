@@ -71,6 +71,12 @@ EGL context callbacks, ordered resource retention at PRESENT, GPU-to-IOSurface
 copy and a queue-local fence poller. Do not connect it to the existing frame
 coordinator until that lifetime/presentation adapter is implemented.
 
+For fast iterations, **Native vtest rendering gate** downloads a successful
+Linux PoC bundle (run 38186021966 by default), verifies its workflow and
+presentation gate, and builds only this adapter. Mesa and virglrenderer are
+not rebuilt. A full **Build Linux PoC** also exercises the native gate whenever
+dependency pins or Mesa patches need changing. All compilation stays in Actions.
+
 The unsigned iPhoneOS arm64 IPA build passed in
 [run 38188117904](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38188117904).
 Download its `ios-interop-prototype-*` artifact, extract the unsigned IPA, sign
