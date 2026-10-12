@@ -64,21 +64,13 @@ static GLuint compileShader(GLenum type, const char *source, NSError **error)
     if (!device) { probeError(error, @"No Metal device"); return nil; }
     layer.device = device;
     layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-    layer.framebufferOnly = NO; // The probe copies to the drawable with a GPU blit.
+    layer.framebufferOnly = YES; // Destination is a render target, never CPU-read.
     layer.drawableSize = CGSizeMake(1280, 720);
     _queue = [device newCommandQueue];
     if (!_queue) { probeError(error, @"Cannot create Metal queue"); return nil; }
-    NSString *displayShader = @"#include <metal_stdlib>\nusing namespace metal;\n"
-        "struct V { float4 position [[position]]; float2 uv; };\n"
-        "vertex V displayVertex(uint id [[vertex_id]]) {\n"
-        "const float2 p[3]={float2(-1,-1),float2(3,-1),float2(-1,3)};\n"
-        "V o; o.position=float4(p[id],0,1); o.uv=(p[id]+1)*0.5; return o; }\n"
-        "fragment float4 displayFragment(V in [[stage_in]], texture2d<float> image [[texture(0)]]) {\n"
-        "constexpr sampler s(coord::normalized, address::clamp_to_edge, filter::nearest);\n"
-        "return image.sample(s,in.uv); }\n";
     NSError *shaderError = nil;
-    id<MTLLibrary> library = [device newLibraryWithSource:displayShader options:nil error:&shaderError];
-    if (!library) { probeError(error, shaderError.localizedDescription ?: @"Metal display shader failed"); return nil; }
+    id<MTLLibrary> library = [device newDefaultLibrary];
+    if (!library) { probeError(error, @"Actions-built Metal display library is missing"); return nil; }
     MTLRenderPipelineDescriptor *pipeline = [MTLRenderPipelineDescriptor new];
     pipeline.vertexFunction = [library newFunctionWithName:@"displayVertex"];
     pipeline.fragmentFunction = [library newFunctionWithName:@"displayFragment"];

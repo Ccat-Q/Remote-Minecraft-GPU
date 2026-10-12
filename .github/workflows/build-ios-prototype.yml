@@ -45,6 +45,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO build 2>&1 | tee ios-prototype-build.log
       - name: Package device app for external signing
         run: |
+          test -f _build/ios-prototype/Build/Products/Release-iphoneos/RemoteGPUPrototype.app/default.metallib
           mkdir -p _stage/ios-prototype/Payload
           cp -R _build/ios-prototype/Build/Products/Release-iphoneos/RemoteGPUPrototype.app _stage/ios-prototype/Payload/
           cd _stage/ios-prototype
