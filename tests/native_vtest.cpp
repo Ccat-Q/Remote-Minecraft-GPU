@@ -88,5 +88,33 @@ int main() {
     command(bad, 2, {1, 0, 0, 0, 1, 1, 1, 1, 0, 0});
     command(bad, 2, {1, 0, 0, 0, 1, 1, 1, 1, 0, 0});
     rejects(bad); assert(resources == 0);
+    {
+        rgpu::VTestSession session;
+        auto data = create(); command(data, 2, {42, 0, 0, 0, 1, 1, 1, 1, 0, 0});
+        command(data, 6, {0});
+        session.feed(data.data(), data.size());
+        const auto frameFence = session.fenceForPresent();
+        assert(frameFence == 2 && !session.isFenceComplete(frameFence));
+        session.retainForPresent(42); session.retainForPresent(42);
+        data.clear(); command(data, 6, {0}); command(data, 3, {42});
+        session.feed(data.data(), data.size());
+        assert(resources == 1); // UNREF cannot destroy a pending display resource
+        session.fenceCompleted(frameFence);
+        assert(session.isFenceComplete(frameFence) && session.busy());
+        session.releaseFromPresent(42); assert(resources == 1);
+        session.releaseFromPresent(42); assert(resources == 0);
+        try { session.releaseFromPresent(42); assert(false); } catch (const std::runtime_error&) {}
+    }
+    {
+        rgpu::VTestSession session;
+        auto data = create(); command(data, 2, {43, 0, 0, 0, 1, 1, 1, 1, 0, 0});
+        session.feed(data.data(), data.size()); session.retainForPresent(43);
+        data.clear(); command(data, 3, {43}); session.feed(data.data(), data.size());
+        try { session.retainForPresent(43); assert(false); } catch (const std::runtime_error&) {}
+        data.clear(); command(data, 2, {43, 0, 0, 0, 1, 1, 1, 1, 0, 0});
+        try { session.feed(data.data(), data.size()); assert(false); } catch (const std::runtime_error&) {}
+        // A reconnect/disconnect releases pinned resources even after failure.
+    }
+    assert(resources == 0);
     std::cout << "PASS: fragmented/coalesced legacy vtest, caps bytes, unpadded PUT, raw GET, fences, fail-closed\n";
 }

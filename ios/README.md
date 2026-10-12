@@ -15,7 +15,7 @@ ordered `PRESENT` envelopes from `Protocol.swift`.
 and normal iOS trust evaluation. Deploy a certificate trusted by the iPhone;
 the client does not contain an insecure trust-all development bypass.
 
-`RenderCoordinator.swift` is the only bridge between transport and the future
+`RenderCoordinator.swift` is the planned bridge between transport and the future
 Objective-C++ renderer adapter. Its adapter protocol requires a renderer fence
 before an IOSurface may be submitted to `CAMetalLayer`.
 
@@ -42,7 +42,7 @@ The IOSurface is allocated through CoreVideo's public IOSurface-backed
 CVPixelBuffer APIs. The probe never locks or reads the pixel buffer's CPU base
 address; it keeps the buffer alive while EGL and Metal use the shared surface.
 
-This probe has no network or vtest adapter. It uses host-only synchronous GPU
+The triangle probe has no network or vtest adapter. It uses host-only synchronous GPU
 completion to isolate IOSurface interoperability. Async presentation fences,
 remote resource lifetime management and guest capability testing belong to the
 subsequent renderer adapter gate; the probe is not the production frame loop.
@@ -86,6 +86,31 @@ Normal swaps emit four ordered PRESENTs without TRANSFER_GET; the separate
 application-readback case retrieves the red triangle center pixel with one
 TRANSFER_GET. This validates command execution by the shared native decoder on
 Linux, not the still-unconnected iPhone renderer adapter.
+
+## Native ANGLE context diagnostic
+
+The app's **VirGL Context + Caps** button initializes the real pinned
+virglrenderer with callback-v4 EGL context creation/sharing/destruction over
+ANGLE Metal. It uses a 1x1 control pbuffer, feeds CREATE_RENDERER/GET_CAPS2/
+GET_CAPS through the native decoder, and reports host strings and full base64
+capsets. It does not run a guest OpenGL program or display a remote framebuffer;
+capset availability is not acceptance of guest OpenGL 3.2 Core.
+
+Initialization and cleanup run on one serial background queue. The host triangle
+probe is destroyed first, and both buttons are disabled until the native gate
+finishes, preventing two diagnostics from sharing/terminating the same EGL
+display or initializing virglrenderer concurrently. Record the report or error
+after signing and installing the Actions-built IPA on a real iPhone.
+
+`VTestSession` offers `retainForPresent`/`releaseFromPresent` and
+`fenceForPresent`/`isFenceComplete`. A marker must arrive at a command boundary;
+the adapter pins its resource and inserts a dedicated fence covering preceding
+uploads as well as submits. Fence readiness refers to that fixed fence, not
+all later GPU work. UNREF detaches a pinned resource but defers its destruction
+until the final display reference is released. Reuse of a pinned retired handle
+fails closed. The future frame loop must release after its GPU-to-IOSurface copy
+completes, or tear down the session on failure; these APIs alone are not a
+working asynchronous presentation adapter.
 
 The unsigned iPhoneOS arm64 IPA build passed in
 [run 38188117904](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38188117904).

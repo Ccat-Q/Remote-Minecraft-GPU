@@ -55,6 +55,39 @@ bool VTestSession::busy() {
     virgl_renderer_poll();
     return completed_ != submitted_;
 }
+bool VTestSession::isFenceComplete(uint32_t fence) {
+    require(fence <= submitted_, "invalid presentation fence");
+    virgl_renderer_poll();
+    return completed_ >= fence;
+}
+uint32_t VTestSession::fenceForPresent() {
+    require(!failed_ && initialized_ && atCommandBoundary(), "invalid PRESENT command boundary");
+    require(submitted_ < uint32_t(std::numeric_limits<int>::max()), "fence IDs exhausted; reconnect required");
+    // Insert at PRESENT arrival so writes issued after the last SUBMIT_CMD are
+    // covered too. Never wait for this fence on the network round-trip path.
+    const auto fence = ++submitted_;
+    if (virgl_renderer_create_fence(int(fence), 0)) {
+        failed_ = true;
+        throw std::runtime_error("virgl present fence create failed");
+    }
+    return fence;
+}
+void VTestSession::retainForPresent(uint32_t resource) {
+    require(atCommandBoundary() && resources_.count(resource) && !retired_.count(resource),
+            "invalid PRESENT resource or incomplete vtest command");
+    ++presentReferences_[resource];
+}
+void VTestSession::releaseFromPresent(uint32_t resource) {
+    auto reference = presentReferences_.find(resource);
+    require(reference != presentReferences_.end(), "unbalanced PRESENT resource release");
+    if (--reference->second == 0) {
+        presentReferences_.erase(reference);
+        if (retired_.erase(resource)) {
+            virgl_renderer_resource_unref(resource);
+            resources_.erase(resource);
+        }
+    }
+}
 
 std::vector<std::vector<uint8_t>> VTestSession::feed(const uint8_t* bytes, size_t count) {
     require(!failed_, "vtest session already failed");
@@ -150,15 +183,18 @@ std::vector<uint8_t> VTestSession::execute(uint32_t command, const uint8_t* data
         break;
     }
     case 3: {
-        require(size == 4 && resources_.count(word(data)), "invalid RESOURCE_UNREF");
+        require(size == 4 && resources_.count(word(data)) && !retired_.count(word(data)), "invalid RESOURCE_UNREF");
         const auto handle = word(data);
         virgl_renderer_ctx_detach_resource(context_, handle);
-        virgl_renderer_resource_unref(handle);
-        resources_.erase(handle);
+        if (presentReferences_.count(handle)) retired_.insert(handle);
+        else {
+            virgl_renderer_resource_unref(handle);
+            resources_.erase(handle);
+        }
         break;
     }
     case 4: case 5: {
-        require(size >= 44 && resources_.count(word(data)), "invalid transfer resource");
+        require(size >= 44 && resources_.count(word(data)) && !retired_.count(word(data)), "invalid transfer resource");
         const uint32_t bytes = word(data + 40);
         require(bytes > 0 && bytes <= limit - 52, "unsupported zero/oversized transfer");
         require(size == (command == 4 ? 44 : 44 + size_t(bytes)), "invalid transfer length");

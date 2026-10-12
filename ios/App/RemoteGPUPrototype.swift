@@ -24,6 +24,9 @@ final class ProbeController: UIViewController {
     private let display = MetalProbeView()
     private let report = UITextView()
     private var probe: RGPUIOSurfaceProbe?
+    private var controls: [UIButton] = []
+    private var nativeBusy = false
+    private let rendererQueue = DispatchQueue(label: "org.remotegpu.native-gate", qos: .userInitiated)
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -34,7 +37,11 @@ final class ProbeController: UIViewController {
         let button = UIButton(type: .system)
         button.setTitle("Render Probe", for: .normal)
         button.addTarget(self, action: #selector(render), for: .touchUpInside)
-        for item in [display, report, button] {
+        let native = UIButton(type: .system)
+        native.setTitle("VirGL Context + Caps", for: .normal)
+        native.addTarget(self, action: #selector(nativeCaps), for: .touchUpInside)
+        controls = [button, native]
+        for item in [display, report, button, native] {
             item.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(item)
         }
@@ -45,14 +52,39 @@ final class ProbeController: UIViewController {
             display.heightAnchor.constraint(equalTo: display.widthAnchor, multiplier: 9.0 / 16.0),
             button.topAnchor.constraint(equalTo: display.bottomAnchor, constant: 12),
             button.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            report.topAnchor.constraint(equalTo: button.bottomAnchor, constant: 12),
+            native.topAnchor.constraint(equalTo: button.bottomAnchor, constant: 8),
+            native.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            report.topAnchor.constraint(equalTo: native.bottomAnchor, constant: 12),
             report.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             report.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             report.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
     }
 
+    @objc private func nativeCaps() {
+        // Terminating EGLDisplay is process-global: diagnostic modes cannot
+        // overlap. The native one-shot gate cleans up before it returns.
+        guard !nativeBusy else { return }
+        probe = nil
+        nativeBusy = true
+        controls.forEach { $0.isEnabled = false }
+        report.text = "Initializing native VirGL/ANGLE and collecting capsets…"
+        // Cold initialization must not block UIKit. Callbacks and cleanup
+        // remain on this same serial renderer queue.
+        rendererQueue.async {
+            let result = Result { try RGPUVirglProbe.run() }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                do { self.report.text = try result.get() }
+                catch { self.report.text = "NATIVE GATE FAILED: \(error.localizedDescription)" }
+                self.nativeBusy = false
+                self.controls.forEach { $0.isEnabled = true }
+            }
+        }
+    }
+
     @objc private func render() {
+        guard !nativeBusy else { return }
         do {
             if probe == nil { probe = try RGPUIOSurfaceProbe(layer: display.metalLayer) }
             try probe?.drawTriangle()
