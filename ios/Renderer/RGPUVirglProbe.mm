@@ -6,6 +6,7 @@
 #include <EGL/eglext_angle.h>
 #include <GLES3/gl3.h>
 #include <algorithm>
+#include <cstdio>
 #include <memory>
 #include <stdexcept>
 #include <vector>
@@ -22,6 +23,8 @@ public:
     std::unique_ptr<rgpu::VTestSession> session;
     virgl_renderer_callbacks callbacks{}; // Outlives virgl_renderer_init.
     bool initialized = false;
+    int lastMajor = 0, lastMinor = 0;
+    EGLint lastContextError = EGL_SUCCESS;
 
     void initialize() {
         auto platform = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(eglGetProcAddress("eglGetPlatformDisplayEXT"));
@@ -43,12 +46,18 @@ public:
         callbacks.get_egl_display = [](void* cookie) -> void* { return static_cast<ANGLEHost*>(cookie)->display; };
         callbacks.create_gl_context = [](void* cookie, int, virgl_renderer_gl_ctx_param* parameter) -> void* {
             auto& host = *static_cast<ANGLEHost*>(cookie);
+            host.lastMajor = parameter->major_ver;
+            host.lastMinor = parameter->minor_ver;
             // Do not silently substitute a lower GLES version.
             const EGLint version[] = {EGL_CONTEXT_MAJOR_VERSION_KHR, parameter->major_ver,
                 EGL_CONTEXT_MINOR_VERSION_KHR, parameter->minor_ver, EGL_NONE};
             auto context = eglCreateContext(host.display, host.config,
                 parameter->shared ? host.root : EGL_NO_CONTEXT, version);
-            if (context == EGL_NO_CONTEXT) return nullptr;
+            if (context == EGL_NO_CONTEXT) {
+                host.lastContextError = eglGetError();
+                return nullptr;
+            }
+            host.lastContextError = EGL_SUCCESS;
             if (host.root == EGL_NO_CONTEXT) host.root = context;
             try { host.contexts.push_back(context); }
             catch (...) {
@@ -61,7 +70,9 @@ public:
         callbacks.make_current = [](void* cookie, int, void* context) -> int {
             auto& host = *static_cast<ANGLEHost*>(cookie);
             const auto surface = context ? host.surface : EGL_NO_SURFACE;
-            return eglMakeCurrent(host.display, surface, surface, context) ? 0 : -1;
+            if (eglMakeCurrent(host.display, surface, surface, context)) return 0;
+            host.lastContextError = eglGetError();
+            return -1;
         };
         callbacks.destroy_gl_context = [](void* cookie, void* context) {
             auto& host = *static_cast<ANGLEHost*>(cookie);
@@ -77,8 +88,13 @@ public:
         };
         // No USE_EGL: use caller contexts and borrowed ANGLE display (v4),
         // rather than initializing an unrelated internal platform winsys.
-        if (virgl_renderer_init(this, VIRGL_RENDERER_USE_GLES, &callbacks))
-            throw std::runtime_error("virglrenderer ANGLE initialization failed");
+        if (virgl_renderer_init(this, VIRGL_RENDERER_USE_GLES, &callbacks)) {
+            char message[256];
+            std::snprintf(message, sizeof(message),
+                "virglrenderer ANGLE initialization failed; last context attempt %d.%d, EGL error 0x%x",
+                lastMajor, lastMinor, lastContextError);
+            throw std::runtime_error(message);
+        }
         initialized = true;
         session = std::make_unique<rgpu::VTestSession>();
     }
