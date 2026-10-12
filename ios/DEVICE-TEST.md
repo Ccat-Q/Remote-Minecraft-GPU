@@ -16,6 +16,9 @@ The new direction correction and network endpoint still require device testing.
 3. Tap **VirGL Context + Caps**. Controls are disabled while the renderer runs
    on its own serial queue. Expect a native context/caps PASS report with host
    GL/GLSL/renderer strings and capsets 1 and 2, including full base64 dumps.
+   The new report also records GLES 3.2/3.1/3.0 requests and actual versions,
+   plus the decoded guest GLSL threshold warning. Failed higher-version requests
+   are useful capability evidence; they must not be hidden or overridden.
 4. Tap **Share Report** to copy/export the complete report (a screenshot alone
    truncates capsets). Repeat the native gate five times and switch back to
    **Render Probe**; both modes must still work without a crash. Repetition

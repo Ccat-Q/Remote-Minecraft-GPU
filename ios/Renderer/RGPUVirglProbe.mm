@@ -27,8 +27,37 @@ public:
     bool initialized = false;
     int lastMajor = 0, lastMinor = 0;
     EGLint lastContextError = EGL_SUCCESS;
+    NSString *versionAttempts = @"";
 
-    void initialize(bool allowReadbacks = true) {
+    void probeGlesVersions() {
+        const char *apis = eglQueryString(display, EGL_CLIENT_APIS);
+        NSMutableString *result = [NSMutableString stringWithFormat:@"EGL client APIs: %s\n", apis ?: "unavailable"];
+        for (int requestedMinor : {2, 1, 0}) {
+            const EGLint version[] = {EGL_CONTEXT_MAJOR_VERSION_KHR, 3,
+                EGL_CONTEXT_MINOR_VERSION_KHR, requestedMinor, EGL_NONE};
+            auto candidate = eglCreateContext(display, config, EGL_NO_CONTEXT, version);
+            if (candidate == EGL_NO_CONTEXT) {
+                [result appendFormat:@"GLES 3.%d request: rejected, EGL 0x%x\n", requestedMinor, static_cast<unsigned>(eglGetError())];
+                continue;
+            }
+            if (eglMakeCurrent(display, surface, surface, candidate)) {
+                GLint actualMajor = 0, actualMinor = 0;
+                glGetIntegerv(GL_MAJOR_VERSION, &actualMajor);
+                glGetIntegerv(GL_MINOR_VERSION, &actualMinor);
+                [result appendFormat:@"GLES 3.%d request: actual %d.%d (%@)\n", requestedMinor,
+                    actualMajor, actualMinor, (actualMajor > 3 || (actualMajor == 3 && actualMinor >= requestedMinor)) ?
+                        @"version request satisfied" : @"unexpected downgrade; do not accept as capability proof"];
+            } else {
+                [result appendFormat:@"GLES 3.%d make-current: failed, EGL 0x%x\n", requestedMinor, static_cast<unsigned>(eglGetError())];
+            }
+            const auto unbound = eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+            eglDestroyContext(display, candidate);
+            if (!unbound) throw std::runtime_error("Cannot unbind temporary GLES version probe");
+        }
+        versionAttempts = result;
+    }
+
+    void initialize(bool allowReadbacks = true, bool probeVersions = false) {
         auto platform = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(eglGetProcAddress("eglGetPlatformDisplayEXT"));
         if (!platform) throw std::runtime_error("ANGLE platform API unavailable");
         const EGLint attributes[] = {EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE};
@@ -44,6 +73,9 @@ public:
         const EGLint dimensions[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
         surface = eglCreatePbufferSurface(display, config, dimensions);
         if (surface == EGL_NO_SURFACE) throw std::runtime_error("ANGLE control surface allocation failed");
+        // Run only in the one-shot diagnostic, before virgl owns/caches GL
+        // state. Never switch arbitrary contexts during a live vtest session.
+        if (probeVersions) probeGlesVersions();
         callbacks.version = 4;
         callbacks.get_egl_display = [](void* cookie) -> void* { return static_cast<ANGLEHost*>(cookie)->display; };
         callbacks.create_gl_context = [](void* cookie, int, virgl_renderer_gl_ctx_param* parameter) -> void* {
@@ -147,7 +179,7 @@ NSString* glName(GLenum name) {
 {
     try {
         ANGLEHost host;
-        host.initialize();
+        host.initialize(true, true);
         const char name[] = "RemoteGPU iOS native gate";
         std::vector<uint8_t> request;
         append(request, sizeof(name)); append(request, 8);
@@ -160,6 +192,7 @@ NSString* glName(GLenum name) {
         NSMutableString *report = [NSMutableString stringWithFormat:
             @"PASS: native vtest context + caps over ANGLE Metal\nHost GL: %@\nGLSL: %@\nRenderer: %@\n",
             glName(GL_VERSION), glName(GL_SHADING_LANGUAGE_VERSION), glName(GL_RENDERER)];
+        [report appendFormat:@"\n%@\n", host.versionAttempts];
         for (size_t index = 0; index < replies.size(); ++index) {
             const auto& reply = replies[index];
             if (reply.size() < 8 || word(reply, 0) != reply.size() - 7 || word(reply, 4) != (index == 0 ? 2u : 1u))
