@@ -130,6 +130,21 @@ contract tests and existing Go/Swift/Mesa checks passed in
 [CI run 38204899558](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38204899558).
 These are Linux software-renderer results, not iPhone hardware acceptance.
 
+The resource pin/PRESENT-fence API also passed against the actual renderer in
+[run 38206699446](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38206699446):
+UNREF leaves a retained texture queryable, the captured fence completes, the
+final display reference destroys the resource, and disconnect releases a
+retired/pinned resource. The same run passes the zero-presentation-readback and
+explicit application-readback triangle tests. It does not test framebuffer
+snapshot/display ordering on iPhone.
+
+The non-GBM external-EGL cleanup fix compiled into the pinned iOS sysroot and
+passed the iPhoneOS link gate in
+[run 38206257487](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38206257487).
+The app includes a background native virglrenderer/ANGLE context/capset
+diagnostic and report sharing; real device execution and guest GL capability
+remain pending. Follow [the device acceptance checklist](../ios/DEVICE-TEST.md).
+
 GitHub Actions caches Go modules/build output using `go.sum`, SwiftPM's build
 and dependency directories using its resolved dependency manifest, the pinned
 Meson tool virtual environment, and the Mesa/virglrenderer compiler output
