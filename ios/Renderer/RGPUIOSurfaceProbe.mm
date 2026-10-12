@@ -73,7 +73,7 @@ static GLuint compileShader(GLenum type, const char *source, NSError **error)
         EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE
     };
     if (!platformDisplay) { probeError(error, @"ANGLE platform API missing"); return nil; }
-    _display = platformDisplay(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, displayAttributes);
+    _display = platformDisplay(EGL_PLATFORM_ANGLE_ANGLE, nullptr, displayAttributes);
     if (_display == EGL_NO_DISPLAY || !eglInitialize(_display, nullptr, nullptr)) {
         probeError(error, @"ANGLE Metal display initialization failed"); return nil;
     }
