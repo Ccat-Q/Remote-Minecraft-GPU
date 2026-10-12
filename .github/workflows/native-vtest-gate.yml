@@ -11,8 +11,7 @@ on:
     inputs:
       linux_run_id:
         description: Verified Build Linux PoC bundle to reuse (no dependency rebuild)
-        required: true
-        default: '38186021966'
+        required: false
 permissions:
   contents: read
   actions: read
@@ -25,16 +24,23 @@ jobs:
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
-      LINUX_RUN_ID: ${{ inputs.linux_run_id || '38186021966' }}
+      LINUX_RUN_ID: ${{ inputs.linux_run_id }}
     steps:
       - uses: actions/checkout@v4
       - name: Download verified Mesa and renderer bundle
         run: |
+          if [ -z "$LINUX_RUN_ID" ]; then
+            LINUX_RUN_ID=$(gh run list --workflow build-linux-poc.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          fi
+          test -n "$LINUX_RUN_ID" && test "$LINUX_RUN_ID" != null
           test "$(gh run view "$LINUX_RUN_ID" --json conclusion --jq .conclusion)" = success
           test "$(gh run view "$LINUX_RUN_ID" --json workflowName --jq .workflowName)" = 'Build Linux PoC'
           test "$(gh run view "$LINUX_RUN_ID" --json jobs --jq '[.jobs[].steps[] | select(.name == "Verify Mesa PRESENT without presentation readback" and .conclusion == "success")] | length')" = 1
           revision=$(gh run view "$LINUX_RUN_ID" --json headSha --jq .headSha)
-          gh run download "$LINUX_RUN_ID" --name "linux-poc-$revision" --dir _stage
+          if ! gh run download "$LINUX_RUN_ID" --name "linux-poc-$revision" --dir _stage; then
+            echo 'Verified bundle unavailable/expired: rerun Build Linux PoC, or specify a retained successful linux_run_id.' >&2
+            exit 1
+          fi
           # Artifact transport does not preserve executable permissions.
           chmod +x _stage/bin/* _stage/virglrenderer/bin/virgl_test_server
       - name: Install runtime and adapter build dependencies

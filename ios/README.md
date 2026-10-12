@@ -72,10 +72,13 @@ copy and a queue-local fence poller. Do not connect it to the existing frame
 coordinator until that lifetime/presentation adapter is implemented.
 
 For fast iterations, **Native vtest rendering gate** downloads a successful
-Linux PoC bundle (run 38186021966 by default), verifies its workflow and
+Linux PoC bundle (latest successful main run by default), verifies its workflow and
 presentation gate, and builds only this adapter. Mesa and virglrenderer are
 not rebuilt. A full **Build Linux PoC** also exercises the native gate whenever
 dependency pins or Mesa patches need changing. All compilation stays in Actions.
+Specify `linux_run_id` to reproduce against a particular successful bundle.
+If its artifact has expired, rerun the full Linux build; the gate fails with an
+explicit instruction rather than silently using an unverified dependency build.
 
 The unsigned iPhoneOS arm64 IPA build passed in
 [run 38188117904](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38188117904).
