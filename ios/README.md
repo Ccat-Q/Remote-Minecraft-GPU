@@ -80,6 +80,13 @@ Specify `linux_run_id` to reproduce against a particular successful bundle.
 If its artifact has expired, rerun the full Linux build; the gate fails with an
 explicit instruction rather than silently using an unverified dependency build.
 
+The native rendering gate passed at `5285a18` in
+[run 38204899580](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38204899580).
+Normal swaps emit four ordered PRESENTs without TRANSFER_GET; the separate
+application-readback case retrieves the red triangle center pixel with one
+TRANSFER_GET. This validates command execution by the shared native decoder on
+Linux, not the still-unconnected iPhone renderer adapter.
+
 The unsigned iPhoneOS arm64 IPA build passed in
 [run 38188117904](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38188117904).
 Download its `ios-interop-prototype-*` artifact, extract the unsigned IPA, sign

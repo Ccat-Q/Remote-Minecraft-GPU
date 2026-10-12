@@ -113,6 +113,15 @@ rebuild. This decoder is not yet an iOS EGL/presentation adapter: connection
 to QUIC, resource retention at PRESENT and asynchronous GPU/Metal completion
 remain required before the device can execute/display remote frames.
 
+The shared native endpoint passed the actual GL/QUIC gate in
+[run 38204899580](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38204899580)
+at source `5285a18` on `feature/native-vtest-adapter`. It produces four ordered
+PRESENT markers with zero TRANSFER_GET for normal swaps; explicit application
+readback returns the red center pixel with one TRANSFER_GET. The sanitizer
+contract tests and existing Go/Swift/Mesa checks passed in
+[CI run 38204899558](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38204899558).
+These are Linux software-renderer results, not iPhone hardware acceptance.
+
 GitHub Actions caches Go modules/build output using `go.sum`, SwiftPM's build
 and dependency directories using its resolved dependency manifest, the pinned
 Meson tool virtual environment, and the Mesa/virglrenderer compiler output
