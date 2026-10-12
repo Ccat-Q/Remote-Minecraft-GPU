@@ -47,6 +47,30 @@ completion to isolate IOSurface interoperability. Async presentation fences,
 remote resource lifetime management and guest capability testing belong to the
 subsequent renderer adapter gate; the probe is not the production frame loop.
 
+## Native vtest adapter gate
+
+`Renderer/RGPUVTestSession` implements the protocol-0, no-FD command decoder
+shared with `linux/tools/native-vtest-server.cpp`. It calls the public
+virglrenderer API for context/resource creation, caps, uploads, application
+readback, command submission and implicit fence polling. It accepts fragmented
+and coalesced byte streams, including unpadded TRANSFER_PUT data. Caps replies
+use the legacy byte-count convention; TRANSFER_GET replies are raw data.
+Protocol negotiation and commands outside IDs 1–9 fail closed. Launch Mesa
+with `REMOTEGPU_VTEST_LEGACY=1`. Zero-byte transfers are currently unsupported
+and explicitly fail; this needs a measured compatibility decision if encountered.
+
+The session must be created and destroyed inside the caller's initialized
+virglrenderer lifetime, on a single renderer thread. Its initialization cookie
+must forward `write_fence` to `fenceCompleted`. One session owns one context and
+its resource handles; it is not a multi-client resource namespace.
+
+Actions runs sanitizer-backed decoder tests and a real GL -> QUIC -> native
+decoder -> virglrenderer triangle/readback gate. The iPhone target compiles and
+links the same decoder but does not yet instantiate it. Connecting it requires
+EGL context callbacks, ordered resource retention at PRESENT, GPU-to-IOSurface
+copy and a queue-local fence poller. Do not connect it to the existing frame
+coordinator until that lifetime/presentation adapter is implemented.
+
 The unsigned iPhoneOS arm64 IPA build passed in
 [run 38188117904](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38188117904).
 Download its `ios-interop-prototype-*` artifact, extract the unsigned IPA, sign

@@ -22,7 +22,7 @@ def wait_socket(path, processes):
     raise TimeoutError(path)
 
 
-def run_case(stage, readback):
+def run_case(stage, readback, native=False):
     stage = stage.resolve()
     env = os.environ.copy()
     processes = []
@@ -47,7 +47,9 @@ def run_case(stage, readback):
             renderer_env = dict(env)
             virgl_lib = stage / "virglrenderer/lib/x86_64-linux-gnu"
             renderer_env["LD_LIBRARY_PATH"] = str(virgl_lib) + ":" + env.get("LD_LIBRARY_PATH", "")
-            start("renderer", [str(stage / "virglrenderer/bin/virgl_test_server"), "--no-fork", "--use-egl-surfaceless", "--use-gles", "--socket-path=" + renderer_socket], renderer_env)
+            renderer_command = ([str(stage / "bin/native-vtest-server"), renderer_socket] if native else
+                                [str(stage / "virglrenderer/bin/virgl_test_server"), "--no-fork", "--use-egl-surfaceless", "--use-gles", "--socket-path=" + renderer_socket])
+            start("renderer", renderer_command, renderer_env)
             proxy_process = start("proxy", [str(stage / "bin/remotegpu-proxy"), "-unix", proxy_socket, "-present-socket", present_socket, "-listen", address, "-cert", str(root / "cert.pem"), "-key", str(root / "key.pem"), "-pairing-token", "present-ci", "-stats-interval=10ms"])
             for path in (renderer_socket, proxy_socket, present_socket):
                 wait_socket(path, processes)
@@ -103,6 +105,7 @@ def run_case(stage, readback):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stage", type=Path)
+    parser.add_argument("--native", action="store_true", help="Use the shared iOS native vtest decoder")
     args = parser.parse_args()
-    run_case(args.stage, False)
-    run_case(args.stage, True)
+    run_case(args.stage, False, args.native)
+    run_case(args.stage, True, args.native)

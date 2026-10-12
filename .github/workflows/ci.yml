@@ -12,6 +12,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  native-vtest:
+    name: Native legacy vtest contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install API headers
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends libvirglrenderer-dev
+      - name: Build and exercise native decoder with sanitizers
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+            -Iios/Renderer ios/Renderer/RGPUVTestSession.cpp tests/native_vtest.cpp -o /tmp/native-vtest-contract
+          /tmp/native-vtest-contract
+
   ios-build-compatibility:
     name: Pinned iOS build compatibility
     runs-on: ubuntu-24.04

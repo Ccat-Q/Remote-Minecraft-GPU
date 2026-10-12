@@ -98,6 +98,9 @@ jobs:
           go build -trimpath -ldflags='-s -w' -o _stage/bin/remotegpu-vtest-receiver ./cmd/remotegpu-vtest-receiver
           cc -O2 -o _stage/bin/gl-capability tests/gl_capability.c -lglfw -lGLEW -lGL
           cc -O2 -o _stage/bin/gl-present tests/gl_present.c -lglfw -lGLEW -lGL
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iios/Renderer -I_stage/virglrenderer/include \
+            ios/Renderer/RGPUVTestSession.cpp linux/tools/native-vtest-server.cpp \
+            -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -o _stage/bin/native-vtest-server
           cp deploy/run-gl-capability.sh _stage/bin/run-gl-capability
           chmod +x _stage/bin/run-gl-capability
       - name: Run Mesa virpipe to virglrenderer GL capability gate
@@ -171,6 +174,8 @@ jobs:
           fi
       - name: Verify Mesa PRESENT without presentation readback
         run: python3 tests/mesa_present_gate.py _stage
+      - name: Verify native iOS vtest decoder with real GL through QUIC
+        run: python3 tests/mesa_present_gate.py _stage --native
       - name: Publish deployable Linux PoC bundle
         uses: actions/upload-artifact@v4
         with:
