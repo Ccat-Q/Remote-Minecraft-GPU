@@ -168,6 +168,9 @@ static GLuint compileShader(GLenum type, const char *source, NSError **error)
     [commands presentDrawable:drawable];
     [commands commit];
     _lastDisplay = commands;
+    [commands waitUntilCompleted];
+    if (commands.status != MTLCommandBufferStatusCompleted)
+        return probeError(error, commands.error.localizedDescription ?: @"Metal display command did not complete");
     return YES;
 }
 
