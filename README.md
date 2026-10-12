@@ -38,6 +38,16 @@ iOS ANGLE/IOSurface renderer remains an implementation milestone.
 
 Read [docs/architecture.md](docs/architecture.md) before building.
 
+The shared native protocol-0 decoder now lives in
+`ios/Renderer/RGPUVTestSession.cpp`. It calls virglrenderer directly and is
+exercised by sanitizer tests in CI. **Native vtest rendering gate** reuses a
+verified Linux PoC artifact and compiles only the adapter, then runs the real
+triangle and application-readback checks over QUIC. This avoids rebuilding
+Mesa/virglrenderer while iterating on the endpoint. See
+[ios/README.md](ios/README.md#native-vtest-adapter-gate) for its safety boundary.
+The iPhone probe compiles this module but has not yet connected it to QUIC or
+implemented retained-resource presentation; Minecraft is not functional yet.
+
 ## Fast path
 
 GitHub Actions performs compilation and tests. For deployment, obtain the

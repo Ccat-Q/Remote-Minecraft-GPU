@@ -103,6 +103,16 @@ All builds and compilation run in GitHub Actions. The Ubuntu server only runs
 downloaded CI artifacts and target-environment checks; it does not build Mesa,
 ANGLE, the proxy or the iOS application.
 
+The native protocol-0 endpoint is implemented in `RGPUVTestSession` and shared
+with a Linux diagnostic host. It supports context creation, capsets, resource
+create/unref, transfers, submit and implicit fences using public virglrenderer
+APIs; unsupported/FD-bearing extensions fail closed. CI checks parser safety
+with AddressSanitizer/UBSan. A separate lightweight rendering gate downloads
+the verified Linux bundle and compiles only the endpoint, avoiding a dependency
+rebuild. This decoder is not yet an iOS EGL/presentation adapter: connection
+to QUIC, resource retention at PRESENT and asynchronous GPU/Metal completion
+remain required before the device can execute/display remote frames.
+
 GitHub Actions caches Go modules/build output using `go.sum`, SwiftPM's build
 and dependency directories using its resolved dependency manifest, the pinned
 Meson tool virtual environment, and the Mesa/virglrenderer compiler output
