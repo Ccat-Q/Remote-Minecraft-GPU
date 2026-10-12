@@ -118,6 +118,14 @@ fails closed. The future frame loop must release after its GPU-to-IOSurface copy
 completes, or tear down the session on failure; these APIs alone are not a
 working asynchronous presentation adapter.
 
+Retention protects lifetime, not framebuffer contents. The future adapter must
+record the GPU-to-IOSurface snapshot at the ordered PRESENT marker, before
+allowing later commands to overwrite that resource. Merely pinning a texture
+and polling its fence while consuming later frames can display the wrong frame.
+Fence completion/Metal display callbacks must also continue being serviced when
+no further network messages arrive. Both conditions are frame-loop acceptance
+requirements, not guarantees made by this diagnostic.
+
 The unsigned iPhoneOS arm64 IPA build passed in
 [run 38188117904](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38188117904).
 Download its `ios-interop-prototype-*` artifact, extract the unsigned IPA, sign

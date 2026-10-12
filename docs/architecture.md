@@ -27,6 +27,14 @@ resource destruction from overtaking the marker and adds no phone/GPU round
 trip. The phone must still retain presentation resources through its renderer
 fence and Metal display submission.
 
+The native decoder now supports resource pinning through UNREF and a dedicated
+PRESENT fence. These mechanisms preserve resource lifetime and identify prior
+GPU work; they do not snapshot framebuffer contents. The iOS frame adapter must
+record its GPU-to-IOSurface copy at the ordered marker before consuming later
+writes to the same resource. Its local completion poller must run independently
+of incoming network messages. The native ANGLE context/caps diagnostic tests
+initialization only; this ordered snapshot/display adapter remains unimplemented.
+
 ## Wire format
 
 Every envelope is big-endian:
