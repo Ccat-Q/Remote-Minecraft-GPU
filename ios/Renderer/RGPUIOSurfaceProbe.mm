@@ -1,5 +1,5 @@
 #import "RGPUIOSurfaceProbe.h"
-#import <IOSurface/IOSurface.h>
+#import <CoreVideo/CoreVideo.h>
 #import <Metal/Metal.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -43,6 +43,7 @@ static GLuint compileShader(GLenum type, const char *source, NSError **error)
     EGLContext _context;
     EGLSurface _surface;
     IOSurfaceRef _iosurface;
+    CVPixelBufferRef _pixelBuffer;
     GLuint _program;
     CAMetalLayer *_layer;
     id<MTLTexture> _texture;
@@ -96,14 +97,16 @@ static GLuint compileShader(GLenum type, const char *source, NSError **error)
     _context = eglCreateContext(_display, config, EGL_NO_CONTEXT, contextAttributes);
     if (_context == EGL_NO_CONTEXT) { probeError(error, @"GLES3 context failed"); return nil; }
     NSDictionary *properties = @{
-        (__bridge NSString *)kIOSurfaceWidth: @1280,
-        (__bridge NSString *)kIOSurfaceHeight: @720,
-        (__bridge NSString *)kIOSurfaceBytesPerElement: @4,
-        (__bridge NSString *)kIOSurfaceBytesPerRow: @5120,
-        (__bridge NSString *)kIOSurfacePixelFormat: @(0x42475241) // BGRA
+        (__bridge NSString *)kCVPixelBufferIOSurfacePropertiesKey: @{},
+        (__bridge NSString *)kCVPixelBufferMetalCompatibilityKey: @YES,
+        (__bridge NSString *)kCVPixelBufferOpenGLESCompatibilityKey: @YES
     };
-    _iosurface = IOSurfaceCreate((__bridge CFDictionaryRef)properties);
-    if (!_iosurface) { probeError(error, @"IOSurface allocation failed"); return nil; }
+    CVReturn allocated = CVPixelBufferCreate(kCFAllocatorDefault, 1280, 720,
+                                              kCVPixelFormatType_32BGRA,
+                                              (__bridge CFDictionaryRef)properties, &_pixelBuffer);
+    if (allocated != kCVReturnSuccess) { probeError(error, @"Pixel buffer allocation failed"); return nil; }
+    _iosurface = CVPixelBufferGetIOSurface(_pixelBuffer); // Borrowed; pixelBuffer owns it.
+    if (!_iosurface) { probeError(error, @"Pixel buffer is not IOSurface-backed"); return nil; }
     const EGLint surfaceAttributes[] = {
         EGL_WIDTH, 1280, EGL_HEIGHT, 720, EGL_IOSURFACE_PLANE_ANGLE, 0,
         EGL_TEXTURE_TARGET, EGL_TEXTURE_2D, EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA,
@@ -188,6 +191,6 @@ static GLuint compileShader(GLenum type, const char *source, NSError **error)
         if (_context != EGL_NO_CONTEXT) eglDestroyContext(_display, _context);
         eglTerminate(_display);
     }
-    if (_iosurface) CFRelease(_iosurface);
+    if (_pixelBuffer) CVPixelBufferRelease(_pixelBuffer);
 }
 @end

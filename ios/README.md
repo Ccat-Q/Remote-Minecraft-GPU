@@ -38,6 +38,9 @@ publishes an unsigned IPA. It needs external device signing before installation;
 the repository contains no signing identity. Launch it on an iPhone and tap
 **Render Probe**; expect an orange triangle on a dark background and a capability
 report. Failures are shown in the report.
+The IOSurface is allocated through CoreVideo's public IOSurface-backed
+CVPixelBuffer APIs. The probe never locks or reads the pixel buffer's CPU base
+address; it keeps the buffer alive while EGL and Metal use the shared surface.
 
 This probe has no network or vtest adapter. It uses host-only synchronous GPU
 completion to isolate IOSurface interoperability. Async presentation fences,
