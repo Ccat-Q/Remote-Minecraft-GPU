@@ -23,6 +23,7 @@ int main(int argc, char** argv) {
             auto& owner = *static_cast<std::unique_ptr<rgpu::VTestSession>*>(cookie);
             if (owner) owner->fenceCompleted(fence);
         };
+        std::fprintf(stderr, "native vtest: initializing EGL renderer\n");
         if (virgl_renderer_init(&session, VIRGL_RENDERER_USE_EGL | VIRGL_RENDERER_USE_SURFACELESS | VIRGL_RENDERER_USE_GLES, &callbacks))
             throw std::runtime_error("renderer initialization failed");
         rendererInitialized = true;
@@ -33,6 +34,7 @@ int main(int argc, char** argv) {
         // Never unlink an existing user socket; use a private temporary path.
         if (listener < 0 || bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) || listen(listener, 1))
             throw std::runtime_error("socket setup failed");
+        std::fprintf(stderr, "native vtest: ready on %s\n", argv[1]);
         peer = accept(listener, nullptr, nullptr);
         if (peer < 0) throw std::runtime_error("accept failed");
         session = std::make_unique<rgpu::VTestSession>();

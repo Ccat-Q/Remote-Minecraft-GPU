@@ -12,7 +12,9 @@ import time
 
 
 def wait_socket(path, processes):
-    deadline = time.monotonic() + 10
+    # Cold software EGL/LLVM initialization on shared CI runners can exceed
+    # ten seconds. Keep this bounded and separate from the 45s render timeout.
+    deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         if any(p.poll() is not None for p in processes):
             raise RuntimeError("RemoteGPU gate process exited before socket ready")
