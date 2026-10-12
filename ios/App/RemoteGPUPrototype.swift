@@ -26,6 +26,9 @@ final class ProbeController: UIViewController {
     private var probe: RGPUIOSurfaceProbe?
     private var controls: [UIButton] = []
     private var nativeBusy = false
+    private var capabilityConnection: NativeCapabilityConnection?
+    private let connectButton = UIButton(type: .system)
+    private var shareControl: UIButton?
     private let rendererQueue = DispatchQueue(label: "org.remotegpu.native-gate", qos: .userInitiated)
 
     override func viewDidLoad() {
@@ -41,10 +44,13 @@ final class ProbeController: UIViewController {
         native.setTitle("VirGL Context + Caps", for: .normal)
         native.addTarget(self, action: #selector(nativeCaps), for: .touchUpInside)
         let share = UIButton(type: .system)
+        shareControl = share
         share.setTitle("Share Report", for: .normal)
         share.addTarget(self, action: #selector(shareReport), for: .touchUpInside)
-        controls = [button, native, share]
-        for item in [display, report, button, native, share] {
+        connectButton.setTitle("Connect Capability Probe", for: .normal)
+        connectButton.addTarget(self, action: #selector(connectCapability), for: .touchUpInside)
+        controls = [button, native, share, connectButton]
+        for item in [display, report, button, native, share, connectButton] {
             item.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(item)
         }
@@ -59,15 +65,65 @@ final class ProbeController: UIViewController {
             native.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             share.topAnchor.constraint(equalTo: native.bottomAnchor, constant: 8),
             share.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            report.topAnchor.constraint(equalTo: share.bottomAnchor, constant: 12),
+            connectButton.topAnchor.constraint(equalTo: share.bottomAnchor, constant: 8),
+            connectButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            report.topAnchor.constraint(equalTo: connectButton.bottomAnchor, constant: 12),
             report.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             report.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             report.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
     }
 
+    @objc private func connectCapability() {
+        if let connection = capabilityConnection {
+            connectButton.isEnabled = false
+            connection.stop()
+            return
+        }
+        guard !nativeBusy else { return }
+        let form = UIAlertController(title: "Ubuntu capability probe", message: "Use a hostname/certificate trusted by iOS. UDP port must be reachable. This mode rejects PRESENT and GPU readback.", preferredStyle: .alert)
+        form.addTextField { field in
+            field.placeholder = "Ubuntu TLS hostname"
+            field.autocapitalizationType = .none
+            field.autocorrectionType = .no
+        }
+        form.addTextField { field in field.placeholder = "UDP port"; field.text = "4433"; field.keyboardType = .numberPad }
+        form.addTextField { field in field.placeholder = "Pairing token"; field.isSecureTextEntry = true }
+        form.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        form.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self, weak form] _ in
+            guard let self, let fields = form?.textFields,
+                  let host = fields[0].text?.trimmingCharacters(in: .whitespacesAndNewlines), !host.isEmpty,
+                  let portText = fields[1].text, let port = UInt16(portText), port != 0,
+                  let token = fields[2].text, !token.isEmpty else {
+                self?.report.text = "Hostname, valid UDP port and pairing token are required."
+                return
+            }
+            self.probe = nil
+            self.nativeBusy = true
+            self.controls.forEach { $0.isEnabled = false }
+            self.connectButton.isEnabled = true
+            self.connectButton.setTitle("Disconnect Capability Probe", for: .normal)
+            let connection = NativeCapabilityConnection(host: host, port: port, token: token)
+            self.capabilityConnection = connection
+            connection.onReport = { [weak self] text, finished in
+                guard let self else { return }
+                self.report.text = text
+                // Report sharing is safe during a session; it contains no token.
+                self.shareControl?.isEnabled = true
+                if finished {
+                    self.capabilityConnection = nil
+                    self.nativeBusy = false
+                    self.controls.forEach { $0.isEnabled = true }
+                    self.connectButton.setTitle("Connect Capability Probe", for: .normal)
+                }
+            }
+            connection.start()
+        })
+        present(form, animated: true)
+    }
+
     @objc private func shareReport(_ sender: UIButton) {
-        guard !nativeBusy, let text = report.text, !text.isEmpty else { return }
+        guard let text = report.text, !text.isEmpty else { return }
         let sheet = UIActivityViewController(activityItems: [text], applicationActivities: nil)
         sheet.popoverPresentationController?.sourceView = sender
         sheet.popoverPresentationController?.sourceRect = sender.bounds

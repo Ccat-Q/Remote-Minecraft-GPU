@@ -19,6 +19,7 @@ final class RemoteGPUQUICRenderConnection: @unchecked Sendable {
     private let queue = DispatchQueue(label: "org.remotegpu.render", qos: .userInteractive)
     private let pairingToken: Data
     private let decoder = RemoteGPUStreamDecoder()
+    private var stopped = false // Accessed only on queue.
 
     var onEvent: ((RemoteGPUConnectionEvent) -> Void)?
 
@@ -53,7 +54,12 @@ final class RemoteGPUQUICRenderConnection: @unchecked Sendable {
         connection.start(queue: queue)
     }
 
-    func close() { connection.cancel() }
+    func close() {
+        queue.async {
+            self.stopped = true
+            self.connection.cancel()
+        }
+    }
 
     func sendVTestReply(sequence: UInt64, bytes: Data) {
         send(RemoteGPUVTestChunk(sequence: sequence, bytes: bytes).envelope)
@@ -66,12 +72,14 @@ final class RemoteGPUQUICRenderConnection: @unchecked Sendable {
     }
 
     private func receiveNext() {
+        guard !stopped else { return }
         connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, complete, error in
             guard let self else { return }
             if let error { self.onEvent?(.failed(error)); return }
             if let data {
                 do {
                     for envelope in try self.decoder.feed(data) {
+                        guard !self.stopped else { return }
                         self.onEvent?(.envelope(envelope))
                     }
                 } catch {

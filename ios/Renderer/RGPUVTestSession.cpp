@@ -40,7 +40,7 @@ void validateHeader(uint32_t command, uint32_t length) {
 }
 }
 
-VTestSession::VTestSession(uint32_t context) : context_(context) {
+VTestSession::VTestSession(uint32_t context, bool allowReadbacks) : context_(context), allowReadbacks_(allowReadbacks) {
     require(context != 0, "vtest context must be nonzero");
 }
 VTestSession::~VTestSession() {
@@ -194,6 +194,7 @@ std::vector<uint8_t> VTestSession::execute(uint32_t command, const uint8_t* data
         break;
     }
     case 4: case 5: {
+        require(command != 4 || allowReadbacks_, "TRANSFER_GET disabled in capability-only endpoint");
         require(size >= 44 && resources_.count(word(data)) && !retired_.count(word(data)), "invalid transfer resource");
         const uint32_t bytes = word(data + 40);
         require(bytes > 0 && bytes <= limit - 52, "unsupported zero/oversized transfer");

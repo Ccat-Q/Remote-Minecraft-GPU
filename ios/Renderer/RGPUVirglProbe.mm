@@ -19,6 +19,7 @@ public:
     EGLConfig config = nullptr;
     EGLSurface surface = EGL_NO_SURFACE;
     EGLContext root = EGL_NO_CONTEXT;
+    EGLContext suspendedContext = EGL_NO_CONTEXT;
     std::vector<EGLContext> contexts;
     std::unique_ptr<rgpu::VTestSession> session;
     virgl_renderer_callbacks callbacks{}; // Outlives virgl_renderer_init.
@@ -26,7 +27,7 @@ public:
     int lastMajor = 0, lastMinor = 0;
     EGLint lastContextError = EGL_SUCCESS;
 
-    void initialize() {
+    void initialize(bool allowReadbacks = true) {
         auto platform = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(eglGetProcAddress("eglGetPlatformDisplayEXT"));
         if (!platform) throw std::runtime_error("ANGLE platform API unavailable");
         const EGLint attributes[] = {EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE};
@@ -70,7 +71,10 @@ public:
         callbacks.make_current = [](void* cookie, int, void* context) -> int {
             auto& host = *static_cast<ANGLEHost*>(cookie);
             const auto surface = context ? host.surface : EGL_NO_SURFACE;
-            if (eglMakeCurrent(host.display, surface, surface, context)) return 0;
+            if (eglMakeCurrent(host.display, surface, surface, context)) {
+                host.suspendedContext = context;
+                return 0;
+            }
             host.lastContextError = eglGetError();
             return -1;
         };
@@ -79,6 +83,7 @@ public:
             if (eglGetCurrentContext() == context)
                 eglMakeCurrent(host.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
             eglDestroyContext(host.display, context);
+            if (host.suspendedContext == context) host.suspendedContext = EGL_NO_CONTEXT;
             host.contexts.erase(std::remove(host.contexts.begin(), host.contexts.end(), context), host.contexts.end());
             if (host.root == context) host.root = EGL_NO_CONTEXT;
         };
@@ -96,9 +101,24 @@ public:
             throw std::runtime_error(message);
         }
         initialized = true;
-        session = std::make_unique<rgpu::VTestSession>();
+        session = std::make_unique<rgpu::VTestSession>(1, allowReadbacks);
+    }
+    void resume() {
+        const auto target = suspendedContext == EGL_NO_CONTEXT ? EGL_NO_SURFACE : surface;
+        if (!eglBindAPI(EGL_OPENGL_ES_API) ||
+            !eglMakeCurrent(display, target, target, suspendedContext))
+            throw std::runtime_error("Cannot restore native EGL context on renderer queue");
+    }
+    void suspend() {
+        if (!eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT))
+            throw std::runtime_error("Cannot unbind native EGL context from renderer queue");
     }
     ~ANGLEHost() {
+        // Dispatch queues serialize work but do not guarantee a fixed OS
+        // thread. Restore EGL before deleting session-owned GL resources.
+        if (initialized) {
+            try { resume(); } catch (...) {}
+        }
         session.reset();
         if (initialized) virgl_renderer_cleanup(this);
         if (display != EGL_NO_DISPLAY) {
@@ -153,6 +173,58 @@ NSString* glName(GLenum name) {
         if (error) *error = [NSError errorWithDomain:@"org.remotegpu.virgl" code:1
             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithUTF8String:failure.what()]}];
         return nil;
+    }
+}
+@end
+
+@implementation RGPUVTestEndpoint {
+    std::unique_ptr<ANGLEHost> _host;
+}
++ (instancetype)createWithError:(NSError **)error
+{
+    try {
+        RGPUVTestEndpoint *endpoint = [[self alloc] init];
+        endpoint->_host = std::make_unique<ANGLEHost>();
+        endpoint->_host->initialize(false);
+        endpoint->_host->suspend();
+        return endpoint;
+    } catch (const std::exception& failure) {
+        if (error) *error = [NSError errorWithDomain:@"org.remotegpu.endpoint" code:1
+            userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithUTF8String:failure.what()]}];
+        return nil;
+    }
+}
+- (NSArray<NSData *> *)submitVTest:(NSData *)bytes error:(NSError **)error
+{
+    try {
+        if (!_host) throw std::runtime_error("Native endpoint is not initialized");
+        _host->resume();
+        auto replies = _host->session->feed(static_cast<const uint8_t*>(bytes.bytes), bytes.length);
+        NSMutableArray<NSData *> *result = [NSMutableArray arrayWithCapacity:replies.size()];
+        for (const auto& reply : replies)
+            [result addObject:[NSData dataWithBytes:reply.data() length:reply.size()]];
+        _host->suspend();
+        return result;
+    } catch (const std::exception& failure) {
+        // Even failure must release EGL thread ownership before queue cleanup.
+        if (_host) { try { _host->suspend(); } catch (...) {} }
+        if (error) *error = [NSError errorWithDomain:@"org.remotegpu.endpoint" code:2
+            userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithUTF8String:failure.what()]}];
+        return nil;
+    }
+}
+- (NSString *)hostReport
+{
+    if (!_host) return @"Native endpoint unavailable";
+    try {
+        _host->resume();
+        NSString *result = [NSString stringWithFormat:@"Host GL: %@\nHost GLSL: %@\nRenderer: %@\nGuest GL 3.2 Core must be reported by Ubuntu, not inferred here.",
+            glName(GL_VERSION), glName(GL_SHADING_LANGUAGE_VERSION), glName(GL_RENDERER)];
+        _host->suspend();
+        return result;
+    } catch (...) {
+        try { _host->suspend(); } catch (...) {}
+        return @"Cannot query host context";
     }
 }
 @end

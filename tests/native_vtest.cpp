@@ -116,5 +116,15 @@ int main() {
         // A reconnect/disconnect releases pinned resources even after failure.
     }
     assert(resources == 0);
+    {
+        rgpu::VTestSession session(1, false);
+        auto data = create(); command(data, 2, {9, 0, 0, 0, 1, 1, 1, 1, 0, 0});
+        command(data, 4, {9, 0, 0, 0, 0, 0, 0, 3, 1, 1, 3});
+        try { session.feed(data.data(), data.size()); assert(false); }
+        catch (const std::runtime_error& failure) {
+            assert(std::string(failure.what()).find("TRANSFER_GET disabled") != std::string::npos);
+        }
+    }
+    assert(resources == 0);
     std::cout << "PASS: fragmented/coalesced legacy vtest, caps bytes, unpadded PUT, raw GET, fences, fail-closed\n";
 }

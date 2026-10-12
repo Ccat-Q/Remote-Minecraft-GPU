@@ -48,6 +48,7 @@ static GLuint compileShader(GLenum type, const char *source, NSError **error)
     CAMetalLayer *_layer;
     id<MTLTexture> _texture;
     id<MTLCommandQueue> _queue;
+    id<MTLRenderPipelineState> _displayPipeline;
     id<MTLCommandBuffer> _lastDisplay;
 }
 
@@ -67,6 +68,23 @@ static GLuint compileShader(GLenum type, const char *source, NSError **error)
     layer.drawableSize = CGSizeMake(1280, 720);
     _queue = [device newCommandQueue];
     if (!_queue) { probeError(error, @"Cannot create Metal queue"); return nil; }
+    NSString *displayShader = @"#include <metal_stdlib>\nusing namespace metal;\n"
+        "struct V { float4 position [[position]]; float2 uv; };\n"
+        "vertex V displayVertex(uint id [[vertex_id]]) {\n"
+        "const float2 p[3]={float2(-1,-1),float2(3,-1),float2(-1,3)};\n"
+        "V o; o.position=float4(p[id],0,1); o.uv=(p[id]+1)*0.5; return o; }\n"
+        "fragment float4 displayFragment(V in [[stage_in]], texture2d<float> image [[texture(0)]]) {\n"
+        "constexpr sampler s(coord::normalized, address::clamp_to_edge, filter::nearest);\n"
+        "return image.sample(s,in.uv); }\n";
+    NSError *shaderError = nil;
+    id<MTLLibrary> library = [device newLibraryWithSource:displayShader options:nil error:&shaderError];
+    if (!library) { probeError(error, shaderError.localizedDescription ?: @"Metal display shader failed"); return nil; }
+    MTLRenderPipelineDescriptor *pipeline = [MTLRenderPipelineDescriptor new];
+    pipeline.vertexFunction = [library newFunctionWithName:@"displayVertex"];
+    pipeline.fragmentFunction = [library newFunctionWithName:@"displayFragment"];
+    pipeline.colorAttachments[0].pixelFormat = layer.pixelFormat;
+    _displayPipeline = [device newRenderPipelineStateWithDescriptor:pipeline error:&shaderError];
+    if (!_displayPipeline) { probeError(error, shaderError.localizedDescription ?: @"Metal display pipeline failed"); return nil; }
 
     auto platformDisplay = (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress("eglGetPlatformDisplayEXT");
     const EGLint displayAttributes[] = {
@@ -162,12 +180,19 @@ static GLuint compileShader(GLenum type, const char *source, NSError **error)
     id<CAMetalDrawable> drawable = [_layer nextDrawable];
     if (!drawable) return probeError(error, @"Metal drawable unavailable");
     id<MTLCommandBuffer> commands = [_queue commandBuffer];
-    id<MTLBlitCommandEncoder> copy = [commands blitCommandEncoder];
-    if (!commands || !copy) return probeError(error, @"Metal blit encoder failed");
-    [copy copyFromTexture:_texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
-              sourceSize:MTLSizeMake(1280, 720, 1) toTexture:drawable.texture destinationSlice:0
-        destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
-    [copy endEncoding];
+    MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.colorAttachments[0].texture = drawable.texture;
+    pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    pass.colorAttachments[0].clearColor = MTLClearColorMake(0.02, 0.04, 0.08, 1);
+    id<MTLRenderCommandEncoder> display = [commands renderCommandEncoderWithDescriptor:pass];
+    if (!commands || !display) return probeError(error, @"Metal display encoder failed");
+    // Metal's framebuffer row 0 is the top; GL's surface origin is bottom-left.
+    // Sampling uv.y=(position.y+1)/2 applies the single required vertical flip.
+    [display setRenderPipelineState:_displayPipeline];
+    [display setFragmentTexture:_texture atIndex:0];
+    [display drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+    [display endEncoding];
     [commands presentDrawable:drawable];
     [commands commit];
     _lastDisplay = commands;

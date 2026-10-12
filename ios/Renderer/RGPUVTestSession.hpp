@@ -13,7 +13,7 @@ namespace rgpu {
 // No Unix descriptor/shared-memory protocol extensions are accepted.
 class VTestSession {
 public:
-    explicit VTestSession(uint32_t context = 1);
+    explicit VTestSession(uint32_t context = 1, bool allowReadbacks = true);
     ~VTestSession();
     VTestSession(const VTestSession&) = delete;
     VTestSession& operator=(const VTestSession&) = delete;
@@ -32,6 +32,7 @@ private:
     std::vector<uint8_t> execute(uint32_t command, const uint8_t* data, size_t size);
     uint32_t context_, submitted_ = 0, completed_ = 0;
     bool initialized_ = false, failed_ = false;
+    bool allowReadbacks_;
     std::vector<uint8_t> pending_;
     std::unordered_set<uint32_t> resources_;
     std::unordered_set<uint32_t> retired_;

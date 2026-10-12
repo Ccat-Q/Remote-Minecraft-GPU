@@ -19,6 +19,7 @@ targets:
     sources:
       - App
       - Renderer
+      - RemoteGPU
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.remotegpu.prototype
@@ -28,6 +29,7 @@ targets:
       properties:
         CFBundleDisplayName: RemoteGPU Probe
         UILaunchScreen: {}
+        NSLocalNetworkUsageDescription: Connect to your Ubuntu RemoteGPU proxy for GPU capability testing.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
     dependencies:
