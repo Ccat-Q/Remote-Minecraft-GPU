@@ -92,7 +92,7 @@ public:
             char message[256];
             std::snprintf(message, sizeof(message),
                 "virglrenderer ANGLE initialization failed; last context attempt %d.%d, EGL error 0x%x",
-                lastMajor, lastMinor, lastContextError);
+                lastMajor, lastMinor, static_cast<unsigned>(lastContextError));
             throw std::runtime_error(message);
         }
         initialized = true;

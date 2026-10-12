@@ -25,7 +25,7 @@ final class RemoteGPUProtocolTests: XCTestCase {
             var encoded = value.bigEndian
             withUnsafeBytes(of: &encoded) { bytes.append(contentsOf: $0) }
         }
-        for value: UInt32 in [0, 0, 0, 0, 64, 64] {
+        for value in [UInt32(0), 0, 0, 0, 64, 64] {
             var encoded = value.bigEndian
             withUnsafeBytes(of: &encoded) { bytes.append(contentsOf: $0) }
         }
