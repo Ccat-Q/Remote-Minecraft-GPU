@@ -1,6 +1,6 @@
 #include "RGPUVTestSession.hpp"
 
-#include <virgl/virglrenderer.h>
+#include "RGPUVirglAPI.hpp"
 #include <sys/uio.h>
 #include <chrono>
 #include <algorithm>
@@ -8,11 +8,6 @@
 #include <limits>
 #include <stdexcept>
 #include <thread>
-
-// Public virglrenderer.h forward-declares this argument but does not install
-// virgl_hw.h. ABI from pinned UTM virglrenderer 482f9d8 src/virgl_hw.h.
-struct virgl_box { uint32_t x, y, z, w, h, d; };
-static_assert(sizeof(virgl_box) == 24, "virgl transfer box ABI");
 
 namespace rgpu {
 namespace {

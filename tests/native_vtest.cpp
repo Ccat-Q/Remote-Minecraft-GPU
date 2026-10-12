@@ -1,5 +1,5 @@
 #include "RGPUVTestSession.hpp"
-#include <virgl/virglrenderer.h>
+#include "RGPUVirglAPI.hpp"
 #include <sys/uio.h>
 #include <cassert>
 #include <cstring>

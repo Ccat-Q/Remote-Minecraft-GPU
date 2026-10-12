@@ -1,7 +1,7 @@
 // Diagnostic host for the SAME native decoder used by the iOS renderer.
 // A Unix socket here isolates protocol validation; production iOS uses QUIC.
 #include "RGPUVTestSession.hpp"
-#include <virgl/virglrenderer.h>
+#include "RGPUVirglAPI.hpp"
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
