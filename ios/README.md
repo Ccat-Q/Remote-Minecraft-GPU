@@ -26,7 +26,8 @@ The first implementation gate is a captured vtest trace replay plus the GL
 
 `App/` and `Renderer/RGPUIOSurfaceProbe` contain a one-shot device diagnostic:
 ANGLE Metal draws a triangle into an IOSurface-backed EGL pbuffer, Metal wraps
-the same IOSurface and blits it into a CAMetalLayer drawable. No pixel readback
+the same IOSurface and samples it into a CAMetalLayer drawable with a vertical
+coordinate correction. No pixel readback
 or CPU framebuffer copy is used. The device displays host GLES/GLSL/renderer
 strings. These host strings do not prove guest OpenGL 3.2 Core support.
 
@@ -60,15 +61,15 @@ with `REMOTEGPU_VTEST_LEGACY=1`. Zero-byte transfers are currently unsupported
 and explicitly fail; this needs a measured compatibility decision if encountered.
 
 The session must be created and destroyed inside the caller's initialized
-virglrenderer lifetime, on a single renderer thread. Its initialization cookie
+virglrenderer lifetime, with all calls serialized. Its initialization cookie
 must forward `write_fence` to `fenceCompleted`. One session owns one context and
 its resource handles; it is not a multi-client resource namespace.
 
 Actions runs sanitizer-backed decoder tests and a real GL -> QUIC -> native
 decoder -> virglrenderer triangle/readback gate. The iPhone target compiles and
-links the same decoder but does not yet instantiate it. Connecting it requires
-EGL context callbacks, ordered resource retention at PRESENT, GPU-to-IOSurface
-copy and a queue-local fence poller. Do not connect it to the existing frame
+links and instantiates the same decoder for native/network capability probes.
+Remote display still requires ordered resource retention at PRESENT,
+GPU-to-IOSurface copy and a queue-local fence poller. Do not connect it to the existing frame
 coordinator until that lifetime/presentation adapter is implemented.
 
 For fast iterations, **Native vtest rendering gate** downloads a successful
@@ -95,6 +96,13 @@ ANGLE Metal. It uses a 1x1 control pbuffer, feeds CREATE_RENDERER/GET_CAPS2/
 GET_CAPS through the native decoder, and reports host strings and full base64
 capsets. It does not run a guest OpenGL program or display a remote framebuffer;
 capset availability is not acceptance of guest OpenGL 3.2 Core.
+
+On the user's iPhone 17 / iOS 27.0.1, the native context/caps probe passed and
+the host IOSurface triangle was visible, but vertically inverted. The display
+probe now uses a Metal sampling pass instead of a direct blit; the corrected
+orientation needs another device check. Reported host GLES is 3.0, and the
+decoded capset-1 guest GLSL feature level is 130: the Minecraft capability gate
+has not passed and must not be bypassed by version overrides.
 
 Initialization and cleanup run on one serial background queue. The host triangle
 probe is destroyed first, and both buttons are disabled until the native gate

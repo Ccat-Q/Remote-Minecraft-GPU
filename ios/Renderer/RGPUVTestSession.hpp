@@ -8,7 +8,8 @@
 
 namespace rgpu {
 // Owns one legacy vtest context. The caller owns virgl_renderer_init/cleanup
-// and invokes this object, poll and fenceCompleted on one renderer thread.
+// and serializes this object, poll and fenceCompleted. If callers migrate OS
+// threads, their EGL provider must restore/unbind the context on each call.
 // The init cookie's write_fence callback must call fenceCompleted.
 // No Unix descriptor/shared-memory protocol extensions are accepted.
 class VTestSession {
