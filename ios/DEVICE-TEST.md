@@ -43,7 +43,45 @@ must connect Mesa virpipe from Ubuntu and create that exact Core context through
 the iPhone renderer. This is necessary before Minecraft, **not** before route
 A's low-capability remote triangle. No JVM/Minecraft launcher belongs here.
 
-## Route A: Remote PRESENT (planned, not available in current UI)
+## A2.0 single-frame VirGL resource interop
+
+Build **Build iOS interop prototype** on `feature/a2-single-frame-interop`, with
+explicit `renderer_run_id=38206257487`. The artifact name includes the app SHA;
+do not install an older main-branch IPA. Sign the IPA **and all embedded
+frameworks** as above. Compilation is not device acceptance.
+
+Tap **A2.0 VirGL Resource → IOSurface** (not Render Probe). It runs a one-shot
+native vtest resource fixture, not a network session. The source image is made
+by VirGL GPU clear/copy commands, not by local GLES triangle drawing.
+
+Expected image on a dark 640x360 background:
+
+- Upper-left: RED, tall rectangle (160x108).
+- Upper-right: GREEN, short rectangle (140x60).
+- Lower-left: BLUE, small rectangle (100x80).
+- Lower-right: YELLOW, wide rectangle (220x100), with dark margins.
+
+Check all colors, relative positions, edge/margin sizes and absence of flipped,
+stretched or stale triangle content. Metal applies the existing single
+orientation transform; the GPU copy does not flip or manually swap channels.
+
+Share the **entire report and screenshot**. Report must show actual app/source
+and renderer provenance, device/OS, resource 42 / format 67 / 640x360 / flags 0,
+shared texture visibility, complete source/destination FBOs, GL/EGL success,
+producer and copy fence completion, Metal COMPLETED, pin/final-release/handle
+reuse and teardown. `TECHNICAL CHECKS COMPLETED` alone is not visual acceptance.
+Any failure must preserve its stage/errors; never retry via CPU framebuffer.
+
+Repeat five times and alternate with **VirGL Context + Caps** / **Render Probe**.
+Report crashes, hangs, corruption and whether last image remains visible after
+the report returns. This exercises teardown; sustained leak/thermal profiling
+and continuous remote PRESENT remain separate future tests. No Ubuntu session,
+Minecraft, or network configuration is needed for A2.0.
+
+Source/interface details and CI-only readback boundary:
+[A2.0 implementation](../docs/a2-single-frame-interop.md).
+
+## Route A: continuous Remote PRESENT (planned, not available in current UI)
 
 Follow [route A tasks](../docs/next-stage-plan.md#route-a-remote-present-poc).
 Use a new Actions-built low-capability demo, preserving existing Core/GLSL 150

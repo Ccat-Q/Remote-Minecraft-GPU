@@ -11,4 +11,5 @@ server.key
 /_build/
 /_stage/
 /ios/Generated/
+/ios/App/RGPUProvenance.json
 /ios/RemoteGPUPrototype.xcodeproj/

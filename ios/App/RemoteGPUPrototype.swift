@@ -43,14 +43,17 @@ final class ProbeController: UIViewController {
         let native = UIButton(type: .system)
         native.setTitle("VirGL Context + Caps", for: .normal)
         native.addTarget(self, action: #selector(nativeCaps), for: .touchUpInside)
+        let interop = UIButton(type: .system)
+        interop.setTitle("A2.0 VirGL Resource → IOSurface", for: .normal)
+        interop.addTarget(self, action: #selector(resourceInterop), for: .touchUpInside)
         let share = UIButton(type: .system)
         shareControl = share
         share.setTitle("Share Report", for: .normal)
         share.addTarget(self, action: #selector(shareReport), for: .touchUpInside)
         connectButton.setTitle("Connect Capability Probe", for: .normal)
         connectButton.addTarget(self, action: #selector(connectCapability), for: .touchUpInside)
-        controls = [button, native, share, connectButton]
-        for item in [display, report, button, native, share, connectButton] {
+        controls = [button, native, interop, share, connectButton]
+        for item in [display, report, button, native, interop, share, connectButton] {
             item.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(item)
         }
@@ -63,7 +66,9 @@ final class ProbeController: UIViewController {
             button.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             native.topAnchor.constraint(equalTo: button.bottomAnchor, constant: 8),
             native.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            share.topAnchor.constraint(equalTo: native.bottomAnchor, constant: 8),
+            interop.topAnchor.constraint(equalTo: native.bottomAnchor, constant: 8),
+            interop.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            share.topAnchor.constraint(equalTo: interop.bottomAnchor, constant: 8),
             share.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             connectButton.topAnchor.constraint(equalTo: share.bottomAnchor, constant: 8),
             connectButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -146,6 +151,24 @@ final class ProbeController: UIViewController {
                 guard let self else { return }
                 do { self.report.text = try result.get() }
                 catch { self.report.text = "NATIVE GATE FAILED: \(error.localizedDescription)" }
+                self.nativeBusy = false
+                self.controls.forEach { $0.isEnabled = true }
+            }
+        }
+    }
+
+    @objc private func resourceInterop() {
+        guard !nativeBusy else { return }
+        probe = nil // Tear down the separate local-triangle display first.
+        nativeBusy = true
+        controls.forEach { $0.isEnabled = false }
+        let layer = display.metalLayer
+        report.text = "A2.0: generating asymmetric content with VirGL GPU commands, testing shared-context copy…"
+        rendererQueue.async {
+            let result = RGPURemotePresent.run(layer: layer)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.report.text = result
                 self.nativeBusy = false
                 self.controls.forEach { $0.isEnabled = true }
             }

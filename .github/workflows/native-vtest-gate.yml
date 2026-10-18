@@ -10,6 +10,8 @@ on:
       - tests/gl_remote_present.c
       - tests/mesa_present_gate.py
       - tests/native_vtest_lifetime.cpp
+      - tests/a2_virgl_pattern.cpp
+      - ios/Renderer/RGPUVirglPattern.hpp
       - .github/workflows/native-vtest-gate.yml
   workflow_dispatch:
     inputs:
@@ -28,7 +30,9 @@ jobs:
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
-      LINUX_RUN_ID: ${{ inputs.linux_run_id }}
+      # Exact retained dependency bundle used by accepted A1; never silently
+      # select a different latest-main build for the A2 fixture/regressions.
+      LINUX_RUN_ID: ${{ inputs.linux_run_id || '38186021966' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -64,6 +68,9 @@ jobs:
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iios/Renderer -I_stage/virglrenderer/include \
             ios/Renderer/RGPUVTestSession.cpp tests/native_vtest_lifetime.cpp \
             -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -o _stage/bin/native-vtest-lifetime
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iios/Renderer -I_stage/virglrenderer/include \
+            ios/Renderer/RGPUVTestSession.cpp tests/a2_virgl_pattern.cpp \
+            -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -o _stage/bin/a2-virgl-pattern
           cc -std=c11 -O2 -Wall -Wextra -Werror tests/gl_remote_present.c -lglfw -lGLEW -lGL -lm -o _stage/bin/gl-remote-present
           go build -trimpath -o _stage/bin/remotegpu-vtest-receiver ./cmd/remotegpu-vtest-receiver
       - name: Verify real renderer presentation resource lifetime
@@ -75,6 +82,11 @@ jobs:
         run: |
           set -o pipefail
           python3 tests/mesa_present_gate.py _stage --native 2>&1 | tee native-vtest-gate.log
+      - name: Verify A2 VirGL GPU pattern and retained resource
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="$GITHUB_WORKSPACE/_stage/virglrenderer/lib/x86_64-linux-gnu" \
+            timeout 45s _stage/bin/a2-virgl-pattern 2>&1 | tee a2-virgl-pattern.log
       - name: Verify A1 dynamic receiver pixels and negative controls
         run: |
           set -o pipefail
@@ -97,6 +109,7 @@ jobs:
             native-vtest-gate.log
             native-vtest-lifetime.log
             a1-dynamic-present.log
+            a2-virgl-pattern.log
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: success()
