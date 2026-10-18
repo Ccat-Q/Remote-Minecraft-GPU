@@ -41,6 +41,7 @@ class FrameVerifier {
         if (std::getenv("REMOTEGPU_TEST_SHARED_SCANOUT")) {
             require(info.flags == 0 && info.virgl_format == 1, "A1 shared scanout profile changed");
             auto pixels = testSharedWindowSnapshot(info);
+            ++readbacks_; // CI-only glReadPixels of the GPU snapshot, never wire GET.
             std::fprintf(stderr, "TEST_GPU_SCANOUT resource=%u shared_context=1 source_y_normalized=1 fence_complete=1\n", resource);
             return pixels;
         }

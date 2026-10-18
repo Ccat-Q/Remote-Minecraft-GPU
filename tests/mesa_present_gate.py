@@ -109,6 +109,11 @@ def run_case(stage, readback, native=False, dynamic_frames=0, fault=None, shared
                     frames = re.findall(r"ORACLE_FRAME app_frame=(\d+) ", renderer_log)
                     if frames != [str(i) for i in range(dynamic_frames)] or not hold_seen or f"ORACLE_PASS frames={dynamic_frames} " not in renderer_log or renderer_process.returncode:
                         raise AssertionError("Native pixel/hold acceptance missing: " + renderer_log)
+                    if shared_scanout:
+                        reads = re.search(r"ORACLE_PASS frames=\d+ test_side_readbacks=(\d+)", renderer_log)
+                        snapshots = renderer_log.count("TEST_GPU_SCANOUT resource=")
+                        if not reads or int(reads[1]) != snapshots or snapshots <= dynamic_frames:
+                            raise AssertionError("GPU snapshot test-side readback accounting incorrect: " + renderer_log)
             else:
                 result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=45)
             print(result.stdout, end="")
