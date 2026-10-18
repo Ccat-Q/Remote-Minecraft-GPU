@@ -46,8 +46,9 @@ No new renderer, Mesa patch, PRESENT wire layout, ACK, DNS or deployment change.
   oracle demonstrates), unlike A2.0's raw-GL fixture coordinates. Explicitly
   invert source Y in the GPU blit for the window, then reuse the accepted
   IOSurface/Metal orientation shader unchanged. flags=0 alone must not be used
-  to infer which producer coordinate convention was used. BGRA8 on iPhone needs its own
-  A2.1 screenshot; Linux success is not that evidence.
+  to infer which producer coordinate convention was used. The accepted A2.1
+  screenshot now verifies BGRA8 on iPhone for ONE frame; Linux success alone
+  is not that evidence and does not accept 7/12-frame display.
 - At PRESENT, native code pins the source and captures a dedicated fence.
   It independently polls producer completion, takes the GPU snapshot, waits
   for copy completion, releases the pin and displays via Metal. Only then can
@@ -75,7 +76,9 @@ No new renderer, Mesa patch, PRESENT wire layout, ACK, DNS or deployment change.
 - Each native/Metal completion emits `A21_FRAME`, never merely upon receipt.
   A session-local monotonic clock records durations; these are NOT Ubuntu-to-
   phone latency measurements. `A21_HOLD` reports quiet time since the latest
-  completion OR vtest data. A timer works without new data; at >=120 s a
+  completion OR render-stream data, including incomplete envelopes. Partial
+  activity is coalesced under a lock, not one queued renderer task per packet.
+  Quiet duration is truncated (never rounded up to 120). A timer works without new data; at >=120 s a
   bounded checkpoint is retained. This is liveness observation, not pixel
   inspection. Foreground display mode prevents auto-lock; backgrounding cancels
   the test. No claim is made about background/suspension recovery.

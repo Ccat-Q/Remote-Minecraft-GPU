@@ -7,7 +7,9 @@ screenshot confirms corrected upward orientation. Native context/caps PASS,
 GLES 3.0 works, and GLES 3.1/3.2 requests are rejected with EGL 0x3004. Guest
 GLSL is 130 in both capsets, below the planned 150 threshold. These are local
 observations, not remote draw or guest GL 3.2 Core acceptance. Repetition,
-leak/thermal tests and end-to-end QUIC runtime acceptance remain pending.
+leak/thermal tests remain pending. These are the earlier LOCAL observations;
+the later A2.1 single-frame remote acceptance is recorded below. Multi-frame
+and long-hold/cleanup/reconnect acceptance remain separate pending tests.
 
 The app build at `816bf85` is retained in
 [run 38245180997](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38245180997).

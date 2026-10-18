@@ -78,9 +78,12 @@ rejects PRESENT/readback in that diagnostic mode. Formal resource snapshot/
 display is implemented in a separate bounded synchronous A2.1 mode; Minecraft
 is not functional yet. See [multi-frame device procedure](docs/a21-remote-present.md#a21-final-multi-frame-batch).
 
-Latest app build: [run 38245180997](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38245180997)
+Retained pre-A2 local diagnostic build: [run 38245180997](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38245180997)
 at `816bf85`; the user subsequently reported corrected local orientation and
-the GLES request results. Historical CI/pinned-source evidence remains in
+the GLES request results. The subsequently accepted A2.1 app is run
+[39101559555](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/39101559555)
+at `3b5e80d`; its [archived device evidence](docs/evidence/a21-single-frame-2026-10-18/README.md)
+does not substitute for the NEW multi-frame batch IPA. Historical CI/pinned-source evidence remains in
 [architecture.md](docs/architecture.md#retained-ci-and-source-evidence).
 
 ## Fast path
