@@ -3,6 +3,7 @@
 #include "RGPUVTestSession.hpp"
 #include "RGPUVirglAPI.hpp"
 #include <sys/uio.h>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -53,8 +54,10 @@ class FrameVerifier {
         unsigned wrong = 0, insideCount = 0;
         for (unsigned row = 0; row < 64; ++row) for (unsigned col = 0; col < 64; ++col) {
             double x = (col + 0.5) / 32.0 - 1 - dx;
-            double y = (row + 0.5) / 32.0 - 1;
-            if (info.flags & 1) y = -y; // VIRGL_RESOURCE_Y_0_TOP
+            // transfer_read_iov returns Gallium resource rows (top-left for
+            // the window target), NOT raw glReadPixels rows. The renderer
+            // already handles storage inversion; flags describe GL storage.
+            double y = 1 - (row + 0.5) / 32.0;
             y -= dy;
             // Independent CPU half-plane reference. Exclude ~one pixel at edges.
             double e0 = y + 0.4;

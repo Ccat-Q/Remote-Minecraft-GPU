@@ -79,8 +79,10 @@ int main(int argc, char** argv) {
         }
         uint8_t buffer[65536];
         uint64_t consumed = 0;
+        auto lastInput = std::chrono::steady_clock::now();
         auto feed = [&](size_t size) {
             consumed += size;
+            lastInput = std::chrono::steady_clock::now();
             for (const auto& reply : session->feed(buffer, size)) {
                 size_t sent = 0;
                 while (sent < reply.size()) {
@@ -93,7 +95,10 @@ int main(int argc, char** argv) {
         };
         for (;;) {
             if (verifier) {
-                verifier->pollHold(*session); // Runs even with no more packets.
+                // Require a real idle command stream, not merely elapsed
+                // time since PRESENT (glFinish can send a later BUSY_WAIT).
+                if (std::chrono::steady_clock::now() - lastInput >= std::chrono::milliseconds(400))
+                    verifier->pollHold(*session);
                 pollfd fds[] = {{peer, POLLIN, 0}, {control, POLLIN, 0}};
                 int ready = poll(fds, 2, 20);
                 if (ready < 0 && errno == EINTR) continue;
