@@ -120,6 +120,7 @@ final class ProbeController: UIViewController {
             self.remoteDisplayButton.isEnabled = true
             self.shareControl?.isEnabled = true
             self.remoteDisplayButton.setTitle("Disconnect Remote Display", for: .normal)
+            self.report.text = "A2.1 INITIALIZING — any previous image is stale, NOT remote evidence. Wait for a numbered remote PRESENT report."
             let connection = NativeRemoteDisplayConnection(host: host, port: port, token: token, layer: self.display.metalLayer)
             self.remoteDisplayConnection = connection
             connection.onReport = { [weak self] text, finished in

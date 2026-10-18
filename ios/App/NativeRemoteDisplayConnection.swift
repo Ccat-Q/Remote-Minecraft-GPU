@@ -56,6 +56,7 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                         }
                     }
                 }
+                self.report("CONNECTING to \(self.host):\(self.port). Previous screen content is NOT remote evidence; displayed PRESENT=0 until real commands arrive.")
                 connection.start()
             } catch { self.finish("INIT FAILED: \(error.localizedDescription)") }
         }
