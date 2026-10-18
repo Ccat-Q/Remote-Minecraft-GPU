@@ -29,6 +29,7 @@ final class ProbeController: UIViewController {
     private var capabilityConnection: NativeCapabilityConnection?
     private var remoteDisplayConnection: NativeRemoteDisplayConnection?
     private let remoteDisplayButton = UIButton(type: .system)
+    private let frameBadge = UILabel()
     private var displayHeight: NSLayoutConstraint?
     private let connectButton = UIButton(type: .system)
     private var shareControl: UIButton?
@@ -84,6 +85,24 @@ final class ProbeController: UIViewController {
             report.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
         setDisplayAspect(9.0 / 16.0)
+        frameBadge.translatesAutoresizingMaskIntoConstraints = false
+        frameBadge.font = .monospacedSystemFont(ofSize: 13, weight: .bold)
+        frameBadge.textColor = .white
+        frameBadge.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        frameBadge.text = "No remote PRESENT"
+        frameBadge.isHidden = true
+        display.addSubview(frameBadge)
+        NSLayoutConstraint.activate([
+            frameBadge.topAnchor.constraint(equalTo: display.topAnchor, constant: 8),
+            frameBadge.leadingAnchor.constraint(equalTo: display.leadingAnchor, constant: 8)
+        ])
+        NotificationCenter.default.addObserver(self, selector: #selector(enteredBackground),
+            name: UIApplication.didEnterBackgroundNotification, object: nil)
+    }
+
+    @objc private func enteredBackground() {
+        // A suspended foreground probe cannot attest to an uninterrupted hold.
+        remoteDisplayConnection?.stop(reason: "Application backgrounded; foreground hold interrupted")
     }
 
     private func setDisplayAspect(_ ratio: CGFloat) {
@@ -103,16 +122,33 @@ final class ProbeController: UIViewController {
         let form = UIAlertController(title: "A2.1 Remote Display", message: "Trusted TLS hostname, UDP port and pairing token. Run the A1 64×64 GL demo on Ubuntu. Max 16 PRESENTs; no readback or video.", preferredStyle: .alert)
         form.addTextField { field in
             field.placeholder = "Ubuntu TLS hostname"
+            field.text = UserDefaults.standard.string(forKey: "a21.host")
             field.autocapitalizationType = .none; field.autocorrectionType = .no
         }
-        form.addTextField { $0.placeholder = "UDP port"; $0.text = "4433"; $0.keyboardType = .numberPad }
-        form.addTextField { $0.placeholder = "Pairing token"; $0.isSecureTextEntry = true }
+        form.addTextField {
+            $0.placeholder = "UDP port"
+            $0.text = UserDefaults.standard.string(forKey: "a21.port") ?? "4434"
+            $0.keyboardType = .numberPad
+        }
+        form.addTextField {
+            $0.placeholder = "Pairing token (never saved)"; $0.isSecureTextEntry = true
+            $0.autocapitalizationType = .none; $0.autocorrectionType = .no
+        }
         form.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         form.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self, weak form] _ in
             guard let self, let fields = form?.textFields,
                 let host = fields[0].text?.trimmingCharacters(in: .whitespacesAndNewlines), !host.isEmpty,
                 let port = UInt16(fields[1].text ?? ""), port != 0,
-                let token = fields[2].text, !token.isEmpty else { return }
+                let token = fields[2].text, !token.isEmpty else {
+                self?.report.text = "Hostname, valid UDP port and pairing token are required."
+                return
+            }
+            guard token == token.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                self.report.text = "Pairing token has leading/trailing whitespace. Remove it and reconnect; token was NOT changed or logged."
+                return
+            }
+            UserDefaults.standard.set(host, forKey: "a21.host")
+            UserDefaults.standard.set(String(port), forKey: "a21.port")
             self.probe = nil
             self.setDisplayAspect(1) // A1 is square; do not stretch the triangle.
             self.nativeBusy = true
@@ -123,10 +159,20 @@ final class ProbeController: UIViewController {
             self.report.text = "A2.1 INITIALIZING — any previous image is stale, NOT remote evidence. Wait for a numbered remote PRESENT report."
             let connection = NativeRemoteDisplayConnection(host: host, port: port, token: token, layer: self.display.metalLayer)
             self.remoteDisplayConnection = connection
+            let sessionID = connection.sessionID
+            UIApplication.shared.isIdleTimerDisabled = true
+            self.frameBadge.isHidden = false
+            self.frameBadge.text = "PRESENT 0 — waiting (not remote evidence)"
+            connection.onDisplayed = { [weak self] frame in
+                guard let self, self.remoteDisplayConnection?.sessionID == sessionID else { return }
+                self.frameBadge.text = "Metal completed PRESENT \(frame) — verify pixels"
+            }
             connection.onReport = { [weak self] text, finished in
-                guard let self else { return }
+                guard let self, self.remoteDisplayConnection?.sessionID == sessionID else { return }
                 self.report.text = text
                 if finished {
+                    UIApplication.shared.isIdleTimerDisabled = false
+                    self.frameBadge.text = "Disconnected — retained image is NOT live evidence"
                     self.remoteDisplayConnection = nil
                     self.nativeBusy = false
                     self.controls.forEach { $0.isEnabled = true }
@@ -198,6 +244,7 @@ final class ProbeController: UIViewController {
         // Terminating EGLDisplay is process-global: diagnostic modes cannot
         // overlap. The native one-shot gate cleans up before it returns.
         guard !nativeBusy else { return }
+        frameBadge.isHidden = true
         probe = nil
         nativeBusy = true
         controls.forEach { $0.isEnabled = false }
@@ -218,6 +265,7 @@ final class ProbeController: UIViewController {
 
     @objc private func resourceInterop() {
         guard !nativeBusy else { return }
+        frameBadge.isHidden = true
         probe = nil // Tear down the separate local-triangle display first.
         setDisplayAspect(9.0 / 16.0)
         nativeBusy = true
@@ -237,6 +285,7 @@ final class ProbeController: UIViewController {
 
     @objc private func render() {
         guard !nativeBusy else { return }
+        frameBadge.isHidden = true
         setDisplayAspect(9.0 / 16.0)
         do {
             if probe == nil { probe = try RGPUIOSurfaceProbe(layer: display.metalLayer) }

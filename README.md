@@ -3,7 +3,8 @@
 RemoteGPU aims to run the real Minecraft Java client on GPU-less Ubuntu while
 a paired iPhone executes GPU rendering/display. The approved design sends a
 restricted VirGL vtest profile over one ordered QUIC render stream, not video.
-Minecraft and end-to-end remote iPhone display are not functional yet; no
+One real Ubuntu-originated remote frame has passed iPhone display acceptance;
+Minecraft is not functional yet. No
 Minecraft JVM or replacement game client is installed on the phone.
 
 ## Build policy
@@ -23,15 +24,15 @@ layers does not invalidate it.
 
 ## Status
 
-Status as of 2026-10-13:
+Status as of 2026-10-18:
 
 | Category | Evidence / remaining boundary |
 | --- | --- |
 | CI-verified | Linux rendering/transport, Mesa PRESENT/readback separation, native decoder/resource/fence lifetime. Linux software rendering is not phone hardware acceptance. |
-| Device-verified (user reports) | iPhone 17 / iOS 27.0.1 local ANGLE/IOSurface/Metal triangle, corrected orientation, native context/caps; not Ubuntu-originated remote draws. |
-| Implemented, runtime pending | iPhone capability-only QUIC/EGL endpoint. Builds pass; end-to-end device network acceptance is pending. |
+| Device-verified (user reports) | A2.0 `98e65d1`: real VirGL GPU resource snapshot/isolation. A2.1 `3b5e80d`: actual Ubuntu GL 2.1/GLSL 120 frame over QUIC, iPhone18,3 / iOS 27.0.1, GPU Copy/IOSurface/Metal, correct visual output and GET=0. |
+| Implemented, device pending | Multi-frame completion/quiet-hold evidence, per-frame badge, proxy transport keepalive/timeouts/cancellation and 7/12-frame log checker. New device runs must match their IPA/proxy source SHA. |
 | Known failed prerequisite | GLES 3.1/3.2 requests rejected; guest GLSL capset 130, below 150. Actual Ubuntu guest GL 3.2 Core acceptance remains pending. |
-| Not implemented / accepted | Formal remote snapshots/PRESENT, independent completion, sustained remote display, Minecraft/input/audio/Mods. |
+| Not implemented / accepted | A3 asynchronous scheduling/double buffers/ten-minute performance; 7/12-frame and 120-second device hold/cleanup/reconnect acceptance; Minecraft/input/audio/Mods. |
 | Candidate experiments | MobileGlues + ANGLE Metal, MobileGL interfaces, UTM MoltenVK with a compatibility implementation; no renderer replacement or candidate acceptance. |
 
 The current blocker does **not** imply remote GPU is impossible. Two independent
@@ -61,7 +62,7 @@ The gate also requires non-zero vtest traffic in both proxy directions. The
 diagnostic receiver is intentionally Linux-only and rejects `PRESENT` by
 default. Its CI-only `-inspect-present` mode validates markers without displaying
 them. The Mesa presentation-hook patch passed its Linux zero-presentation-readback gate; the
-iOS ANGLE/IOSurface renderer remains an implementation milestone.
+iOS ANGLE/IOSurface renderer passed the separate single-frame A2.1 device gate.
 
 Read [docs/architecture.md](docs/architecture.md) before building.
 
@@ -74,7 +75,8 @@ Mesa/virglrenderer while iterating on the endpoint. See
 [ios/README.md](ios/README.md#native-vtest-adapter-gate) for its safety boundary.
 The iPhone capability endpoint connects this module to QUIC but deliberately
 rejects PRESENT/readback in that diagnostic mode. Formal resource snapshot/
-display is not implemented; Minecraft is not functional yet.
+display is implemented in a separate bounded synchronous A2.1 mode; Minecraft
+is not functional yet. See [multi-frame device procedure](docs/a21-remote-present.md#a21-final-multi-frame-batch).
 
 Latest app build: [run 38245180997](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38245180997)
 at `816bf85`; the user subsequently reported corrected local orientation and
@@ -85,7 +87,8 @@ the GLES request results. Historical CI/pinned-source evidence remains in
 
 Reference instructions only: this development round does not change DNS, TLS,
 firewall or production services. **Connect Capability Probe** is not a remote
-display mode; swapping demos are rejected until route A's adapter exists.
+display mode; swapping demos must use **Connect Remote Display**, not that
+capability-only mode. The remote-display form now defaults to isolated UDP4434.
 
 GitHub Actions performs compilation and tests. For deployment, obtain the
 artifact from a successful Action run and start it on the Ubuntu server:

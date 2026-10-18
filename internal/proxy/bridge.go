@@ -22,6 +22,7 @@ type Config struct {
 	UnixSocket, PresentSocket, ListenAddr, PairingToken string
 	TLSConfig                                           *tls.Config
 	Diagnostics                                         *diagnostics.Collector
+	HelloTimeout, ClientWaitTimeout                     time.Duration
 }
 
 type Bridge struct{ Config Config }
@@ -46,7 +47,7 @@ func (b Bridge) Serve(ctx context.Context) error {
 		return err
 	}
 	defer present.Close()
-	listener, err := quic.ListenAddr(b.Config.ListenAddr, b.Config.TLSConfig, nil)
+	listener, err := quic.ListenAddr(b.Config.ListenAddr, b.Config.TLSConfig, renderQUICConfig())
 	if err != nil {
 		return err
 	}
@@ -71,15 +72,40 @@ func (b Bridge) Serve(ctx context.Context) error {
 // connection to establish a fresh vtest session on the same proxy listener.
 func (b Bridge) serveSession(ctx context.Context, unix net.Listener, present *net.UnixConn, conn quic.Connection) error {
 	defer conn.CloseWithError(0, "session closed")
-	stream, err := conn.AcceptStream(ctx)
+	// A peer disappearing while we wait for HELLO or a local client must not
+	// occupy the sole diagnostic session until another network packet arrives.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stopPeer := context.AfterFunc(conn.Context(), cancel)
+	defer stopPeer()
+	helloTimeout := b.Config.HelloTimeout
+	if helloTimeout <= 0 {
+		helloTimeout = 10 * time.Second
+	}
+	helloDeadline := time.Now().Add(helloTimeout)
+	helloCtx, stopHello := context.WithDeadline(ctx, helloDeadline)
+	stream, err := conn.AcceptStream(helloCtx)
+	stopHello()
 	if err != nil {
 		return fmt.Errorf("accept QUIC stream: %w", err)
+	}
+	stopRead := context.AfterFunc(ctx, func() { stream.CancelRead(0) })
+	defer stopRead()
+	if err := stream.SetReadDeadline(helloDeadline); err != nil {
+		return fmt.Errorf("HELLO deadline: %w", err)
 	}
 	if err := authenticate(stream, b.Config.PairingToken); err != nil {
 		return fmt.Errorf("authenticate HELLO: %w", err)
 	}
+	if err := stream.SetReadDeadline(time.Time{}); err != nil {
+		return fmt.Errorf("clear HELLO deadline: %w", err)
+	}
 	log.Printf("SESSION_AUTHENTICATED peer=%s; waiting for local Mesa client", conn.RemoteAddr())
-	client, err := unix.Accept()
+	wait := b.Config.ClientWaitTimeout
+	if wait <= 0 {
+		wait = 30 * time.Second
+	}
+	client, err := acceptMesa(ctx, unix, wait)
 	if err != nil {
 		return fmt.Errorf("accept local Mesa client: %w", err)
 	}
@@ -89,6 +115,43 @@ func (b Bridge) serveSession(ctx context.Context, unix net.Listener, present *ne
 		return fmt.Errorf("bridge vtest/PRESENT: %w", err)
 	}
 	return nil
+}
+
+// QUIC PINGs keep a quiet live session reachable. This is transport liveness,
+// not an application ACK, frame retransmission or proof of visual acceptance.
+func renderQUICConfig() *quic.Config {
+	return &quic.Config{MaxIdleTimeout: 30 * time.Second, KeepAlivePeriod: 5 * time.Second}
+}
+
+func acceptMesa(ctx context.Context, listener net.Listener, timeout time.Duration) (net.Conn, error) {
+	unix, ok := listener.(*net.UnixListener)
+	if !ok {
+		return nil, errors.New("Mesa listener must be a Unix listener")
+	}
+	if err := unix.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return nil, err
+	}
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		_ = unix.SetDeadline(time.Now())
+		close(done)
+	})
+	defer func() {
+		if !stop() {
+			<-done
+		}
+		// The listener is reused by the next session. Do not leave a stale
+		// cancellation deadline that would reject a later valid phone/client.
+		_ = unix.SetDeadline(time.Time{})
+	}()
+	client, err := unix.Accept()
+	if ctx.Err() != nil {
+		if client != nil {
+			_ = client.Close()
+		}
+		return nil, ctx.Err()
+	}
+	return client, err
 }
 
 func authenticate(stream io.Reader, token string) error {

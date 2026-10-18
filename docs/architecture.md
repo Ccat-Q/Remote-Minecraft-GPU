@@ -1,19 +1,19 @@
 # Architecture
 
-## Scope and evidence status (2026-10-13)
+## Scope and evidence status (2026-10-18)
 
-The data flow is the approved **target**, not a claim that Minecraft or remote
-iPhone display works. Ubuntu owns the real client/JVM/mods; iPhone owns GPU
+The Minecraft data flow is the approved **target**. Low-capability remote
+iPhone single-frame display now works (A2.1); Minecraft does not. Ubuntu owns the real client/JVM/mods; iPhone owns GPU
 execution/display/input/audio. Existing ADRs and the pinned renderer remain
 unchanged; no video streaming or phone JVM is introduced.
 
 | Status | Evidence / boundary |
 | --- | --- |
 | CI-verified | Linux virpipe/vtest/QUIC rendering, PRESENT/readback separation, native parser and resource/fence lifetime tests. Historical run links remain below; the Linux host uses software rendering, not the phone GPU. |
-| Device-verified (user reports) | iPhone 17 / iOS 27.0.1: local ANGLE Metal -> IOSurface -> Metal triangle, corrected upward orientation, native CREATE_RENDERER/GET_CAPS. Neither executes Ubuntu-originated draws. |
-| Implemented, runtime pending | iPhone QUIC capability-only endpoint, context restore/unbind and ordering helpers. App builds pass; end-to-end phone network acceptance is pending. |
+| Device-verified (user reports) | A2.0 `98e65d1`: real resource/shared-EGL/GPU snapshot/Metal isolation. A2.1 `3b5e80d`: actual Ubuntu frame over QUIC to iPhone18,3 / iOS 27.0.1, PRESENT 1/2, GPU-only snapshot/display and correct image, TRANSFER_GET=0. |
+| Implemented, device pending | A2.1-Final multi-frame/quiet-hold/cleanup/reconnect evidence and transport liveness hardening. See source-tagged Actions results and device procedure; code availability is not device acceptance. |
 | Known failed prerequisite | GLES 3.1/3.2 requests rejected (EGL 0x3004); GLES 3.0 works. Guest capset GLSL is 130, below 150. Actual Ubuntu GL 3.2 Core creation remains an unaccepted separate test. |
-| Not implemented / accepted | Remote resource -> IOSurface snapshots, independent completion scheduling, sustained remote display, Minecraft and input/audio/Modpack acceptance. |
+| Not implemented / accepted | A3 independent asynchronous completion/double buffering/ten-minute performance; multi-frame device acceptance; Minecraft and input/audio/Modpack acceptance. |
 | Candidate experiments only | MobileGlues + existing ANGLE Metal; MobileGL iOS interfaces; UTM MoltenVK with a suitable GL/Vulkan implementation. None replaces the renderer or has passed the guest gate. |
 
 The completed [feasibility audit](../exa-results/remotegpu-feasibility-2026-10-12/audit.md)
@@ -43,8 +43,8 @@ never GLFW. The implemented hook includes its cumulative vtest byte offset. The 
 proxy already waits until it has forwarded that offset, assigns
 `after_sequence`, and emits the marker on the same QUIC stream. The iOS
 endpoint already orders markers behind that sequence. The Mesa hook patch is
-now implemented and verified in its Linux presentation gate; the iOS renderer
-adapter remains an implementation gate before an end-to-end claim.
+implemented and verified in its Linux presentation gate; the synchronous iOS
+renderer adapter passed the single-frame A2.1 device gate.
 
 Mesa waits for a local Unix datagram acknowledgement after sending the marker.
 The proxy responds only once the marker is queued on QUIC. This prevents later
@@ -58,7 +58,9 @@ GPU work; they do not snapshot framebuffer contents. The iOS frame adapter must
 record its GPU-to-IOSurface copy at the ordered marker before consuming later
 writes to the same resource. Its local completion poller must run independently
 of incoming network messages. The native ANGLE context/caps diagnostic tests
-initialization only; this ordered snapshot/display adapter remains unimplemented.
+initialization only; the separate synchronous snapshot/display adapter now
+exists and passed A2.1 single-frame device acceptance. Its bounded waits are
+NOT A3 asynchronous scheduling.
 
 ## Wire format
 
@@ -164,8 +166,8 @@ APIs; unsupported/FD-bearing extensions fail closed. CI checks parser safety
 with AddressSanitizer/UBSan. A separate lightweight rendering gate downloads
 the verified Linux bundle and compiles only the endpoint, avoiding a dependency
 rebuild. The iOS EGL adapter and capability-only QUIC connection now exist.
-Real PRESENT snapshots and asynchronous GPU/Metal completion remain required
-before the device can display remote frames.
+Synchronous PRESENT snapshots now display real remote frames in A2.1;
+asynchronous GPU/Metal scheduling remains future A3 work.
 
 The shared native endpoint passed the actual GL/QUIC gate in
 [run 38204899580](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38204899580)
@@ -225,11 +227,13 @@ renderer failure, and avoids Mesa's unrelated `wayland-egl-backend` dependency.
 Weston headless plus Xwayland remains the planned Minecraft integration stage,
 after the remote renderer has passed the GL 3.2 Core and presentation gates.
 
-## Planned hardening (not implemented in this documentation change)
+## Hardening and remaining gates
 
-Track proxy HELLO/client-wait deadlines and cancellation; iOS command/byte
-budgets and bounded display slots; independent completion; GPU-wait/RTT/
-shader-compilation/frame-stall diagnostics. Verify these separately from the
+Proxy HELLO/client-wait deadlines, peer cancellation, transport keepalive and
+iOS byte/command admission budgets are implemented. A2.1-Final records local
+per-PRESENT completion durations and quiet-hold checkpoints without readback.
+Independent GPU completion, multiple bounded display slots and full GPU-wait/
+RTT/shader-compilation/frame-stall attribution remain A3 work. Verify separately from the
 two graphics routes, using task IDs in [next-stage-plan.md](next-stage-plan.md).
 Reuse existing Actions caches/verified bundles. This plan does not authorize
 DNS, deployment or production configuration changes.

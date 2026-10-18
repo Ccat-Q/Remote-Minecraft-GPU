@@ -1,0 +1,54 @@
+{
+  "evidence_origin": "User-supplied iPhone report and screenshot, cross-checked against Ubuntu journal; NOT Linux CI hardware evidence",
+  "device": "iPhone18,3",
+  "os": "Version 27.0.1 (Build 24A446)",
+  "acceptance_scope": "A2.1 one real Ubuntu-originated frame only",
+  "build_provenance": {
+    "accepted_a1_sha": "f7413ff245b06c27aa1fbb9b3dcbd527ba32be42",
+    "accepted_a20_sha": "98e65d1878ea132dbf4cb169e521facdc62f04a6",
+    "app_actions_run": "39101559555",
+    "app_source_sha": "3b5e80d25f04de4b96b3c3ed2381537ba90b57ed",
+    "compat_recipe_sha256": "ac13a6cf81f3c4273d6e1a34ee62d9c38c0e9e09103c31895761cd0019cd23fe",
+    "dependency_source_sha": {
+      "epoxy": "bf98587477fe68d07b93319ece7b40a7d0e2eabe",
+      "virglrenderer": "482f9d8b8c2d2288efa10a027116216909d2c226",
+      "webkit": "ed78ab6e1a37f4f11583a0bd038f22ec91f3ff10"
+    },
+    "framework_hash_scope": "unsigned sysroot before external IPA signing",
+    "framework_sha256": {
+      "EGL": "02bebdf880327ba344c3ffc46705865b47406db263f8c5c14f35104dc1514756",
+      "GLESv2": "699a87ecf2b9ae19c2b027a2d13cd5ae2bf79e124f7bd42c45ced71e8d6be2be",
+      "epoxy.0": "28e91d1c07806d553a4832b51a2c80f68d28ed905d767da81a1bfff6e86d8a19",
+      "virglrenderer.1": "2cfd027ed1b993b5001f3b67c1dd4b889721f7321d4e742969a9f439c5e0a37b"
+    },
+    "renderer_actions_run": "38206257487",
+    "sysroot_recipe_source_sha": "1cfac0e1186aba98a2a643095e15b310970e63a4",
+    "utm_sha": "9d00a54833184628c696bcbfafbf344cea566e59"
+  },
+  "proxy_source_sha": "adcd5b35a899604ae7f9beaec711cef94243c7e5",
+  "host_gl": "OpenGL ES 3.0.0 (ANGLE 2.1.22612 git hash: 40dfb3a8bd65)",
+  "host_glsl": "OpenGL ES GLSL ES 3.00 (ANGLE 2.1.22612 git hash: 40dfb3a8bd65)",
+  "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple A19 GPU, Version 27.0.1 (Build 24A446))",
+  "phone_report_at_screenshot": {
+    "processed_vtest_sequence": 15,
+    "displayed_present": 2,
+    "received_vtest_bytes": 1570,
+    "reply_bytes": 1756,
+    "batch_high_water_bytes": 1336,
+    "SUBMIT_CMD": 4,
+    "TRANSFER_PUT": 1,
+    "TRANSFER_GET": 0,
+    "resource": {"id": 1, "tex_id": 1, "format": 1, "width": 64, "height": 64, "target": 2, "depth": 1, "samples": 0, "array": 1, "last_level": 0, "flags": 0, "stride": 256},
+    "presents": [
+      {"id": 1, "after_sequence": 9, "producer_fence": 3, "kind": "startup"},
+      {"id": 2, "after_sequence": 15, "producer_fence": 6, "kind": "Ubuntu application frame 0"}
+    ],
+    "producer_and_copy_gl_error": "0x0",
+    "egl_success": "0x3000",
+    "copy_completion": "0x911c",
+    "metal_status": "COMPLETED",
+    "source_snapshot_barrier": "Later vtest paused until copy completion; source pin released afterwards"
+  },
+  "visual_result": "User-confirmed upward dark RGB(40,50,60) triangle toward lower-left on RGB(8,16,24); matches Ubuntu frame 0",
+  "not_accepted": ["7/12 frames", "120-second silent hold", "user disconnect and fresh EGL/VirGL session", "A3 asynchronous performance", "10-minute memory stability", "Guest GL 3.2 Core/GLSL 150", "Minecraft"]
+}

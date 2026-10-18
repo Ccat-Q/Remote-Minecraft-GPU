@@ -1,0 +1,9 @@
+2026-10-18T11:28:56+00:00 RainYun-vg6kj7jd server-proxy.sh[1726058]: 2026/10/18 11:28:56 SESSION_AUTHENTICATED peer=112.132.155.28:57683; waiting for local Mesa client
+2026-10-18T11:28:56+00:00 RainYun-vg6kj7jd server-proxy.sh[1726058]: 2026/10/18 11:28:56 SESSION_MESA_ATTACHED peer=112.132.155.28:57683
+2026-10-18T11:28:57+00:00 RainYun-vg6kj7jd start-demo.sh[1726098]: GL_VERSION=2.1 Mesa 26.3.0-devel (git-590bf21d91)
+2026-10-18T11:28:57+00:00 RainYun-vg6kj7jd start-demo.sh[1726098]: GLSL_VERSION=1.20
+2026-10-18T11:28:57+00:00 RainYun-vg6kj7jd start-demo.sh[1726098]: GL_RENDERER=virgl
+2026-10-18T11:28:57+00:00 RainYun-vg6kj7jd start-demo.sh[1726098]: DRAW frame=0 offset=-0.320,-0.120 rgb=40,50,60
+2026-10-18T11:28:57+00:00 RainYun-vg6kj7jd server-proxy.sh[1726058]: 2026/10/18 11:28:57 vtest interval=1s upload=1570B download=1756B presents=2 commands=[1:1 2:5 5:1 6:4 7:2 8:1 9:1]
+2026-10-18T11:28:58+00:00 RainYun-vg6kj7jd start-demo.sh[1726098]: HOLD_BEGIN frames=1 seconds=3600.000 resources_alive=1
+2026-10-18T11:28:58+00:00 RainYun-vg6kj7jd server-proxy.sh[1726058]: 2026/10/18 11:28:58 vtest interval=1s upload=92B download=12B presents=0 commands=[2:1 3:1 6:1 7:1]

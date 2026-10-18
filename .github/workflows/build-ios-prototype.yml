@@ -24,6 +24,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Restore exact verified renderer artifact (no dependency rebuild)
+        uses: actions/cache@v4
+        id: renderer-cache
+        with:
+          path: _deps/ios-sysroot
+          key: ios-device-sysroot-run-${{ env.RENDERER_RUN_ID }}
       - name: Fetch verified device renderer dependencies
         run: |
           test "$(gh run view "$RENDERER_RUN_ID" --json conclusion --jq .conclusion)" = success
@@ -34,7 +40,9 @@ jobs:
           # package it with the earlier recipe that leaked on non-GBM iOS.
           gh api "repos/$GITHUB_REPOSITORY/contents/tools/ci/prepare_utm_renderer.py?ref=$revision" --jq .content | \
             python3 -c 'import base64,sys; source=base64.b64decode(sys.stdin.read()).decode(); sys.exit(0 if "def fix_winsys(" in source and "--winsys" in source else "Renderer sysroot predates external-EGL cleanup fix; run updated Build iOS renderer sysroot first.")'
-          gh run download "$RENDERER_RUN_ID" --name "ios-renderer-sysroot-$revision" --dir _deps/ios-sysroot
+          if [ '${{ steps.renderer-cache.outputs.cache-hit }}' != 'true' ]; then
+            gh run download "$RENDERER_RUN_ID" --name "ios-renderer-sysroot-$revision" --dir _deps/ios-sysroot
+          fi
       - name: Record app and actual renderer artifact provenance
         run: |
           python3 tools/ci/ios_provenance.py --renderer-run-id "$RENDERER_RUN_ID" \

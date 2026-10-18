@@ -1,6 +1,12 @@
 # Ubuntu -> iPhone capability probe
 
-## Status and independent routes (2026-10-13)
+## Status and independent routes (2026-10-18)
+
+Separate route A single-frame remote display is now device-accepted at
+`3b5e80d` (Ubuntu GL 2.1/GLSL 120, real VirGL draw, GET=0). That result does
+NOT pass the GL 3.2 Core/GLSL 150 capability gate described here. Use
+[Connect Remote Display](a21-remote-present.md), not this capability-only mode,
+for the pending 7/12-frame acceptance batch.
 
 The network capability endpoint is **implemented and CI-built, not accepted
 end-to-end on device**. User reports separately confirm local IOSurface/Metal
@@ -15,7 +21,7 @@ Actual Ubuntu guest Core-context creation remains a separate runtime gate.
 The [next-stage plan](next-stage-plan.md) defines independent routes:
 
 - **A — Remote PRESENT:** a new low-capability changing demo, current renderer
-  and a future resource/snapshot/display adapter; no initial GL 3.2 requirement.
+  and the existing synchronous resource/snapshot/display adapter; no initial GL 3.2 requirement.
 - **B — Graphics capability:** isolated candidate probes, then executable
   Ubuntu guest GL 3.2 Core/GLSL 150 before Minecraft. No candidate is accepted
   merely because it links or advertises a version.
@@ -135,13 +141,15 @@ actual shader/test results and unsupported features. Distinguish:
 4. Route B candidate feature execution and final guest Core context.
 
 Do **not** send a swapping demo to **Connect Capability Probe** for route A:
-the current mode correctly rejects PRESENT. Future remote-display mode must
+the current mode correctly rejects PRESENT. The existing remote-display mode must
 retain the source until GPU copying completes and snapshots until Metal
 completes, without depending on another incoming packet to drive completion.
 No normal-display demo should call glReadPixels or fall back to full-frame CPU
 readback. Preserve a separate explicit application-readback test.
 
 Existing counters show bytes/sequences, not FPS/GPU-wait/RTT. Those metrics,
-command/display budgets and proxy phase timeouts are planned, not implemented
-acceptance. Historical CI/source records remain in
+full performance attribution remain future work. Bounded command admission,
+proxy phase timeouts/cancellation/keepalive and local completion/quiet-hold
+records are implemented for A2.1-Final, not yet multi-frame device acceptance.
+Historical CI/source records remain in
 [architecture.md](architecture.md#retained-ci-and-source-evidence).

@@ -127,4 +127,41 @@ final class RemoteGPUProtocolTests: XCTestCase {
         }
         XCTAssertThrowsError(try order.beginPresent(present(frame: 17, after: 1)))
     }
+
+    func testMultiFrameCompletionAndQuietHoldEvidence() throws {
+        for count in [8, 13] { // 7/12 application frames + startup PRESENT.
+            let evidence = RemoteGPUDisplayEvidence(sessionID: "test-session", startedAt: 100)
+            XCTAssertEqual(evidence.quietSeconds(at: 500), 0) // No displayed frame.
+            for frame in 1...count {
+                let time = 100 + Double(frame)
+                evidence.receivedVTest(at: time)
+                let next = try RemoteGPUPresent(payload: present(frame: UInt64(frame), after: UInt64(frame)))
+                let line = try evidence.completed(next, began: time, ended: time + 0.1)
+                XCTAssertTrue(line.contains("A21_FRAME present=\(frame) "))
+            }
+            let last = 100 + Double(count) + 0.1
+            XCTAssertEqual(evidence.completedCount, count)
+            XCTAssertEqual(evidence.quietSeconds(at: last + 120), 120, accuracy: 0.001)
+            XCTAssertTrue(evidence.holdLine(at: last + 120, live: true).contains("live=YES"))
+            XCTAssertTrue(evidence.holdLine(at: last + 120, live: false).contains("live=NO"))
+            evidence.receivedVTest(at: last + 119)
+            XCTAssertEqual(evidence.quietSeconds(at: last + 120), 1, accuracy: 0.001)
+            // A new session cannot inherit the old hold or completion count.
+            let fresh = RemoteGPUDisplayEvidence(sessionID: "new", startedAt: last + 200)
+            XCTAssertEqual(fresh.lastPresent, 0)
+            XCTAssertEqual(fresh.quietSeconds(at: last + 400), 0)
+        }
+    }
+
+    func testEvidenceRejectsReceiveOnlyDuplicateAndClockRegression() throws {
+        let evidence = RemoteGPUDisplayEvidence(sessionID: "test", startedAt: 100)
+        let first = try RemoteGPUPresent(payload: present(frame: 1, after: 1))
+        XCTAssertThrowsError(try evidence.completed(first, began: 101, ended: 100))
+        XCTAssertThrowsError(try evidence.completed(first, began: 99, ended: 100))
+        _ = try evidence.completed(first, began: 101, ended: 102)
+        XCTAssertThrowsError(try evidence.completed(first, began: 103, ended: 104))
+        XCTAssertThrowsError(try evidence.completed(
+            RemoteGPUPresent(payload: present(frame: 3, after: 2)), began: 103, ended: 104))
+        XCTAssertEqual(evidence.completedCount, 1)
+    }
 }

@@ -2,7 +2,16 @@
 
 Source baseline: device-accepted A2.0
 `98e65d1878ea132dbf4cb169e521facdc62f04a6`; independent branch
-`feature/a21-remote-present`. **A2.1 iPhone network display is not yet accepted.**
+`feature/a21-remote-present`. **A2.1 single-frame iPhone network display accepted
+at `3b5e80d25f04de4b96b3c3ed2381537ba90b57ed` (user report, 2026-10-18).**
+Proxy-only diagnostic revision `adcd5b3` identified a 36-vs-32-byte pairing
+mistake before the successful session; it does not change GPU behavior.
+Ubuntu reported VirGL GL 2.1 / GLSL 120 and frame 0 at (-0.32,-0.12), RGB
+(40,50,60). Phone completed PRESENT 1 (startup) and 2 (actual triangle), with
+matching visual orientation/colors, producer/copy/Metal completion and GET=0.
+7/12-frame visual acceptance, 120-second hold, user disconnect/reconnect and
+sustained stability are **not** implied. This batch implements acceptance
+support on `feature/a21-multiframe-final`; it does not implement A3 or B1.
 No new renderer, Mesa patch, PRESENT wire layout, ACK, DNS or deployment change.
 
 ## Implementation and limits
@@ -52,12 +61,24 @@ No new renderer, Mesa patch, PRESENT wire layout, ACK, DNS or deployment change.
   waits/leases are NOT the A3 asynchronous frame scheduler.
 - Maximum 16 PRESENTs per session (covers 12 application frames plus a possible
   startup PRESENT). Reports retain at most 512 chunks / 256 KiB; UI updates
-  occur on display/terminal events, not every vtest command. No unbounded GPU
+  occur on EACH completed PRESENT/terminal event and bounded hold observations,
+  not every vtest command. No unbounded GPU
   ingress or pending display queue is introduced.
 - User cancellation atomically interrupts producer/copy/native busy-wait loops.
   The serialized owner releases pins, surfaces, contexts and session resources.
   Peer EOF/error also cleans up. Last-frame **live session hold** must be
   observed before disconnect; no reconnect/recovery acceptance is implied.
+- The proxy sends QUIC transport keepalive PINGs (5 s, idle timeout 30 s),
+  without an application ACK. HELLO has a total 10 s deadline and waiting for
+  a local Mesa client has a 30 s deadline; peer/user cancellation interrupts
+  waits and resets the shared Unix listener deadline before a new session.
+- Each native/Metal completion emits `A21_FRAME`, never merely upon receipt.
+  A session-local monotonic clock records durations; these are NOT Ubuntu-to-
+  phone latency measurements. `A21_HOLD` reports quiet time since the latest
+  completion OR vtest data. A timer works without new data; at >=120 s a
+  bounded checkpoint is retained. This is liveness observation, not pixel
+  inspection. Foreground display mode prevents auto-lock; backgrounding cancels
+  the test. No claim is made about background/suspension recovery.
 
 ## CI evidence boundaries
 
@@ -131,3 +152,55 @@ this code change does not grant permission to alter firewall/production rules.
    colors/positions with phone snapshots/reports; no frame-state command loss,
    ordering errors, unexpected stalls or full-frame CPU fallback is acceptable.
    These finite synchronous diagnostics do not establish A3 throughput/FPS.
+
+## A2.1-Final multi-frame batch
+
+Use the NEW source-tagged IPA and proxy/tools from the SAME batch commit.
+Accepted older IPA lacks completion/hold evidence fields. The renderer sysroot
+stays pinned to run `38206257487`; native tests reuse Mesa run `38186021966`.
+No local compilation, DNS edits or production service changes are necessary.
+
+The tools artifact additionally contains `run-a21-case.sh` and
+`a21_device_evidence.py`. With the existing diagnostic proxy and the same
+environment variables as above, run each case in a FRESH session:
+
+```sh
+bash ./a21-tools/run-a21-case.sh 7 /tmp/a21-seven-NEW
+# Equivalent producer: --frames 7 --fps 1 --hold-seconds 120
+# Save full phone report AND screen recording while connected, then Disconnect.
+# Save the report again after native cleanup; only then start the next case.
+bash ./a21-tools/run-a21-case.sh 12 /tmp/a21-twelve-NEW
+# Equivalent producer: --frames 12 --fps 2 --hold-seconds 120
+```
+
+No script restarts a server or auto-reconnects. Start a fresh Ubuntu producer
+after every disconnect. A cancelled producer may still be in its timed hold;
+stop ONLY that diagnostic process before relaunch, not the production service.
+After the final PRESENT, keep the app foreground and observe `quiet_s >= 120`
+with `live=YES`. Keepalive traffic is not vtest/draw traffic. If the producer
+ends too close to the observation boundary, rerun with an explicit 150-second
+hold (`run-a21-case.sh 7 NEW_DIRECTORY 150`), never weaken the 120 s criterion.
+
+Record EVERY changing frame with the visible Metal-completed PRESENT badge.
+Allow a startup PRESENT: application frame i is not always PRESENT i.
+Expected RGB is `(40+37*i%180, 50+67*i%170, 60+97*i%160)`; offset is
+`((i%5-2)*0.16, ((i//5)%3-1)*0.12)`. Preserve all 7/12 distinct images, last
+frame during silence, absence of overwrites, native producer/copy/Metal logs,
+zero TRANSFER_GET and after-disconnect cleanup. Reconnect using the SAME IPA
+without restarting the app, and save its new session ID plus real frame output.
+Host/port are remembered; pairing credentials are never persisted by the app.
+
+```sh
+python3 ./a21-tools/a21_device_evidence.py \
+  --ubuntu-log /tmp/a21-seven-NEW/ubuntu.log --iphone-report seven-after-disconnect.txt \
+  --frames 7 --expected-sha FULL_IPA_SOURCE_SHA --require-cleanup \
+  --output seven-check-NEW.json
+# For the 12-frame check add --previous-iphone-report seven-after-disconnect.txt
+# to require different session IDs and previous user-cancellation cleanup.
+```
+
+The checker rejects missing completion, wrong sequence, invalid frame count,
+bad Ubuntu color/position, GL/EGL errors, readback, insufficient quiet time and
+missing requested cleanup. It ALWAYS returns `USER_REVIEW_REQUIRED` for visual
+acceptance. Synthetic checker/unit logs and Linux readback oracles are NOT
+iPhone test evidence. No sustained FPS is inferred from a 1/2 FPS test sender.

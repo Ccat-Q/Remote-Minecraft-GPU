@@ -18,6 +18,7 @@ import (
 func main() {
 	var unixSock, presentSock, listen, cert, key, token string
 	var statsInterval time.Duration
+	var helloTimeout, clientWaitTimeout time.Duration
 	flag.StringVar(&unixSock, "unix", "/tmp/.virgl_test", "vtest Unix socket to create")
 	flag.StringVar(&presentSock, "present-socket", "/tmp/remotegpu-present.sock", "Mesa PRESENT Unix datagram socket")
 	flag.StringVar(&listen, "listen", ":4433", "QUIC UDP listener")
@@ -25,9 +26,15 @@ func main() {
 	flag.StringVar(&key, "key", "", "TLS private key PEM")
 	flag.StringVar(&token, "pairing-token", "", "required iOS pairing token")
 	flag.DurationVar(&statsInterval, "stats-interval", time.Second, "protocol metrics interval; 0 disables")
+	flag.DurationVar(&helloTimeout, "hello-timeout", 10*time.Second, "maximum wait for render stream and HELLO")
+	flag.DurationVar(&clientWaitTimeout, "client-wait-timeout", 30*time.Second, "maximum wait for a local Mesa client after pairing")
 	flag.Parse()
 	if cert == "" || key == "" || token == "" {
 		fmt.Fprintln(os.Stderr, "-cert, -key and -pairing-token are required")
+		os.Exit(2)
+	}
+	if helloTimeout <= 0 || clientWaitTimeout <= 0 {
+		fmt.Fprintln(os.Stderr, "session timeouts must be positive")
 		os.Exit(2)
 	}
 	tlsConfig, err := proxy.LoadTLS(cert, key)
@@ -40,7 +47,7 @@ func main() {
 	if statsInterval > 0 {
 		go reportStats(ctx, stats, statsInterval)
 	}
-	log.Fatal((proxy.Bridge{Config: proxy.Config{UnixSocket: unixSock, PresentSocket: presentSock, ListenAddr: listen, PairingToken: token, TLSConfig: tlsConfig, Diagnostics: stats}}).Serve(ctx))
+	log.Fatal((proxy.Bridge{Config: proxy.Config{UnixSocket: unixSock, PresentSocket: presentSock, ListenAddr: listen, PairingToken: token, TLSConfig: tlsConfig, Diagnostics: stats, HelloTimeout: helloTimeout, ClientWaitTimeout: clientWaitTimeout}}).Serve(ctx))
 }
 
 func reportStats(ctx context.Context, stats *diagnostics.Collector, interval time.Duration) {

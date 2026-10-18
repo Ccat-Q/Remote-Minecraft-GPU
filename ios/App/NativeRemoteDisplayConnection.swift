@@ -4,6 +4,7 @@ import QuartzCore
 // Native renderer and its session live on exactly one serial queue. The
 // network admits one bounded batch; later vtest cannot overtake a snapshot.
 final class NativeRemoteDisplayConnection: @unchecked Sendable {
+    let sessionID = UUID().uuidString
     private let rendererQueue = DispatchQueue(label: "org.remotegpu.remote-display", qos: .userInitiated)
     private let cancellation = RGPUDisplayCancellation()
     private let order = RemoteGPUSerialDisplayOrder()
@@ -20,17 +21,29 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
     private var highWaterBatch = 0
     private var header = ""
     private var history: [String] = []
+    private var timer: DispatchSourceTimer?
+    private var evidence: RemoteGPUDisplayEvidence!
+    private var lastHoldReport: TimeInterval = 0
+    private var holdMilestone: UInt64?
     var onReport: ((String, Bool) -> Void)?
+    var onDisplayed: ((UInt64) -> Void)?
 
     init(host: String, port: UInt16, token: String, layer: CAMetalLayer) {
         self.host = host; self.port = port; self.token = token; self.layer = layer
     }
     func start() {
         rendererQueue.async {
+            self.evidence = RemoteGPUDisplayEvidence(sessionID: self.sessionID, startedAt: CACurrentMediaTime())
             guard !self.closed && !self.cancellation.isCancelled else { self.finish("Cancelled before start"); return }
             do {
                 self.endpoint = try RGPURemoteDisplayEndpoint.create(cancellation: self.cancellation)
                 self.header = self.endpoint?.hostReport ?? ""
+                self.header += "\nA21_SESSION session=\(self.sessionID) clock=local_monotonic\n"
+                let timer = DispatchSource.makeTimerSource(queue: self.rendererQueue)
+                timer.schedule(deadline: .now() + 1, repeating: 1)
+                timer.setEventHandler { [weak self] in self?.observeHold() }
+                self.timer = timer
+                timer.resume()
                 let connection = RemoteGPUQUICRenderConnection(host: self.host, port: self.port, pairingToken: self.token)
                 self.transport = connection
                 connection.onBatch = { [weak self] batch, complete in
@@ -61,9 +74,9 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
             } catch { self.finish("INIT FAILED: \(error.localizedDescription)") }
         }
     }
-    func stop() {
+    func stop(reason: String = "User cancelled display session") {
         cancellation.cancel() // Immediate atomic signal even while rendererQueue waits.
-        rendererQueue.async { self.finish("User cancelled display session") }
+        rendererQueue.async { self.finish(reason) }
     }
     private func append(_ text: String) {
         history.append(text)
@@ -74,30 +87,46 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
     }
     private func report(_ status: String, finished: Bool = false) {
         let counters = "\nVTEST processed=\(order.processedSequence) displayed PRESENT=\(order.displayedFrame)\nReceived vtest=\(received) reply bytes=\(sent) batch high-water=\(highWaterBatch) bytes\nOne batch in flight; one snapshot at a time; max 16 PRESENTs. No per-frame network ACK.\n"
-        let text = header + "\n" + status + counters + history.joined(separator: "\n")
+        let hold = evidence?.holdLine(at: CACurrentMediaTime(), live: !closed && !cancellation.isCancelled) ?? ""
+        let text = header + "\n" + status + counters + hold + "\n" + history.joined(separator: "\n")
         DispatchQueue.main.async { self.onReport?(text, finished) }
+    }
+    private func observeHold() {
+        guard !closed && !cancellation.isCancelled && order.displayedFrame > 0 else { return }
+        let now = CACurrentMediaTime()
+        let milestone = evidence.quietSeconds(at: now) >= 120 && holdMilestone != order.displayedFrame
+        if milestone {
+            holdMilestone = order.displayedFrame
+            append(evidence.holdLine(at: now, live: true))
+        }
+        if milestone || now - lastHoldReport >= 5 {
+            lastHoldReport = now
+            report("LIVE HOLD OBSERVATION; confirm last image remains visible. No pixel readback; not automatic visual acceptance.")
+        }
     }
     private func finish(_ status: String) {
         guard !closed else { return }
         closed = true
+        timer?.cancel(); timer = nil
         cancellation.cancel()
         order.cancel()
         transport?.close(); transport = nil
         append(endpoint?.close() ?? "No native session allocated")
         endpoint = nil
+        append("A21_SESSION_CLOSED session=\(sessionID) displayed=\(order.displayedFrame) cleanup_returned=YES reason=\(status)")
         report(status, finished: true)
     }
     private func consume(_ batch: [RemoteGPUEnvelope]) {
         guard !closed else { return }
         do {
             highWaterBatch = max(highWaterBatch, batch.reduce(0) { $0 + $1.payload.count + 10 })
-            var displayed = false
             for envelope in batch {
                 guard !cancellation.isCancelled else { throw RemoteGPUProtocolError.invalidPresent }
                 if envelope.flags != 0 { append("Rejected envelope type=\(envelope.type) flags=\(envelope.flags)") }
                 guard envelope.flags == 0 else { throw RemoteGPUProtocolError.invalidPresent }
                 switch envelope.type {
                 case .vtestBytes:
+                    evidence.receivedVTest(at: CACurrentMediaTime())
                     try order.consume(envelope.payload) { bytes in
                         guard let endpoint else { throw RemoteGPUProtocolError.invalidVTestChunk }
                         received += UInt64(bytes.count)
@@ -114,14 +143,19 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                     guard let endpoint else { throw RemoteGPUProtocolError.invalidPresent }
                     // This blocks only the serialized diagnostic renderer, not
                     // UIKit/network. NO later native command is submitted here.
+                    let began = CACurrentMediaTime()
                     append(try endpoint.present(envelope.payload, layer: layer))
                     try order.completePresent(present)
-                    displayed = true
+                    append(try evidence.completed(present, began: began, ended: CACurrentMediaTime()))
+                    holdMilestone = nil
+                    let frame = present.frameID
+                    DispatchQueue.main.async { self.onDisplayed?(frame) }
+                    // Report EVERY completed PRESENT, even if one bounded
+                    // network batch contains multiple frames. Never just count receives.
+                    report("REMOTE FRAME DISPLAYED; confirm image/frame in screen recording. Session remains open.")
                 case .hello, .error: throw RemoteGPUProtocolError.invalidPresent
                 }
             }
-            // At most 16 display reports: don't enqueue UI work for every chunk.
-            if displayed { report("REMOTE FRAME DISPLAYED; visual confirmation pending. Session remains open; last drawable is retained by the display.") }
         } catch { finish("REMOTE DISPLAY FAILED: \(String(describing: error))\n\(error.localizedDescription)") }
     }
 }

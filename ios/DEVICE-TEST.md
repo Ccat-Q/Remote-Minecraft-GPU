@@ -89,7 +89,13 @@ Minecraft, or network configuration is needed for A2.0.
 Source/interface details and CI-only readback boundary:
 [A2.0 implementation](../docs/a2-single-frame-interop.md).
 
-## A2.1 real Remote Display (new diagnostic; device acceptance pending)
+## A2.1 real Remote Display (single frame accepted; multi-frame pending)
+
+User-confirmed single-frame baseline `3b5e80d25f04de4b96b3c3ed2381537ba90b57ed`,
+Actions app `39101559555`, iPhone18,3 / iOS 27.0.1 (24A446). Ubuntu frame 0
+matched the screenshot; PRESENT 1/2 and all producer/copy/Metal completions
+succeeded with TRANSFER_GET=0. This supersedes earlier statements about
+end-to-end display pending, not the separate guest GL 3.2/GLSL 150 blocker.
 
 Use **Connect Remote Display** and follow the exact isolated proxy / one-frame
 producer / report / live-hold / cancellation steps in
@@ -97,6 +103,12 @@ producer / report / live-hold / cancellation steps in
 The capability connection still rejects PRESENT; the A2.0 button still runs a
 local fixture. Neither can substitute for the new mode's actual Ubuntu frame.
 Start with one application frame, then 7/12 only after its visual acceptance.
+The first frame is accepted; now follow the
+[multi-frame batch procedure](../docs/a21-remote-present.md#a21-final-multi-frame-batch).
+Use its NEW IPA for per-PRESENT completion, a unique session ID, quiet-hold
+checkpoints and cleanup evidence. Record all changing frames, wait for live
+quiet_s >= 120, Disconnect, save the cleanup report, then reconnect without
+restarting the app. Do not count a retained image after disconnect as live hold.
 
 ## Route A: continuous asynchronous Remote PRESENT (A3, not implemented)
 
@@ -105,7 +117,8 @@ Use a new Actions-built low-capability demo, preserving existing Core/GLSL 150
 tests. Begin with a small single-sample RGBA/BGRA 2D target and GL 2.1 / GLSL
 120 if genuinely available. No version overrides or application software fallback.
 
-1. Use a future **remote-display** mode, not **Connect Capability Probe**.
+1. Extend the existing **Connect Remote Display** mode on an independent A3
+   branch, preserving synchronous A2.1, not **Connect Capability Probe**.
    Record Ubuntu shader/draw logs and phone received vtest/PRESENT sequences.
    The phone must not generate the triangle vertices or animation.
 2. Display changing position/color plus an Ubuntu-encoded application-frame

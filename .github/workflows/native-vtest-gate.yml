@@ -145,8 +145,11 @@ jobs:
           mkdir -p _stage/a21-tools/bin
           cp _stage/bin/gl-remote-present _stage/bin/remotegpu-proxy _stage/a21-tools/bin/
           cp deploy/run-gl-remote-present.sh _stage/a21-tools/
+          cp deploy/run-a21-case.sh tools/a21_device_evidence.py _stage/a21-tools/
           echo "app/proxy source=$GITHUB_SHA; accepted A2.0=98e65d1878ea132dbf4cb169e521facdc62f04a6; Mesa dependency run=$LINUX_RUN_ID" > _stage/a21-tools/SOURCE.txt
           sh -n _stage/a21-tools/run-gl-remote-present.sh
+          bash -n _stage/a21-tools/run-a21-case.sh
+          python3 -m unittest discover -s tools -p 'test_a21_device_evidence.py'
       - uses: actions/upload-artifact@v4
         if: success()
         with:
