@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"os"
 	"sync"
@@ -54,8 +56,12 @@ func (b Bridge) Serve(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := b.serveSession(ctx, unix, present, conn); err != nil && ctx.Err() != nil {
-			return ctx.Err()
+		if err := b.serveSession(ctx, unix, present, conn); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			// Keep the actual failure stage; never include HELLO/token bytes.
+			log.Printf("SESSION_ERROR peer=%s: %v", conn.RemoteAddr(), err)
 		}
 	}
 }
@@ -67,26 +73,34 @@ func (b Bridge) serveSession(ctx context.Context, unix net.Listener, present *ne
 	defer conn.CloseWithError(0, "session closed")
 	stream, err := conn.AcceptStream(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("accept QUIC stream: %w", err)
 	}
 	if err := authenticate(stream, b.Config.PairingToken); err != nil {
-		return err
+		return fmt.Errorf("authenticate HELLO: %w", err)
 	}
+	log.Printf("SESSION_AUTHENTICATED peer=%s; waiting for local Mesa client", conn.RemoteAddr())
 	client, err := unix.Accept()
 	if err != nil {
-		return err
+		return fmt.Errorf("accept local Mesa client: %w", err)
 	}
 	defer client.Close()
-	return bridge(ctx, client, stream, present, b.Config.Diagnostics)
+	log.Printf("SESSION_MESA_ATTACHED peer=%s", conn.RemoteAddr())
+	if err := bridge(ctx, client, stream, present, b.Config.Diagnostics); err != nil {
+		return fmt.Errorf("bridge vtest/PRESENT: %w", err)
+	}
+	return nil
 }
 
-func authenticate(stream quic.Stream, token string) error {
+func authenticate(stream io.Reader, token string) error {
 	e, err := protocol.Read(stream)
 	if err != nil {
 		return err
 	}
-	if e.Type != protocol.TypeHello || string(e.Payload) != token {
-		return errors.New("remotegpu: pairing rejected")
+	if e.Type != protocol.TypeHello {
+		return fmt.Errorf("remotegpu: expected HELLO type=%d, received type=%d", protocol.TypeHello, e.Type)
+	}
+	if string(e.Payload) != token {
+		return fmt.Errorf("remotegpu: pairing rejected (received %d bytes, expected %d bytes)", len(e.Payload), len(token))
 	}
 	return nil
 }
