@@ -2,9 +2,17 @@
 
 The available test device is user-reported iPhone 17 / iOS 27.0.1, with external
 IPA signing available. Build only in GitHub Actions; do not compile on Ubuntu.
-The user confirmed native context/caps PASS and an orange triangle, inverted
-vertically. Host GLES 3.0/capset GLSL 130 is not guest GL 3.2 Core acceptance.
-The new direction correction and network endpoint still require device testing.
+The first user screenshot showed an inverted local triangle; the subsequent
+screenshot confirms corrected upward orientation. Native context/caps PASS,
+GLES 3.0 works, and GLES 3.1/3.2 requests are rejected with EGL 0x3004. Guest
+GLSL is 130 in both capsets, below the planned 150 threshold. These are local
+observations, not remote draw or guest GL 3.2 Core acceptance. Repetition,
+leak/thermal tests and end-to-end QUIC runtime acceptance remain pending.
+
+The app build at `816bf85` is retained in
+[run 38245180997](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38245180997).
+Future reports must identify the build/dependencies. Initialization PASS,
+advertised caps and a screenshot timing overlay are not sustained FPS evidence.
 
 1. Obtain the unsigned IPA from **Build iOS interop prototype**, using a
    successful **Build iOS renderer sysroot** built with the non-GBM external-EGL
@@ -32,5 +40,51 @@ Use **Connect Capability Probe** for the separate
 Ubuntu but deliberately rejects remote presentation and readback. A successful
 host/native diagnostic does **not** pass guest GL 3.2 Core: the following gate
 must connect Mesa virpipe from Ubuntu and create that exact Core context through
-the iPhone renderer. Only then proceed to remote triangle presentation and
-Minecraft. No JVM/Minecraft launcher should be installed inside this app.
+the iPhone renderer. This is necessary before Minecraft, **not** before route
+A's low-capability remote triangle. No JVM/Minecraft launcher belongs here.
+
+## Route A: Remote PRESENT (planned, not available in current UI)
+
+Follow [route A tasks](../docs/next-stage-plan.md#route-a-remote-present-poc).
+Use a new Actions-built low-capability demo, preserving existing Core/GLSL 150
+tests. Begin with a small single-sample RGBA/BGRA 2D target and GL 2.1 / GLSL
+120 if genuinely available. No version overrides or application software fallback.
+
+1. Use a future **remote-display** mode, not **Connect Capability Probe**.
+   Record Ubuntu shader/draw logs and phone received vtest/PRESENT sequences.
+   The phone must not generate the triangle vertices or animation.
+2. Display changing position/color plus an Ubuntu-encoded application-frame
+   pattern. Check a finite sequence and frame order. PRESENT IDs include
+   possible initialization flushes and need not equal application frame IDs.
+3. Show the last frame after traffic stops. Stress repeated source writes,
+   UNREF/reuse and delayed display; already captured content must not change.
+4. Require zero normal-display TRANSFER_GET and no full-frame GPU->CPU fallback.
+   OS screenshots/screen recordings for inspection are not the render transport.
+   Explicit application-readback compatibility remains a separate test.
+5. Extend to 10 minutes without corrupt frames/crashes or sustained resource
+   growth. Report queue high-water marks, snapshot slots, resource references,
+   fence/Metal completion and disconnect cleanup. No initial 720p/30 threshold.
+
+Reject local-only triangles, missing VirGL-resource snapshots, completion that
+needs a later packet, or normal framebuffer readback to Ubuntu. A PASS proves
+remote rendering/presentation, not Minecraft capabilities.
+
+## Route B: candidate graphics capability (planned)
+
+Investigate MobileGlues + ANGLE Metal first, then MobileGL iOS interfaces, then
+UTM MoltenVK with a suitable GL/Vulkan compatibility implementation. Build one
+candidate probe at a time in Actions, isolated from route A. Do not modify
+existing ADRs or formal renderer selection merely because a probe builds.
+
+Require iOS ARM64 link/install, explicit GL/EGL provider/context ownership,
+actual GLSL 150 compile/translation/execution, and functional FBO/VAO/
+instancing/texture-buffer/depth/sync tests. Record geometry-stage simulation
+and other gaps individually. Linking, symbol lookup and version strings are
+not execution verdicts; missing required features are BLOCKED/FAIL.
+
+Then exercise the candidate through virglrenderer and Ubuntu Mesa. Host-native
+desktop GL is not required if the chain implements the virtual desktop GL
+semantics, but guest Core-context creation and real shaders/draws must pass.
+Never substitute GL_VERSION, GLSL_VERSION or cap-bit overrides for implementation.
+Both routes remain unaccepted until their corresponding reports are supplied.
+See [the interface investigation/task plan](../docs/next-stage-plan.md).

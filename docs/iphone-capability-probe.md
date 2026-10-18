@@ -1,5 +1,29 @@
 # Ubuntu -> iPhone capability probe
 
+## Status and independent routes (2026-10-13)
+
+The network capability endpoint is **implemented and CI-built, not accepted
+end-to-end on device**. User reports separately confirm local IOSurface/Metal
+display with corrected orientation and native context/caps initialization.
+These tests do not execute Ubuntu-originated draws.
+
+Known failed prerequisite: iPhone 17 / iOS 27.0.1 rejects GLES 3.1/3.2; GLES
+3.0 works, and both capsets report guest GLSL 130 rather than 150. This blocks
+the current Minecraft capability combination, not remote GPU feasibility.
+Actual Ubuntu guest Core-context creation remains a separate runtime gate.
+
+The [next-stage plan](next-stage-plan.md) defines independent routes:
+
+- **A — Remote PRESENT:** a new low-capability changing demo, current renderer
+  and a future resource/snapshot/display adapter; no initial GL 3.2 requirement.
+- **B — Graphics capability:** isolated candidate probes, then executable
+  Ubuntu guest GL 3.2 Core/GLSL 150 before Minecraft. No candidate is accepted
+  merely because it links or advertises a version.
+
+The commands below are reference instructions for the existing
+**capability-only** mode. This development round does not modify DNS, TLS,
+firewall or production deployment.
+
 This diagnostic executes native protocol-0 vtest commands on the iPhone, but
 does not present remote frames. It rejects every PRESENT envelope and all
 TRANSFER_GET requests. This intentionally prevents display readback to Ubuntu;
@@ -68,8 +92,15 @@ readback causes explicit closure, not fallback CPU/framebuffer streaming.
 Save the Ubuntu stdout/stderr and exit code plus the iPhone **Share Report**
 output. Guest GL_VERSION/GLSL_VERSION/profile and feature verdict come from
 Ubuntu's Mesa probe, not from the phone's host GLES version or a successful
-handshake. The reported guest GLSL 130 suggests the 3.2 Core gate may fail;
-record that failure honestly and investigate capabilities before Minecraft.
+handshake. GLSL 130 already fails the planned shader-level prerequisite;
+save the actual Ubuntu context result separately. An unrun Core-context test
+is neither PASS nor a measured failure. Minecraft remains blocked; route A
+can proceed within current capabilities.
+
+`tests/gl_capability.c` also currently requires timer query. Its planned fix
+separates baseline GL 3.2, optional diagnostics and Mod-specific requirements.
+Until that code change passes Actions, record this as the **existing stricter
+gate**, including the exact stage that failed. It is not fixed by these docs.
 
 ## Ownership
 
@@ -89,5 +120,28 @@ before virgl initialization and reports the actual versions. Rejected contexts
 or unexpected downgrades distinguish backend support from renderer selection;
 they do not change the production feature level or pass the guest Core gate.
 The fixed orientation shader is compiled into `default.metallib` by Actions,
-and packaging verifies that the library is present. Corrected orientation still
-needs a device screenshot; CI cannot assert final pixel orientation.
+and packaging verifies that the library is present. User screenshots now
+confirm the upward orientation; CI alone cannot assert final pixel orientation.
+Repetition, leak/thermal tests and sustained remote display remain unaccepted.
+
+## Separate acceptance records
+
+Save build/source SHA, dependency revisions, device/OS, guest context/GLSL,
+actual shader/test results and unsupported features. Distinguish:
+
+1. Local GLES/IOSurface triangle and native vtest initialization/caps.
+2. Capability-only QUIC traffic and Ubuntu context creation.
+3. Route A real remote draw/snapshot/completion-driven display.
+4. Route B candidate feature execution and final guest Core context.
+
+Do **not** send a swapping demo to **Connect Capability Probe** for route A:
+the current mode correctly rejects PRESENT. Future remote-display mode must
+retain the source until GPU copying completes and snapshots until Metal
+completes, without depending on another incoming packet to drive completion.
+No normal-display demo should call glReadPixels or fall back to full-frame CPU
+readback. Preserve a separate explicit application-readback test.
+
+Existing counters show bytes/sequences, not FPS/GPU-wait/RTT. Those metrics,
+command/display budgets and proxy phase timeouts are planned, not implemented
+acceptance. Historical CI/source records remain in
+[architecture.md](architecture.md#retained-ci-and-source-evidence).

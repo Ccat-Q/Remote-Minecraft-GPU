@@ -1,5 +1,30 @@
 # Architecture
 
+## Scope and evidence status (2026-10-13)
+
+The data flow is the approved **target**, not a claim that Minecraft or remote
+iPhone display works. Ubuntu owns the real client/JVM/mods; iPhone owns GPU
+execution/display/input/audio. Existing ADRs and the pinned renderer remain
+unchanged; no video streaming or phone JVM is introduced.
+
+| Status | Evidence / boundary |
+| --- | --- |
+| CI-verified | Linux virpipe/vtest/QUIC rendering, PRESENT/readback separation, native parser and resource/fence lifetime tests. Historical run links remain below; the Linux host uses software rendering, not the phone GPU. |
+| Device-verified (user reports) | iPhone 17 / iOS 27.0.1: local ANGLE Metal -> IOSurface -> Metal triangle, corrected upward orientation, native CREATE_RENDERER/GET_CAPS. Neither executes Ubuntu-originated draws. |
+| Implemented, runtime pending | iPhone QUIC capability-only endpoint, context restore/unbind and ordering helpers. App builds pass; end-to-end phone network acceptance is pending. |
+| Known failed prerequisite | GLES 3.1/3.2 requests rejected (EGL 0x3004); GLES 3.0 works. Guest capset GLSL is 130, below 150. Actual Ubuntu GL 3.2 Core creation remains an unaccepted separate test. |
+| Not implemented / accepted | Remote resource -> IOSurface snapshots, independent completion scheduling, sustained remote display, Minecraft and input/audio/Modpack acceptance. |
+| Candidate experiments only | MobileGlues + existing ANGLE Metal; MobileGL iOS interfaces; UTM MoltenVK with a suitable GL/Vulkan implementation. None replaces the renderer or has passed the guest gate. |
+
+The completed [feasibility audit](../exa-results/remotegpu-feasibility-2026-10-12/audit.md)
+is the research baseline. The blocker applies to the current capability
+combination, **not to the entire remote-GPU architecture**. The
+[next-stage plan](next-stage-plan.md) separates route A (PRESENT) from route B
+(Minecraft graphics capability); A does not depend on B passing.
+The audit's earlier recommendation to prioritize backend capability before
+remote display is superseded by the user's approved independent routes; its
+historical findings and evidence are retained unchanged.
+
 ## Data flow
 
 ```text
@@ -14,7 +39,7 @@ Minecraft Java 1.21.1 / LWJGL / GLFW
 ```
 
 The target `PRESENT` design emits from the Mesa vtest winsys presentation path,
-never GLFW. The hook will include its cumulative vtest byte offset. The Linux
+never GLFW. The implemented hook includes its cumulative vtest byte offset. The Linux
 proxy already waits until it has forwarded that offset, assigns
 `after_sequence`, and emits the marker on the same QUIC stream. The iOS
 endpoint already orders markers behind that sequence. The Mesa hook patch is
@@ -74,21 +99,40 @@ The Linux gate uses the default path between Mesa and the proxy; deployments
 can select another local path with `VTEST_SOCKET_NAME`. This was verified from
 the pinned winsys source exported by CI.
 
-## Validation gates
+## Independent validation routes
 
-1. Linux diagnostic receiver test: Mesa virpipe -> RemoteGPU Unix proxy -> one
-   ordered QUIC stream -> Linux vtest receiver -> virgl_test_server.
-2. iOS ANGLE/IOSurface render trace replay.
-3. End-to-end GL capability test: GL >= 3.2 Core, GLSL, FBO, VAO, instancing,
-   sync and query support.
-4. Mesa presentation hook with zero presentation readback bytes. The Linux
-   diagnostic test inspects consecutive ordered markers, requires zero TRANSFER_GET,
-   and separately verifies that application glReadPixels still reads a red
-   pixel. Device presentation and fence completion remain separate gates.
-5. Vanilla 1.21.1, 720p/30, 10 minutes over Wi-Fi on the 2 vCPU/4 GiB host.
-6. 5G functional run with RTT, jitter, stall and bandwidth reporting.
+**A — Remote PRESENT:** reuse VirGL/ANGLE Metal, protocol 0, QUIC and the Mesa
+hook. Add a modest GL 2.1 / GLSL 120 changing demo, subject to real guest
+capability, without overrides. Preserve the existing Core/GLSL 150 tests.
+Require Ubuntu-originated draws, GPU-only owned snapshots, frame ordering,
+independent GL/Metal completion and zero normal-display full-frame CPU
+readback. Begin with a small single-sample RGBA/BGRA 2D target, then a finite
+changing sequence and 10 minutes. No initial 720p/30 requirement. A PASS is
+remote display evidence, not Minecraft compatibility.
 
-Gate 1 is currently verified in GitHub Actions with protocol 0: the remote
+**B — Graphics capability:** investigate dispatch/context/iOS ARM64 interfaces;
+build one isolated candidate probe at a time. Prioritize MobileGlues + ANGLE
+Metal, then MobileGL, then UTM MoltenVK with a suitable compatibility layer.
+Require executed GLSL 150 and feature tests, not overridden strings/caps.
+Host-native desktop GL is not mandatory; the final Ubuntu Mesa guest must
+create genuinely executable GL >= 3.2 Core. Library linking, local draw and
+guest context acceptance are separate gates. No formal backend migration is
+authorized by an exploratory probe.
+
+**After A and B:** Vanilla 1.21.1 menu/world -> multiplayer -> input/audio ->
+pinned NeoForge/individual Mods -> Modpack. Wi-Fi 720p/30 for 10 minutes is a
+later target, followed by 5G tests, not a current result. The 2 vCPU/4 GiB host
+is a constrained PoC environment, not a Modpack capacity claim.
+
+The planned `gl_capability.c` correction separates baseline Core/GLSL/FBO/VAO/
+instancing/sync acceptance from timer-query diagnostics and Mod-specific
+requirements. Timer query is still mandatory in the existing code; it is not
+fixed by this documentation change. Preserve explicit application readback
+tests while requiring zero presentation-driven TRANSFER_GET.
+
+## Retained CI and source evidence
+
+The historical Linux transport/capability gate is verified in Actions with protocol 0: the remote
 renderer exposes OpenGL 4.3 Core / GLSL 4.30 and the proxy records non-zero
 traffic in both directions. It is a transport/capability proof only: it uses a
 Linux diagnostic receiver and has no `PRESENT` path.
@@ -104,8 +148,10 @@ The pinned iOS dependency recipe and iPhoneOS ANGLE/VirGL link gate passed in
 [run 38185353942](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38185353942).
 The device interop probe compiled and produced an unsigned iPhoneOS arm64 IPA
 in [run 38188117904](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38188117904).
-It must still be signed and run on an iPhone. Remote vtest replay and guest
-OpenGL 3.2 Core remain unverified on iOS, and Minecraft integration is not started.
+These are historical build/link records, not runtime acceptance. Later user
+reports confirm local triangle/native caps only. Remote vtest draw replay and
+guest OpenGL 3.2 Core remain unaccepted on iOS; Minecraft is not started. Use
+the newer external-EGL-fixed sysroot recorded below, not the earlier recipe.
 
 All builds and compilation run in GitHub Actions. The Ubuntu server only runs
 downloaded CI artifacts and target-environment checks; it does not build Mesa,
@@ -117,9 +163,9 @@ create/unref, transfers, submit and implicit fences using public virglrenderer
 APIs; unsupported/FD-bearing extensions fail closed. CI checks parser safety
 with AddressSanitizer/UBSan. A separate lightweight rendering gate downloads
 the verified Linux bundle and compiles only the endpoint, avoiding a dependency
-rebuild. This decoder is not yet an iOS EGL/presentation adapter: connection
-to QUIC, resource retention at PRESENT and asynchronous GPU/Metal completion
-remain required before the device can execute/display remote frames.
+rebuild. The iOS EGL adapter and capability-only QUIC connection now exist.
+Real PRESENT snapshots and asynchronous GPU/Metal completion remain required
+before the device can display remote frames.
 
 The shared native endpoint passed the actual GL/QUIC gate in
 [run 38204899580](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38204899580)
@@ -142,8 +188,21 @@ The non-GBM external-EGL cleanup fix compiled into the pinned iOS sysroot and
 passed the iPhoneOS link gate in
 [run 38206257487](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38206257487).
 The app includes a background native virglrenderer/ANGLE context/capset
-diagnostic and report sharing; real device execution and guest GL capability
-remain pending. Follow [the device acceptance checklist](../ios/DEVICE-TEST.md).
+diagnostic and report sharing. User reports confirm native initialization/caps
+and local display, and also the GLSL 130 blocker. The app at `816bf85` passed
+[CI run 38245169281](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38245169281)
+and produced an IPA in
+[run 38245180997](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38245180997).
+Build success does not establish remote rendering. Follow
+[the device acceptance checklist](../ios/DEVICE-TEST.md).
+
+Retained pinned source evidence: Mesa
+[`version.c`](https://gitlab.freedesktop.org/mesa/mesa/-/blob/590bf21d918c86908d96d1f4590ecd25b9657171/src/mesa/main/version.c),
+UTM VirGL
+[`vrend_fill_caps_glsl_version`](https://github.com/utmapp/virglrenderer/blob/482f9d8b8c2d2288efa10a027116216909d2c226/src/vrend/vrend_renderer.c),
+and ANGLE Metal
+[`mtl_common.h`](https://github.com/utmapp/WebKit/blob/ed78ab6e1a37f4f11583a0bd038f22ec91f3ff10/Source/ThirdParty/ANGLE/src/libANGLE/renderer/metal/mtl_common.h).
+Device reports are user-supplied observations, not CI GPU execution evidence.
 
 GitHub Actions caches Go modules/build output using `go.sum`, SwiftPM's build
 and dependency directories using its resolved dependency manifest, the pinned
@@ -154,7 +213,7 @@ generated Meson build directories, which contain absolute runner paths. Future
 Mesa/ANGLE build workflows must likewise key compiler caches on pinned commits,
 toolchain version and build flags; never key them only by branch name.
 
-# Initial Linux PoC display scope
+## Initial Linux PoC display scope
 
 The downloadable Linux PoC artifact deliberately builds Mesa with the **X11**
 platform only.  Its purpose is to prove the `virpipe → vtest → RemoteGPU`
@@ -165,3 +224,12 @@ renderer failure, and avoids Mesa's unrelated `wayland-egl-backend` dependency.
 
 Weston headless plus Xwayland remains the planned Minecraft integration stage,
 after the remote renderer has passed the GL 3.2 Core and presentation gates.
+
+## Planned hardening (not implemented in this documentation change)
+
+Track proxy HELLO/client-wait deadlines and cancellation; iOS command/byte
+budgets and bounded display slots; independent completion; GPU-wait/RTT/
+shader-compilation/frame-stall diagnostics. Verify these separately from the
+two graphics routes, using task IDs in [next-stage-plan.md](next-stage-plan.md).
+Reuse existing Actions caches/verified bundles. This plan does not authorize
+DNS, deployment or production configuration changes.
