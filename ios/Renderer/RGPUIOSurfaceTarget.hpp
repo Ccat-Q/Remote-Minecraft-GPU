@@ -10,6 +10,8 @@
 #include <cstring>
 #include <stdexcept>
 #include <cstdio>
+#include <functional>
+#include <chrono>
 
 // Borrows the caller's EGLDisplay/config; never creates a display or context.
 // Caller unbinds this surface before close(), and keeps the display alive.
@@ -22,10 +24,6 @@ class RGPUIOSurfaceTarget {
     id<MTLRenderPipelineState> pipeline_;
     id<MTLCommandBuffer> completion_;
     CAMetalLayer *layer_;
-    void waitForMetal() {
-        if (completion_ && completion_.status >= MTLCommandBufferStatusCommitted)
-            [completion_ waitUntilCompleted];
-    }
 public:
     EGLSurface surface = EGL_NO_SURFACE;
     RGPUIOSurfaceTarget() = default;
@@ -82,10 +80,12 @@ public:
         texture_ = [device newTextureWithDescriptor:texture iosurface:iosurface plane:0];
         if (!texture_) throw std::runtime_error("IOSurface MTLTexture allocation failed");
     }
-    void presentAndWait() {
+    void presentAndWait(std::function<bool()> cancelled = {}) {
         // Diagnostic only: EGL GPU completion must precede this call. Keep
         // pixels_/texture_ alive through Metal completion (including failures).
-        waitForMetal();
+        if (completion_ && completion_.status >= MTLCommandBufferStatusCommitted &&
+            completion_.status < MTLCommandBufferStatusCompleted)
+            throw std::runtime_error("Previous Metal consumption is still pending");
         id<CAMetalDrawable> drawable = [layer_ nextDrawable];
         if (!drawable) throw std::runtime_error("Metal drawable unavailable");
         completion_ = [queue_ commandBuffer];
@@ -101,13 +101,32 @@ public:
         [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
         [encoder endEncoding];
         [completion_ presentDrawable:drawable];
+        // Independent backing-store lease: cancellation/timeout may destroy
+        // this helper before Metal finishes. No GL/display/context is captured.
+        // Command buffers also retain their resources, but keep CVPixelBuffer
+        // explicitly until actual consumption, not until the CPU wait returns.
+        CVPixelBufferRef lease = CVPixelBufferRetain(pixels_);
+        id<MTLTexture> heldTexture = texture_;
+        dispatch_semaphore_t completed = dispatch_semaphore_create(0);
+        [completion_ addCompletedHandler:^(id<MTLCommandBuffer>) {
+            (void)heldTexture; // Strong capture until the completion handler retires.
+            CVPixelBufferRelease(lease);
+            dispatch_semaphore_signal(completed);
+        }];
         [completion_ commit];
-        waitForMetal();
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (dispatch_semaphore_wait(completed, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_MSEC))) {
+            if (cancelled && cancelled())
+                throw std::runtime_error("Metal wait cancelled; IOSurface lease retained until GPU completion");
+            if (std::chrono::steady_clock::now() >= deadline)
+                throw std::runtime_error("Metal wait timed out; IOSurface lease retained until GPU completion");
+        }
         if (completion_.status != MTLCommandBufferStatusCompleted)
             throw std::runtime_error(completion_.error.localizedDescription.UTF8String ?: "Metal completion failed");
     }
     bool close() {
-        waitForMetal();
+        // Successful path has consumed Metal already. On cancel/timeout the
+        // completion block independently retains the IOSurface backing store.
         if (surface != EGL_NO_SURFACE) {
             if (!eglDestroySurface(display_, surface)) return false;
             surface = EGL_NO_SURFACE;

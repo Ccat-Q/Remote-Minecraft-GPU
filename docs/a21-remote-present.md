@@ -43,9 +43,13 @@ No new renderer, Mesa patch, PRESENT wire layout, ACK, DNS or deployment change.
   It independently polls producer completion, takes the GPU snapshot, waits
   for copy completion, releases the pin and displays via Metal. Only then can
   subsequent vtest in the batch execute. No later packet is needed to complete
-  the last frame. Diagnostic GPU waits are bounded at 10 seconds; exceptional
-  glFinish/Metal completion waits remain conservative local diagnostics, NOT
-  the A3 async scheduler or a real-time cancellation guarantee under GPU hangs.
+  the last frame. Producer/copy/Metal completion waits have 10-second deadlines
+  and cancellation checks. A Metal completion block independently holds the
+  IOSurface backing store on cancellation/timeout, until actual GPU consumption;
+  endpoint cleanup never pretends that pending GPU resources were already freed.
+  Exceptional GL cleanup still uses conservative local glFinish; no hard
+  real-time guarantee is possible if driver API calls themselves hang. These
+  waits/leases are NOT the A3 asynchronous frame scheduler.
 - Maximum 16 PRESENTs per session (covers 12 application frames plus a possible
   startup PRESENT). Reports retain at most 512 chunks / 256 KiB; UI updates
   occur on display/terminal events, not every vtest command. No unbounded GPU

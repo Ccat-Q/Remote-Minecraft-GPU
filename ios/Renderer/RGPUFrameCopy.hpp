@@ -132,7 +132,7 @@ public:
     }
     void display(NSMutableString *report) {
         checkCancellation();
-        target_.presentAndWait();
+        target_.presentAndWait(cancelled_);
         [report appendString:@"Metal command status: COMPLETED; IOSurface retained through consumption\n"];
     }
     bool close() {
