@@ -107,6 +107,19 @@ public:
                 }
                 std::fprintf(stderr, "ORACLE_MISMATCH app_frame=%u present=%llu format=%u flags=%u checked=%u\n",
                     verified_, (unsigned long long)frame, info.virgl_format, info.flags, checked);
+                unsigned minx = 64, miny = 64, maxx = 0, maxy = 0, changed = 0;
+                for (unsigned row = 0; row < 64; ++row) for (unsigned col = 0; col < 64; ++col) {
+                    const auto* p = pixels.data() + (row * 64 + col) * 4;
+                    int r = p[info.virgl_format == 67 ? 0 : 2], g = p[1], b = p[info.virgl_format == 67 ? 2 : 0];
+                    if (std::abs(r - 8) > 2 || std::abs(g - 16) > 2 || std::abs(b - 24) > 2) {
+                        ++changed;
+                        minx = std::min(minx, col); maxx = std::max(maxx, col);
+                        miny = std::min(miny, row); maxy = std::max(maxy, row);
+                    }
+                }
+                std::fprintf(stderr, "ORACLE_PIXELS changed=%u bounds=%u,%u..%u,%u raw_center=%u,%u,%u,%u raw_corner=%u,%u,%u,%u\n",
+                    changed, minx, miny, maxx, maxy,
+                    pixels[8320], pixels[8321], pixels[8322], pixels[8323], pixels[0], pixels[1], pixels[2], pixels[3]);
                 throw std::runtime_error("receiver pixel reference mismatch");
             }
             require(verified_ < expected_, "unexpected extra application PRESENT");
