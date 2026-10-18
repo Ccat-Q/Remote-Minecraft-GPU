@@ -8,6 +8,8 @@ on:
       - linux/tools/remote-present-verifier.hpp
       - linux/tools/shared-scanout-test.hpp
       - cmd/remotegpu-vtest-receiver/**
+      - cmd/remotegpu-proxy/**
+      - internal/proxy/**
       - tests/gl_remote_present.c
       - tests/mesa_present_gate.py
       - tests/native_vtest_lifetime.cpp
@@ -16,6 +18,9 @@ on:
       - ios/Renderer/RGPUFrameCopy.hpp
       - tests/a21_shared_copy.cpp
       - deploy/run-gl-remote-present.sh
+      - deploy/run-a21-case.sh
+      - tools/a21_device_evidence.py
+      - tools/test_a21_device_evidence.py
       - .github/workflows/native-vtest-gate.yml
   workflow_dispatch:
     inputs:

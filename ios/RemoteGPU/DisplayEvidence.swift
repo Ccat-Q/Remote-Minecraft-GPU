@@ -1,5 +1,20 @@
 import Foundation
 
+// Coalesce partial-stream activity without enqueueing one renderer task per
+// network receive. Tiny fragments must not create an unbounded callback queue.
+final class RemoteGPUStreamActivity: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: TimeInterval?
+    func record(at time: TimeInterval) {
+        lock.lock(); defer { lock.unlock() }
+        value = max(value ?? time, time)
+    }
+    var latest: TimeInterval? {
+        lock.lock(); defer { lock.unlock() }
+        return value
+    }
+}
+
 // Local monotonic evidence only. Completion means native GPU copy AND Metal
 // completion returned; it never asserts that the human saw the right pixels.
 final class RemoteGPUDisplayEvidence {
@@ -14,7 +29,7 @@ final class RemoteGPUDisplayEvidence {
         self.sessionID = sessionID
         self.startedAt = startedAt
     }
-    func receivedVTest(at time: TimeInterval) { lastVTest = time }
+    func receivedVTest(at time: TimeInterval) { lastVTest = max(lastVTest ?? time, time) }
 
     func completed(_ present: RemoteGPUPresent, began: TimeInterval, ended: TimeInterval) throws -> String {
         guard completedCount < 16, present.frameID == lastPresent + 1,
@@ -32,7 +47,9 @@ final class RemoteGPUDisplayEvidence {
         return max(0, time - max(completion, lastVTest ?? completion))
     }
     func holdLine(at time: TimeInterval, live: Bool) -> String {
-        String(format: "A21_HOLD live=%@ last_present=%llu quiet_s=%.3f completed=%d visual_confirmation=USER_REQUIRED",
-            live ? "YES" : "NO", lastPresent, quietSeconds(at: time), completedCount)
+        // Never round 119.9996 up to an apparent 120-second observation.
+        let seconds = (quietSeconds(at: time) * 1000).rounded(.down) / 1000
+        return String(format: "A21_HOLD live=%@ last_present=%llu quiet_s=%.3f completed=%d visual_confirmation=USER_REQUIRED",
+            live ? "YES" : "NO", lastPresent, seconds, completedCount)
     }
 }

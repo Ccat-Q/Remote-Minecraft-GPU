@@ -159,9 +159,22 @@ final class RemoteGPUProtocolTests: XCTestCase {
         XCTAssertThrowsError(try evidence.completed(first, began: 101, ended: 100))
         XCTAssertThrowsError(try evidence.completed(first, began: 99, ended: 100))
         _ = try evidence.completed(first, began: 101, ended: 102)
+        XCTAssertTrue(evidence.holdLine(at: 221.9996, live: true).contains("quiet_s=119.999"))
         XCTAssertThrowsError(try evidence.completed(first, began: 103, ended: 104))
         XCTAssertThrowsError(try evidence.completed(
             RemoteGPUPresent(payload: present(frame: 3, after: 2)), began: 103, ended: 104))
         XCTAssertEqual(evidence.completedCount, 1)
+    }
+
+    func testPartialStreamActivityCoalescesAndRestartsQuietObservation() throws {
+        let activity = RemoteGPUStreamActivity()
+        activity.record(at: 101)
+        activity.record(at: 100)
+        XCTAssertEqual(activity.latest, 101)
+        let evidence = RemoteGPUDisplayEvidence(sessionID: "partial", startedAt: 90)
+        _ = try evidence.completed(RemoteGPUPresent(payload: present(frame: 1, after: 1)), began: 100, ended: 101)
+        activity.record(at: 220) // Even an incomplete envelope is not silence.
+        evidence.receivedVTest(at: activity.latest!)
+        XCTAssertEqual(evidence.quietSeconds(at: 221), 1)
     }
 }

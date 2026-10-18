@@ -22,6 +22,7 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
     private var header = ""
     private var history: [String] = []
     private var timer: DispatchSourceTimer?
+    private let streamActivity = RemoteGPUStreamActivity()
     private var evidence: RemoteGPUDisplayEvidence!
     private var lastHoldReport: TimeInterval = 0
     private var holdMilestone: UInt64?
@@ -33,7 +34,7 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
     }
     func start() {
         rendererQueue.async {
-            self.evidence = RemoteGPUDisplayEvidence(sessionID: self.sessionID, startedAt: CACurrentMediaTime())
+            self.evidence = RemoteGPUDisplayEvidence(sessionID: self.sessionID, startedAt: ProcessInfo.processInfo.systemUptime)
             guard !self.closed && !self.cancellation.isCancelled else { self.finish("Cancelled before start"); return }
             do {
                 self.endpoint = try RGPURemoteDisplayEndpoint.create(cancellation: self.cancellation)
@@ -46,6 +47,8 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                 timer.resume()
                 let connection = RemoteGPUQUICRenderConnection(host: self.host, port: self.port, pairingToken: self.token)
                 self.transport = connection
+                let activity = self.streamActivity
+                connection.onStreamBytes = { activity.record(at: ProcessInfo.processInfo.systemUptime) }
                 connection.onBatch = { [weak self] batch, complete in
                     guard let self else { complete(); return }
                     self.rendererQueue.async {
@@ -87,13 +90,15 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
     }
     private func report(_ status: String, finished: Bool = false) {
         let counters = "\nVTEST processed=\(order.processedSequence) displayed PRESENT=\(order.displayedFrame)\nReceived vtest=\(received) reply bytes=\(sent) batch high-water=\(highWaterBatch) bytes\nOne batch in flight; one snapshot at a time; max 16 PRESENTs. No per-frame network ACK.\n"
-        let hold = evidence?.holdLine(at: CACurrentMediaTime(), live: !closed && !cancellation.isCancelled) ?? ""
+        if let activity = streamActivity.latest { evidence?.receivedVTest(at: activity) }
+        let hold = evidence?.holdLine(at: ProcessInfo.processInfo.systemUptime, live: !closed && !cancellation.isCancelled) ?? ""
         let text = header + "\n" + status + counters + hold + "\n" + history.joined(separator: "\n")
         DispatchQueue.main.async { self.onReport?(text, finished) }
     }
     private func observeHold() {
         guard !closed && !cancellation.isCancelled && order.displayedFrame > 0 else { return }
-        let now = CACurrentMediaTime()
+        let now = ProcessInfo.processInfo.systemUptime
+        if let activity = streamActivity.latest { evidence.receivedVTest(at: activity) }
         let milestone = evidence.quietSeconds(at: now) >= 120 && holdMilestone != order.displayedFrame
         if milestone {
             holdMilestone = order.displayedFrame
@@ -126,7 +131,7 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                 guard envelope.flags == 0 else { throw RemoteGPUProtocolError.invalidPresent }
                 switch envelope.type {
                 case .vtestBytes:
-                    evidence.receivedVTest(at: CACurrentMediaTime())
+                    evidence.receivedVTest(at: ProcessInfo.processInfo.systemUptime)
                     try order.consume(envelope.payload) { bytes in
                         guard let endpoint else { throw RemoteGPUProtocolError.invalidVTestChunk }
                         received += UInt64(bytes.count)
@@ -143,10 +148,10 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                     guard let endpoint else { throw RemoteGPUProtocolError.invalidPresent }
                     // This blocks only the serialized diagnostic renderer, not
                     // UIKit/network. NO later native command is submitted here.
-                    let began = CACurrentMediaTime()
+                    let began = ProcessInfo.processInfo.systemUptime
                     append(try endpoint.present(envelope.payload, layer: layer))
                     try order.completePresent(present)
-                    append(try evidence.completed(present, began: began, ended: CACurrentMediaTime()))
+                    append(try evidence.completed(present, began: began, ended: ProcessInfo.processInfo.systemUptime))
                     holdMilestone = nil
                     let frame = present.frameID
                     DispatchQueue.main.async { self.onDisplayed?(frame) }

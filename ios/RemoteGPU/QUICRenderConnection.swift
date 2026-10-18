@@ -24,6 +24,8 @@ final class RemoteGPUQUICRenderConnection: @unchecked Sendable {
     private var pendingSendBytes = 0 // Queue-confined, including native replies.
 
     var onEvent: ((RemoteGPUConnectionEvent) -> Void)?
+    // Optional constant-space activity sampler; includes incomplete envelopes.
+    var onStreamBytes: (() -> Void)?
     // Install before start. Caller MUST complete every delivered batch, even
     // after failure/cancel. Only this optional mode changes receive scheduling.
     var onBatch: (([RemoteGPUEnvelope], @escaping @Sendable () -> Void) -> Void)?
@@ -102,6 +104,7 @@ final class RemoteGPUQUICRenderConnection: @unchecked Sendable {
             guard let self else { return }
             if let error { self.onEvent?(.failed(error)); return }
             if let data {
+                if !data.isEmpty { self.onStreamBytes?() }
                 do {
                     let envelopes = try self.decoder.feed(data)
                     if complete && !self.decoder.atEnvelopeBoundary { throw RemoteGPUProtocolError.invalidVTestChunk }

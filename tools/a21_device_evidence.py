@@ -55,8 +55,8 @@ def analyze(ubuntu, phone, frames, expected_sha, require_cleanup=False, previous
         require(phone.count(marker) == count, 'Missing completion/isolation evidence: ' + marker)
     gets = re.findall(r'TRANSFER_GET=(\d+)', phone)
     require(gets and all(int(value) == 0 for value in gets), 'Display readback missing or nonzero')
-    require(all(int(value, 16) == 0 for value in re.findall(r'GL error 0x([0-9a-fA-F]+)', phone)), 'GL error reported')
-    require(all(int(value, 16) == 0x3000 for value in re.findall(r'EGL error 0x([0-9a-fA-F]+)', phone)), 'EGL error reported')
+    require(all(int(value, 16) == 0 for value in re.findall(r'\bGL error 0x([0-9a-fA-F]+)', phone)), 'GL error reported')
+    require(all(int(value, 16) == 0x3000 for value in re.findall(r'\bEGL error 0x([0-9a-fA-F]+)', phone)), 'EGL error reported')
     require(not any(marker in phone for marker in ('NETWORK FAILED:', 'REMOTE DISPLAY FAILED:', 'INIT FAILED:')),
             'Device reported a failed session')
     holds = re.findall(r'A21_HOLD live=YES last_present=(\d+) quiet_s=([\d.]+) completed=(\d+)', phone)

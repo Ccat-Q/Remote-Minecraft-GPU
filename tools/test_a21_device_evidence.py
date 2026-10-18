@@ -12,7 +12,7 @@ def fixture(frames=7, session='session-one'):
     phone = f'A2.1 REAL REMOTE DISPLAY\nDevice: SYNTHETIC UNIT TEST, NOT PHYSICAL EVIDENCE\n"app_source_sha": "{SHA}"\nA21_SESSION session={session} clock=local_monotonic\n'
     for i in range(1, frames + 2):
         phone += f'PRESENT received frame={i} resource=1 after={i} processed={i}\n'
-        phone += 'Remote producer fence complete: GL error 0x0\nGPU copy fence complete: 0x911c\nSnapshot complete; source pin released.\nMetal command status: COMPLETED\nTRANSFER_GET=0\n'
+        phone += 'Remote producer fence complete: GL error 0x0\nCreate shared copy context: EGL error 0x3000\nGPU copy fence complete: 0x911c\nSnapshot complete; source pin released.\nMetal command status: COMPLETED\nTRANSFER_GET=0\n'
         phone += f'A21_FRAME present={i} resource=1 after={i} completed_ms={i * 1000:.3f} duration_ms=2.000\n'
     phone += f'A21_HOLD live=YES last_present={frames + 1} quiet_s=120.100 completed={frames + 1}\n'
     phone += f'A21_SESSION_CLOSED session={session} displayed={frames + 1} cleanup_returned=YES reason=User cancelled display session\n'
@@ -39,6 +39,7 @@ class DeviceEvidenceTests(unittest.TestCase):
             (ubuntu, phone.replace('cleanup_returned=YES', 'cleanup_returned=NO')),
             (ubuntu, phone.replace('Metal command status: COMPLETED', 'Metal command status: FAILED')),
             (ubuntu, phone.replace('GL error 0x0', 'GL error 0x502')),
+            (ubuntu, phone.replace('EGL error 0x3000', 'EGL error 0x3004')),
             (ubuntu, phone.replace(SHA, 'b' * 40)),
         ):
             with self.assertRaises(ValueError):
