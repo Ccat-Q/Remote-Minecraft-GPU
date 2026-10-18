@@ -15,7 +15,8 @@ No new renderer, Mesa patch, PRESENT wire layout, ACK, DNS or deployment change.
   NWConnection receives until its local consumer completes. Budget: 4096
   envelopes and 16 MiB + 64 KiB decoded bytes; incomplete vtest command budget
   remains 16 MiB in native code. Network.framework also has its own finite QUIC
-  buffers. This is receive backpressure, **not** a network frame ACK.
+  buffers. Outstanding send/reply bytes are capped at 2 MiB. This is receive
+  backpressure, **not** a network frame ACK.
 - `RemoteGPUSerialDisplayOrder` requires zero envelope flags, consecutive vtest
   sequence and PRESENT frame IDs starting at 1, and **afterSequence exactly
   equal** to the sequence processed at this single-stream slot. Native code
@@ -32,8 +33,11 @@ No new renderer, Mesa patch, PRESENT wire layout, ACK, DNS or deployment change.
   creation metadata against Resource Info, flags, GL texture visibility,
   normalized linear 8-bit RGBA attachment components and complete FBOs. Ordinary
   VirGL BGRA8 GL storage is copied as logical RGBA, with **no guessed manual
-  channel swap**. IOSurface BGRA storage and the unchanged Metal orientation
-  shader perform the existing single transform. BGRA8 on iPhone needs its own
+  channel swap**. A1 window raw GL rows are top-left (as the independent A1
+  oracle demonstrates), unlike A2.0's raw-GL fixture coordinates. Explicitly
+  invert source Y in the GPU blit for the window, then reuse the accepted
+  IOSurface/Metal orientation shader unchanged. flags=0 alone must not be used
+  to infer which producer coordinate convention was used. BGRA8 on iPhone needs its own
   A2.1 screenshot; Linux success is not that evidence.
 - At PRESENT, native code pins the source and captures a dedicated fence.
   It independently polls producer completion, takes the GPU snapshot, waits
@@ -59,6 +63,10 @@ sequence / invalid resource / snapshot admission / bounded batches / cancellatio
 tests. `a21_shared_copy.cpp` uses real Linux EGL sharing and GPU blit for formats
 67 and 1, overwrites/unrefs the source after copying, and checks every snapshot
 pixel using **test-only** readback. It does not exercise IOSurface or iPhone GPU.
+The extra `--shared-scanout` gate runs the real A1 Ubuntu OpenGL app through
+QUIC/native decoder, then an EGL-shared GPU snapshot using the same window-row
+normalization, and checks the displayed orientation/colors/frames/hold against
+the independent A1 oracle. The old direct-transfer oracle also remains intact.
 No readback is added to the phone's display implementation.
 
 All builds in Actions. Native gate reuses exact dependency run `38186021966`;
@@ -102,7 +110,7 @@ sh ./a21-tools/run-gl-remote-present.sh --frames 1 --fps 1 --hold-seconds 120 \
 If the chosen diagnostic UDP port is not reachable, report the network failure;
 this code change does not grant permission to alter firewall/production rules.
 
-4. Record Ubuntu `APP_FRAME` (zero-based), position/color and `HOLD_BEGIN`. A
+4. Record Ubuntu `DRAW frame=...` (zero-based), position/color and `HOLD_BEGIN`. A
    possible startup PRESENT precedes application frame 0, so PRESENT IDs need
    not equal application frame IDs. Expect a small upward triangle toward the
    lower-left for frame 0: RGB 40/50/60, offset (-0.32,-0.12), dark RGB 8/16/24.

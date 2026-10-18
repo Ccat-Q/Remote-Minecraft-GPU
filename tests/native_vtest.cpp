@@ -171,5 +171,17 @@ int main() {
         assert(session.commandCounts()[2] == 1 && session.commandCounts()[4] == 0);
     }
     assert(resources == 0); // Cancellation releases pinned resources on teardown.
+    {
+        rgpu::VTestSession session;
+        auto data = create(); command(data, 6, {0});
+        session.feed(data.data(), data.size()); // Leave a deliberately incomplete fake GPU fence.
+        unsigned checks = 0;
+        session.setCancellationCheck([&] { return ++checks >= 3; });
+        data.clear(); command(data, 7, {0, 1});
+        try { session.feed(data.data(), data.size()); assert(false); }
+        catch (const std::runtime_error& failure) {
+            assert(std::string(failure.what()).find("GPU wait cancelled") != std::string::npos);
+        }
+    }
     std::cout << "PASS: A2.1 resource metadata/profile/boundary rejection and cancelled-session cleanup\n";
 }

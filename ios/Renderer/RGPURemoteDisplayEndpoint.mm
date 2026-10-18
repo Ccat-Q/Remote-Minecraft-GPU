@@ -78,6 +78,14 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
         _host->resume();
         auto bytes = static_cast<const uint8_t *>(payload.bytes);
         const auto frame = bigEndian(bytes, 8), handle = bigEndian(bytes + 8, 8), after = bigEndian(bytes + 16, 8);
+        [report appendFormat:@"Native PRESENT frame=%llu resource=%llu after=%llu; command boundary=%@\n",
+            (unsigned long long)frame, (unsigned long long)handle, (unsigned long long)after,
+            _host->session->atCommandBoundary() ? @"YES" : @"NO"];
+        if (handle && handle <= UINT32_MAX) {
+            const auto created = _host->session->resourceDescription(uint32_t(handle));
+            [report appendFormat:@"Created resource: format=%u %ux%u target=%u depth=%u samples=%u array=%u last_level=%u\n",
+                created.format, created.width, created.height, created.target, created.depth, created.samples, created.arraySize, created.lastLevel];
+        }
         const auto desc = _host->session->validatePresentResource(handle,
             uint32_t(bigEndian(bytes + 24, 4)), uint32_t(bigEndian(bytes + 28, 4)),
             uint32_t(bigEndian(bytes + 32, 4)), uint32_t(bigEndian(bytes + 36, 4)),
@@ -105,7 +113,7 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
         {
             RGPUDisplayCancellation *cancellation = _cancellation;
             SingleFrameCopy copy(*_host, [cancellation] { return bool(cancellation.cancelled); });
-            copy.copy(layer, info, desc, report);
+            copy.copy(layer, info, desc, report, true); // A1 Gallium window, NOT A2.0 fixture rows.
             _host->session->releaseFromPresent(resource); retained = false;
             [report appendString:@"Snapshot complete; source pin released. No later source writes preceded snapshot completion.\n"];
             copy.display(report);

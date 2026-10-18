@@ -21,6 +21,7 @@ final class RemoteGPUQUICRenderConnection: @unchecked Sendable {
     private let decoder = RemoteGPUStreamDecoder()
     private var stopped = false // Accessed only on queue.
     private let ingress = RemoteGPUBoundedIngress()
+    private var pendingSendBytes = 0 // Queue-confined, including native replies.
 
     var onEvent: ((RemoteGPUConnectionEvent) -> Void)?
     // Install before start. Caller MUST complete every delivered batch, even
@@ -71,9 +72,28 @@ final class RemoteGPUQUICRenderConnection: @unchecked Sendable {
     }
 
     private func send(_ envelope: RemoteGPUEnvelope) {
-        connection.send(content: envelope.encoded(), contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { [weak self] error in
-            if let error { self?.onEvent?(.failed(error)) }
-        })
+        let bytes = envelope.encoded()
+        queue.async {
+            guard !self.stopped else { return }
+            guard self.pendingSendBytes + bytes.count <= 2 << 20 else {
+                self.stopped = true; self.ingress.cancel()
+                self.onEvent?(.failed(RemoteGPUProtocolError.payloadTooLarge))
+                self.connection.cancel()
+                return
+            }
+            self.pendingSendBytes += bytes.count
+            self.connection.send(content: bytes, contentContext: .defaultMessage, isComplete: false,
+                completion: .contentProcessed { [weak self] error in
+                    guard let self else { return }
+                    self.queue.async {
+                        self.pendingSendBytes -= bytes.count
+                        if let error, !self.stopped {
+                            self.stopped = true; self.ingress.cancel()
+                            self.onEvent?(.failed(error)); self.connection.cancel()
+                        }
+                    }
+                })
+        }
     }
 
     private func receiveNext() {

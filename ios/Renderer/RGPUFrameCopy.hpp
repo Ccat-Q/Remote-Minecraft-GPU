@@ -34,7 +34,8 @@ class SingleFrameCopy {
 public:
     explicit SingleFrameCopy(ANGLEHost& host, std::function<bool()> cancelled = {})
         : host_(host), cancelled_(std::move(cancelled)) {}
-    void copy(CAMetalLayer *layer, const virgl_renderer_resource_info& info, const rgpu::ResourceDescription& desc, NSMutableString *report) try {
+    void copy(CAMetalLayer *layer, const virgl_renderer_resource_info& info, const rgpu::ResourceDescription& desc,
+              NSMutableString *report, bool galliumWindowRows = false) try {
         checkCancellation();
         require(desc.target == 2 && desc.depth == 1 && desc.arraySize == 1 && desc.lastLevel == 0 && desc.samples <= 1,
             "Unsupported source target/mip/layer/array/sample count");
@@ -54,8 +55,8 @@ public:
         eglCheck(report, "Bind IOSurface on borrowed EGLDisplay",
             eglMakeCurrent(host_.display, target_.surface, target_.surface, copy_));
         require(glIsTexture(info.tex_id), "VirGL tex_id is NOT visible in shared context");
-        [report appendFormat:@"Shared texture visible: YES; GL target=TEXTURE_2D, level=0, layer=0, samples=0 (one sample)\nCopy host: %@ / %@\n",
-            glText(GL_VERSION), glText(GL_RENDERER)];
+        [report appendFormat:@"Shared texture visible: YES; GL target=TEXTURE_2D, level=0, layer=0, creation samples=%u (single sample)\nCopy host: %@ / %@\n",
+            desc.samples, glText(GL_VERSION), glText(GL_RENDERER)];
         glGenFramebuffers(1, &read_);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, read_);
         // FBO is private to copy_, attachment is borrowed; never write to it.
@@ -93,7 +94,14 @@ public:
         // Both targets are normalized linear 8-bit color. No format swizzle:
         // GL/ANGLE converts logical RGBA into IOSurface BGRA storage.
         glDisable(GL_SCISSOR_TEST);
-        glBlitFramebuffer(0, 0, info.width, info.height, 0, 0, info.width, info.height,
+        // A1's window rows are Gallium top-left, unlike A2.0's raw-GL fixture.
+        // Normalize source rows here; keep the accepted IOSurface/Metal shader
+        // unchanged. Resource flags alone do NOT identify the producer's rows.
+        [report appendFormat:@"Source rows=%@; GPU source-Y normalization=%@; Metal orientation shader unchanged\n",
+            galliumWindowRows ? @"A1 Gallium window top-left" : @"A2.0 raw GL bottom-left",
+            galliumWindowRows ? @"FLIP" : @"NONE"];
+        glBlitFramebuffer(0, galliumWindowRows ? info.height : 0, info.width, galliumWindowRows ? 0 : info.height,
+                          0, 0, info.width, info.height,
                           GL_COLOR_BUFFER_BIT, GL_NEAREST);
         glCheck(report, "GPU copy glBlitFramebuffer RGBA8 -> BGRA8 IOSurface");
         done_ = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);

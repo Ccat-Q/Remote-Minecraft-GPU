@@ -6,6 +6,7 @@ on:
       - ios/Renderer/RGPUVirglAPI.hpp
       - linux/tools/native-vtest-server.cpp
       - linux/tools/remote-present-verifier.hpp
+      - linux/tools/shared-scanout-test.hpp
       - cmd/remotegpu-vtest-receiver/**
       - tests/gl_remote_present.c
       - tests/mesa_present_gate.py
@@ -67,7 +68,7 @@ jobs:
         run: |
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iios/Renderer -I_stage/virglrenderer/include \
             ios/Renderer/RGPUVTestSession.cpp linux/tools/native-vtest-server.cpp \
-            -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -o _stage/bin/native-vtest-server
+            -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -lEGL -lGLESv2 -o _stage/bin/native-vtest-server
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iios/Renderer -I_stage/virglrenderer/include \
             ios/Renderer/RGPUVTestSession.cpp tests/native_vtest_lifetime.cpp \
             -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -o _stage/bin/native-vtest-lifetime
@@ -103,6 +104,10 @@ jobs:
         run: |
           set -o pipefail
           python3 tests/mesa_present_gate.py _stage --dynamic 2>&1 | tee a1-dynamic-present.log
+      - name: Verify A2.1 actual Ubuntu draw through QUIC and shared GPU scanout
+        run: |
+          set -o pipefail
+          python3 tests/mesa_present_gate.py _stage --shared-scanout 2>&1 | tee a21-remote-scanout.log
       - name: Verify dynamic demo argument handling
         run: |
           _stage/bin/gl-remote-present --help
@@ -123,6 +128,7 @@ jobs:
             a1-dynamic-present.log
             a2-virgl-pattern.log
             a21-shared-copy.log
+            a21-remote-scanout.log
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: success()

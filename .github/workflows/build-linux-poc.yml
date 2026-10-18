@@ -101,7 +101,7 @@ jobs:
           cc -std=c11 -O2 -Wall -Wextra -Werror -o _stage/bin/gl-remote-present tests/gl_remote_present.c -lglfw -lGLEW -lGL -lm
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iios/Renderer -I_stage/virglrenderer/include \
             ios/Renderer/RGPUVTestSession.cpp linux/tools/native-vtest-server.cpp \
-            -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -o _stage/bin/native-vtest-server
+            -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -lEGL -lGLESv2 -o _stage/bin/native-vtest-server
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iios/Renderer -I_stage/virglrenderer/include \
             ios/Renderer/RGPUVTestSession.cpp tests/native_vtest_lifetime.cpp \
             -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -o _stage/bin/native-vtest-lifetime

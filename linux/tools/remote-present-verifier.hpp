@@ -2,6 +2,8 @@
 // CI ONLY: CPU oracle on the receiver, never a vtest TRANSFER_GET or display.
 #include "RGPUVTestSession.hpp"
 #include "RGPUVirglAPI.hpp"
+#include "shared-scanout-test.hpp"
+#include <cstdlib>
 #include <sys/uio.h>
 #include <algorithm>
 #include <chrono>
@@ -36,6 +38,12 @@ class FrameVerifier {
         // Pinned virgl_hw.h: BGRA8/BGRX8=1/2, RGBA8=67. No iOS ABI changes.
         require(info.virgl_format == 1 || info.virgl_format == 2 || info.virgl_format == 67,
                 "oracle unsupported resource format");
+        if (std::getenv("REMOTEGPU_TEST_SHARED_SCANOUT")) {
+            require(info.flags == 0 && info.virgl_format == 1, "A1 shared scanout profile changed");
+            auto pixels = testSharedWindowSnapshot(info);
+            std::fprintf(stderr, "TEST_GPU_SCANOUT resource=%u shared_context=1 source_y_normalized=1 fence_complete=1\n", resource);
+            return pixels;
+        }
         std::vector<uint8_t> pixels(64 * 64 * 4);
         iovec iov{pixels.data(), pixels.size()};
         virgl_box box{0, 0, 0, 64, 64, 1};

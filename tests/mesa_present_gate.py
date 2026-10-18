@@ -24,7 +24,7 @@ def wait_socket(path, processes):
     raise TimeoutError(path)
 
 
-def run_case(stage, readback, native=False, dynamic_frames=0, fault=None):
+def run_case(stage, readback, native=False, dynamic_frames=0, fault=None, shared_scanout=False):
     stage = stage.resolve()
     env = os.environ.copy()
     processes = []
@@ -47,6 +47,8 @@ def run_case(stage, readback, native=False, dynamic_frames=0, fault=None):
                 reservation.bind(("127.0.0.1", 0))
                 address = "127.0.0.1:" + str(reservation.getsockname()[1])
             renderer_env = dict(env)
+            if shared_scanout:
+                renderer_env["REMOTEGPU_TEST_SHARED_SCANOUT"] = "1"
             virgl_lib = stage / "virglrenderer/lib/x86_64-linux-gnu"
             renderer_env["LD_LIBRARY_PATH"] = str(virgl_lib) + ":" + env.get("LD_LIBRARY_PATH", "")
             renderer_command = ([str(stage / "bin/native-vtest-server"), renderer_socket] if native else
@@ -165,8 +167,11 @@ if __name__ == "__main__":
     parser.add_argument("stage", type=Path)
     parser.add_argument("--native", action="store_true", help="Use the shared iOS native vtest decoder")
     parser.add_argument("--dynamic", action="store_true", help="A1 receiver-local pixel oracle, positive and deliberately corrupt/repeated-frame cases")
+    parser.add_argument("--shared-scanout", action="store_true", help="A2.1 A1->QUIC->shared-context GPU snapshot display-row oracle (Linux only)")
     args = parser.parse_args()
-    if args.dynamic:
+    if args.shared_scanout:
+        run_case(args.stage, False, True, 7, shared_scanout=True)
+    elif args.dynamic:
         run_case(args.stage, False, True, 12)
         run_case(args.stage, False, True, 7)
         run_case(args.stage, False, True, 6, "corrupt")

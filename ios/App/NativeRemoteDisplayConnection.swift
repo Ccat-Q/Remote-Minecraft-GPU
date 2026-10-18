@@ -93,6 +93,7 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
             var displayed = false
             for envelope in batch {
                 guard !cancellation.isCancelled else { throw RemoteGPUProtocolError.invalidPresent }
+                if envelope.flags != 0 { append("Rejected envelope type=\(envelope.type) flags=\(envelope.flags)") }
                 guard envelope.flags == 0 else { throw RemoteGPUProtocolError.invalidPresent }
                 switch envelope.type {
                 case .vtestBytes:
@@ -106,8 +107,9 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                     }
                     append("VTEST processed seq=\(order.processedSequence)")
                 case .present:
+                    let requested = try RemoteGPUPresent(payload: envelope.payload)
+                    append("PRESENT received frame=\(requested.frameID) resource=\(requested.resourceID) after=\(requested.afterSequence) processed=\(order.processedSequence)")
                     let present = try order.beginPresent(envelope.payload)
-                    append("PRESENT received frame=\(present.frameID) resource=\(present.resourceID) after=\(present.afterSequence) processed=\(order.processedSequence)")
                     guard let endpoint else { throw RemoteGPUProtocolError.invalidPresent }
                     // This blocks only the serialized diagnostic renderer, not
                     // UIKit/network. NO later native command is submitted here.
@@ -119,6 +121,6 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
             }
             // At most 16 display reports: don't enqueue UI work for every chunk.
             if displayed { report("REMOTE FRAME DISPLAYED; visual confirmation pending. Session remains open; last drawable is retained by the display.") }
-        } catch { finish("REMOTE DISPLAY FAILED: \(error.localizedDescription)") }
+        } catch { finish("REMOTE DISPLAY FAILED: \(String(describing: error))\n\(error.localizedDescription)") }
     }
 }
