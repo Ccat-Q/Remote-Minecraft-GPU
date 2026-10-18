@@ -104,6 +104,18 @@ int main(int argc, char** argv) {
                 if (ready < 0 && errno == EINTR) continue;
                 if (ready < 0) throw std::runtime_error("oracle poll failed");
                 if (fds[1].revents & POLLIN) {
+                    uint8_t first;
+                    auto available = recv(control, &first, 1, MSG_PEEK);
+                    if (available < 0 && errno == EINTR) continue;
+                    if (available == 0) {
+                        // The receiver closes its control connection before
+                        // the raw vtest socket. Drain the latter's cleanup/
+                        // UNREF commands and finish only at its real EOF.
+                        close(control);
+                        control = -1;
+                        continue;
+                    }
+                    if (available < 0) throw std::runtime_error("oracle control peek failed");
                     uint8_t request[56]; // BE raw byte offset + unchanged PRESENT payload.
                     exactRead(control, request, sizeof(request));
                     const auto boundary = rgpu_test::be(request, 8);
