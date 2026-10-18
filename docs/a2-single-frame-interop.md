@@ -47,8 +47,10 @@ dark background and asymmetric red/green/blue/yellow rectangles.
    Incompatible attachments fail with diagnostics; shader-copy support is
    not implemented speculatively.
 5. Flush and wait for a local GLsync (10-second timeout), detach source, restore
-   producer context. Release the pin, assert source removal and reuse/free
-   the handle **before** displaying the independent IOSurface snapshot.
+   producer context. Release the pin, assert source removal and reuse the
+   handle. GPU-clear the new source MAGENTA, wait for that completion and free
+   it **before** displaying the independent IOSurface snapshot. Magenta on
+   screen is a failure: it indicates missing snapshot isolation.
 6. Metal samples the IOSurface-backed BGRA8 texture via the existing orientation
    shader. Keep CVPixelBuffer/IOSurface/MTLTexture through Metal completion;
    then destroy copy context/surface before the host EGLDisplay.

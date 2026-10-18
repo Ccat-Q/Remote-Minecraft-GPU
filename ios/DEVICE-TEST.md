@@ -64,6 +64,8 @@ Expected image on a dark 640x360 background:
 Check all colors, relative positions, edge/margin sizes and absence of flipped,
 stretched or stale triangle content. Metal applies the existing single
 orientation transform; the GPU copy does not flip or manually swap channels.
+The later reused source is GPU-cleared MAGENTA before display: magenta instead
+of the four-color pattern indicates broken snapshot isolation and is a FAIL.
 
 Share the **entire report and screenshot**. Report must show actual app/source
 and renderer provenance, device/OS, resource 42 / format 67 / 640x360 / flags 0,

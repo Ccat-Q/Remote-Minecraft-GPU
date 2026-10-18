@@ -23,6 +23,13 @@ void feed(ANGLEHost& host, const std::vector<uint8_t>& bytes) {
     require(host.session->feed(bytes.data(), bytes.size()).empty(), "Unexpected vtest reply");
     require(host.session->atCommandBoundary(), "Incomplete vtest fixture");
 }
+void waitProducer(ANGLEHost& host, uint32_t fence) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!host.session->isFenceComplete(fence)) {
+        require(std::chrono::steady_clock::now() < deadline, "VirGL producer fence timeout");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
 NSString *glText(GLenum name) {
     auto value = glGetString(name);
     return value ? [NSString stringWithUTF8String:reinterpret_cast<const char *>(value)] : @"unavailable";
@@ -39,7 +46,7 @@ class SingleFrameCopy {
     bool closed_ = false;
 public:
     explicit SingleFrameCopy(ANGLEHost& host) : host_(host) {}
-    void copy(CAMetalLayer *layer, const virgl_renderer_resource_info& info, NSMutableString *report) {
+    void copy(CAMetalLayer *layer, const virgl_renderer_resource_info& info, NSMutableString *report) try {
         // Resource Info is NOT target/sample metadata. This one-shot owns the
         // creation descriptor (pattern::createResource), disallows all others.
         require(info.handle == rgpu::pattern::resource && info.tex_id != 0 &&
@@ -118,6 +125,12 @@ public:
         // No more GL writes to IOSurface. Unbind before cross-API consumption.
         host_.resume();
         eglCheck(report, "Restore producer context after snapshot");
+    } catch (const std::exception& error) {
+        // Capture errors while the failing context is still alive, BEFORE
+        // RAII teardown can replace EGL/GL's thread-local error state.
+        [report appendFormat:@"Copy failure before teardown: %s; GL=0x%x EGL=0x%x\n",
+            error.what(), glGetError(), eglGetError()];
+        throw;
     }
     void display(NSMutableString *report) {
         target_.presentAndWait();
@@ -179,11 +192,7 @@ private:
             feed(host, rgpu::pattern::message(3, {rgpu::pattern::resource}));
             feed(host, rgpu::pattern::message(3, {rgpu::pattern::scratch}));
             stage = "producer fence";
-            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-            while (!host.session->isFenceComplete(fence)) {
-                require(std::chrono::steady_clock::now() < deadline, "VirGL producer fence timeout");
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
+            waitProducer(host, fence);
             glCheck(report, "VirGL producer completion");
             [report appendFormat:@"Native vtest: CREATE_RENDERER=1 RESOURCE_CREATE=2 SUBMIT_CMD=1; producer fence %u complete\n"
                 "VirGL content: 5 GPU CLEARs + 4 RESOURCE_COPY_REGION; no CPU pixel upload\n", fence];
@@ -201,8 +210,11 @@ private:
             require(virgl_renderer_resource_get_info(rgpu::pattern::resource, &info) != 0,
                     "Final pin release leaked source resource");
             feed(host, rgpu::pattern::createResource(rgpu::pattern::resource));
+            feed(host, rgpu::pattern::overwriteReusedSource());
+            waitProducer(host, host.session->fenceForPresent());
+            glCheck(report, "Later magenta overwrite completion (after snapshot only)");
             feed(host, rgpu::pattern::message(3, {rgpu::pattern::resource}));
-            [report appendString:@"Source UNREF/pin/final release: PASS; handle reuse before Metal consumption: PASS\n"];
+            [report appendString:@"Source UNREF/pin/final release: PASS; reused source overwritten MAGENTA before Metal consumption\n"];
             stage = "Metal display";
             copy.display(report);
             stage = "cleanup";

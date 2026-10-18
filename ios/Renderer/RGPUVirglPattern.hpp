@@ -58,4 +58,12 @@ inline std::vector<uint8_t> render() {
     command(out, 3, 8, {100}); command(out, 3, 8, {101});
     return message(6, out);
 }
+inline std::vector<uint8_t> overwriteReusedSource() {
+    std::vector<uint32_t> out;
+    command(out, 1, 8, {100, resource, format, 0, 0});
+    clear(out, 100, 1, 0, 1); // Magenta must NEVER appear in the snapshot.
+    command(out, 5, 0, {0, 0});
+    command(out, 3, 8, {100});
+    return message(6, out);
+}
 }

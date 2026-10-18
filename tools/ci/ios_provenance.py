@@ -50,7 +50,10 @@ def main():
     render_jobs = [job for job in jobs if job["name"] == "UTM ANGLE/virglrenderer iOS arm64 sysroot"]
     if len(render_jobs) != 1 or render_jobs[0]["conclusion"] != "success":
         raise ValueError("Renderer job missing or failed")
-    log = command("gh", "api", f"repos/{repository}/actions/jobs/{render_jobs[0]['id']}/logs")
+    # Recent gh rejects ANSI-colored job logs unless explicitly allowed. The
+    # bytes are parsed in memory and are never emitted to a terminal here.
+    log = command("gh", "api", "--allow-escape-sequences",
+                  f"repos/{repository}/actions/jobs/{render_jobs[0]['id']}/logs")
     utm = revision_from_log(log)
     sources = command("gh", "api", "-H", "Accept: application/vnd.github.raw+json",
                       f"repos/utmapp/UTM/contents/patches/sources?ref={utm}")

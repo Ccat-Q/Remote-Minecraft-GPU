@@ -72,6 +72,7 @@ int main() {
         session->releaseFromPresent(rgpu::pattern::resource);
         require(virgl_renderer_resource_get_info(rgpu::pattern::resource, &info) != 0, "Source leaked after release");
         feed(*session, rgpu::pattern::createResource(rgpu::pattern::resource));
+        feed(*session, rgpu::pattern::overwriteReusedSource());
         feed(*session, rgpu::pattern::message(3, {rgpu::pattern::resource}));
         session.reset();
         virgl_renderer_cleanup(&session);
