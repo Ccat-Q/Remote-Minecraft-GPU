@@ -98,6 +98,7 @@ jobs:
           go build -trimpath -ldflags='-s -w' -o _stage/bin/remotegpu-vtest-receiver ./cmd/remotegpu-vtest-receiver
           cc -O2 -o _stage/bin/gl-capability tests/gl_capability.c -lglfw -lGLEW -lGL
           cc -O2 -o _stage/bin/gl-present tests/gl_present.c -lglfw -lGLEW -lGL
+          cc -std=c11 -O2 -Wall -Wextra -Werror -o _stage/bin/gl-remote-present tests/gl_remote_present.c -lglfw -lGLEW -lGL -lm
           c++ -std=c++17 -O2 -Wall -Wextra -Werror -Iios/Renderer -I_stage/virglrenderer/include \
             ios/Renderer/RGPUVTestSession.cpp linux/tools/native-vtest-server.cpp \
             -L_stage/virglrenderer/lib/x86_64-linux-gnu -lvirglrenderer -o _stage/bin/native-vtest-server
@@ -181,6 +182,8 @@ jobs:
         run: python3 tests/mesa_present_gate.py _stage --native
       - name: Verify real renderer presentation resource lifetime
         run: LD_LIBRARY_PATH="$GITHUB_WORKSPACE/_stage/virglrenderer/lib/x86_64-linux-gnu" timeout 45s _stage/bin/native-vtest-lifetime
+      - name: Verify A1 dynamic pixels with receiver-local test readback
+        run: python3 tests/mesa_present_gate.py _stage --dynamic
       - name: Publish deployable Linux PoC bundle
         uses: actions/upload-artifact@v4
         with:

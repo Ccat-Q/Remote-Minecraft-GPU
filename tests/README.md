@@ -1,5 +1,35 @@
 # Capability gate
 
+## A1 low-capability dynamic gate
+
+`tests/gl_remote_present.c` requests OpenGL 2.1 (legacy compatibility) and GLSL
+120, uploads a real VBO and changes position/color uniforms before every real
+swap. Actions builds `gl-remote-present`; options are `--frames`, `--fps`, and
+`--hold-seconds` (minimum 0.5). The final hold keeps the window/resources/session
+alive without further swaps. No version override or client pixel readback.
+
+`python3 tests/mesa_present_gate.py _stage --dynamic` runs the real
+virpipe -> proxy -> QUIC -> Linux receiver -> native decoder/renderer path.
+An explicit CI-only `-verify-present-socket` forwards the consumed vtest byte
+boundary and PRESENT to the native host. The receiver waits for the oracle
+ACK before forwarding later writes; this is test-side serialization, not the
+production PRESENT design. Native code pins the actual resource, waits for its
+fence, reads it **locally at the renderer**, and compares thousands of pixels
+against a CPU triangle reference (edge tolerance, format/origin normalization).
+The normal vtest/QUIC path must contain **zero TRANSFER_GET**. Test-side resource
+reads are counted separately and never travel back through the proxy.
+
+The oracle checks every application frame in order, tolerates at most one
+initialization PRESENT before frame 0, and rereads the final resource during
+the producer's live hold without new packets. Different frame counts/rates
+and deliberately corrupted-color/repeated-frame fixtures exercise the oracle;
+negative controls must fail specifically on pixels, not merely transport loss.
+Existing Core/GLSL 150, explicit application glReadPixels and resource-lifetime
+tests remain separate regressions. A1 Linux software-renderer PASS is not
+iPhone GPU or remote iPhone display acceptance; A2 is still pending.
+
+## Existing Core capability gate
+
 `gl-capability` is compiled exclusively by the `Build Linux PoC` GitHub Actions
 workflow. Download and extract its `linux-poc-<commit>` artifact to the Ubuntu
 compute client; do not compile it there. Run it through the supplied launcher:
