@@ -24,8 +24,8 @@ inline std::vector<uint8_t> createContext() {
     word(out, 4); word(out, 8); out.insert(out.end(), {'a', '2', '0', 0});
     return out;
 }
-inline std::vector<uint8_t> createResource(uint32_t handle) {
-    return message(2, {handle, target, format, 2 | 8, width, height, 1, 1, 0, samples});
+inline std::vector<uint8_t> createResource(uint32_t handle, uint32_t colorFormat = format) {
+    return message(2, {handle, target, colorFormat, 2 | 8, width, height, 1, 1, 0, samples});
 }
 inline void command(std::vector<uint32_t>& out, uint32_t opcode, uint32_t object,
                     std::initializer_list<uint32_t> args) {
@@ -37,10 +37,10 @@ inline void clear(std::vector<uint32_t>& out, uint32_t surface, float r, float g
     command(out, 5, 0, {1, 0, surface}); // SET_FRAMEBUFFER_STATE
     command(out, 7, 0, {4, bits(r), bits(g), bits(b), bits(1), 0, 0, 0}); // CLEAR_COLOR0
 }
-inline std::vector<uint8_t> render() {
+inline std::vector<uint8_t> render(uint32_t colorFormat = format) {
     std::vector<uint32_t> out;
-    command(out, 1, 8, {100, resource, format, 0, 0}); // CREATE_OBJECT(SURFACE)
-    command(out, 1, 8, {101, scratch, format, 0, 0});
+    command(out, 1, 8, {100, resource, colorFormat, 0, 0}); // CREATE_OBJECT(SURFACE)
+    command(out, 1, 8, {101, scratch, colorFormat, 0, 0});
     clear(out, 100, .02f, .04f, .08f);
     struct Rectangle { uint32_t x, y, w, h; float r, g, b; };
     // Raw GL coordinates: high Y is the top on screen after the ONE existing
@@ -58,9 +58,9 @@ inline std::vector<uint8_t> render() {
     command(out, 3, 8, {100}); command(out, 3, 8, {101});
     return message(6, out);
 }
-inline std::vector<uint8_t> overwriteReusedSource() {
+inline std::vector<uint8_t> overwriteReusedSource(uint32_t colorFormat = format) {
     std::vector<uint32_t> out;
-    command(out, 1, 8, {100, resource, format, 0, 0});
+    command(out, 1, 8, {100, resource, colorFormat, 0, 0});
     clear(out, 100, 1, 0, 1); // Magenta must NEVER appear in the snapshot.
     command(out, 5, 0, {0, 0});
     command(out, 3, 8, {100});

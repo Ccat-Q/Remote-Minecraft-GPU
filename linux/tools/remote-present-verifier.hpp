@@ -126,8 +126,10 @@ public:
                 throw std::runtime_error("receiver pixel reference mismatch");
             }
             require(verified_ < expected_, "unexpected extra application PRESENT");
-            std::fprintf(stderr, "ORACLE_FRAME app_frame=%u present=%llu resource=%u pixels=%u fence=%u format=%u flags=%u\n",
-                verified_, (unsigned long long)frame, handle, checked, fence, info.virgl_format, info.flags);
+            const auto desc = session.validatePresentResource(handle, 0, 0, 0, 0, 64, 64);
+            std::fprintf(stderr, "ORACLE_FRAME app_frame=%u present=%llu resource=%u pixels=%u fence=%u format=%u flags=%u target=%u samples=%u array=%u last_level=%u\n",
+                verified_, (unsigned long long)frame, handle, checked, fence, info.virgl_format, info.flags,
+                desc.target, desc.samples, desc.arraySize, desc.lastLevel);
             ++verified_;
             if (verified_ == expected_) {
                 held_ = handle;

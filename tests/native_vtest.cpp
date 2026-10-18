@@ -140,4 +140,36 @@ int main() {
     }
     assert(resources == 0);
     std::cout << "PASS: fragmented/coalesced legacy vtest, caps bytes, unpadded PUT, raw GET, fences, fail-closed\n";
+    {
+        rgpu::VTestSession session(1, false);
+        auto data = create(); command(data, 2, {42, 2, 1, 10, 64, 64, 1, 1, 0, 0});
+        session.feed(data.data(), data.size());
+        auto desc = session.validatePresentResource(42, 0, 0, 0, 0, 64, 64);
+        assert(desc.target == 2 && desc.format == 1 && desc.samples == 0);
+        for (auto id : {uint64_t(0), uint64_t(99), uint64_t(1) << 32}) {
+            try { session.validatePresentResource(id, 0, 0, 0, 0, 64, 64); assert(false); }
+            catch (const std::runtime_error&) {}
+        }
+        try { session.validatePresentResource(42, 1, 0, 0, 0, 64, 64); assert(false); } catch (const std::runtime_error&) {}
+        try { session.validatePresentResource(42, 0, 0, 0, 0, 63, 64); assert(false); } catch (const std::runtime_error&) {}
+        data.clear(); command(data, 2, {43, 2, 1, 10, 64, 64, 1, 1, 0, 4});
+        session.feed(data.data(), data.size());
+        try { session.validatePresentResource(43, 0, 0, 0, 0, 64, 64); assert(false); } catch (const std::runtime_error&) {}
+        data.clear(); word(data, 1); // Fragmented command: PRESENT must not split it.
+        session.feed(data.data(), data.size());
+        try { session.validatePresentResource(42, 0, 0, 0, 0, 64, 64); assert(false); } catch (const std::runtime_error&) {}
+    }
+    {
+        bool cancelled = false;
+        rgpu::VTestSession session;
+        session.setCancellationCheck([&] { return cancelled; });
+        auto data = create(); command(data, 2, {42, 2, 1, 10, 64, 64, 1, 1, 0, 0});
+        session.feed(data.data(), data.size());
+        session.retainForPresent(42);
+        cancelled = true;
+        try { session.feed(nullptr, 0); assert(false); } catch (const std::runtime_error&) {}
+        assert(session.commandCounts()[2] == 1 && session.commandCounts()[4] == 0);
+    }
+    assert(resources == 0); // Cancellation releases pinned resources on teardown.
+    std::cout << "PASS: A2.1 resource metadata/profile/boundary rejection and cancelled-session cleanup\n";
 }

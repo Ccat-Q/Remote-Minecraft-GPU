@@ -9,6 +9,7 @@ import re
 import subprocess
 
 A1 = "f7413ff245b06c27aa1fbb9b3dcbd527ba32be42"
+A2 = "98e65d1878ea132dbf4cb169e521facdc62f04a6"
 
 
 def command(*args):
@@ -42,6 +43,7 @@ def main():
     if source != os.environ["GITHUB_SHA"]:
         raise ValueError("App checkout does not match workflow source SHA")
     subprocess.run(["git", "merge-base", "--is-ancestor", A1, source], check=True)
+    subprocess.run(["git", "merge-base", "--is-ancestor", A2, source], check=True)
     repository = os.environ["GITHUB_REPOSITORY"]
     run = json.loads(command("gh", "api", f"repos/{repository}/actions/runs/{args.renderer_run_id}"))
     if run["conclusion"] != "success" or run["name"] != "Build iOS renderer sysroot":
@@ -64,12 +66,13 @@ def main():
         binary = args.sysroot / "Frameworks" / f"{name}.framework" / name
         frameworks[name] = hashlib.sha256(binary.read_bytes()).hexdigest()
     data = {
-        "app_source_sha": source, "accepted_a1_sha": A1,
+        "app_source_sha": source, "accepted_a1_sha": A1, "accepted_a20_sha": A2,
         "app_actions_run": os.environ["GITHUB_RUN_ID"],
         "renderer_actions_run": args.renderer_run_id, "sysroot_recipe_source_sha": run["head_sha"],
         "utm_sha": utm, "dependency_source_sha": pins_from_source(sources),
         "compat_recipe_sha256": hashlib.sha256(recipe.encode()).hexdigest(),
         "framework_sha256": frameworks,
+        "framework_hash_scope": "unsigned sysroot before external IPA signing",
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")

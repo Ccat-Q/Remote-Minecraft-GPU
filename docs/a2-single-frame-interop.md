@@ -1,7 +1,20 @@
 # A2.0: one-shot VirGL resource interop diagnostic
 
 Implementation based on accepted A1 `f7413ff245b06c27aa1fbb9b3dcbd527ba32be42`,
-isolated on `feature/a2-single-frame-interop`. **iPhone acceptance pending.**
+isolated on `feature/a2-single-frame-interop`.
+
+**A2.0 device ACCEPTED by the user at `98e65d1878ea132dbf4cb169e521facdc62f04a6`.**
+Report: iPhone18,3 / iOS 27.0.1 (24A446), ANGLE Metal / A19. Resource 42,
+tex_id 1, format 67, 640x360, flags 0. Shared texture visible, both FBOs
+0x8cd5, GL errors 0, EGL_SUCCESS 0x3000, copy fence 0x911c, Metal COMPLETED.
+The supplied screenshot confirms red upper-left / green upper-right / blue
+lower-left / yellow lower-right; no inversion, red/blue swap or magenta
+overwrite. Pin/release/handle reuse and cleanup returned normally. This is a
+single local vtest-fixture interop acceptance, not network display, sustained
+leak profiling or Minecraft capability acceptance. The original CI evidence is
+[iOS build 39099350433](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/39099350433)
+and [Linux regressions 39099335690](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/39099335690).
+
 This does not implement continuous remote PRESENT, QUIC display scheduling,
 Minecraft, or the still-blocked guest GL 3.2 / GLSL 150 capability gate.
 
@@ -28,7 +41,7 @@ UTM virglrenderer `482f9d8b8c2d2288efa10a027116216909d2c226`:
   CLEAR and RESOURCE_COPY_REGION produce the diagnostic pattern. No new opcode,
   local GLES pattern draw, image upload, or protocol extension is required.
 
-## Implemented one-shot path (not yet device-accepted)
+## Accepted one-shot path
 
 `RGPUVirglPattern.hpp` generates real legacy vtest CREATE_RENDERER/resources
 and one SUBMIT_CMD. Five GPU clears and four GPU resource copies generate a
@@ -75,7 +88,8 @@ does not validate the future continuous-session admission/backpressure policy.
   framework binary hashes. No latest-main dependency selection.
 - Device report preserves partial stages/errors and reports only technical
   completion plus **VISUAL ACCEPTANCE PENDING**. Shared texture visibility,
-  correct GPU copy/image and cleanup still require the physical device.
+  correct GPU copy/image and cleanup were confirmed for the accepted baseline
+  above; later refactors and A2.1 network display require their own device runs.
 
 Follow [DEVICE-TEST](../ios/DEVICE-TEST.md#a20-single-frame-virgl-resource-interop)
 for installation and image checks. Existing A1/Core/explicit glReadPixels and

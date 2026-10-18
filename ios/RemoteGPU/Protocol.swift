@@ -1,7 +1,7 @@
 import Foundation
 
 // Keep this file byte-for-byte compatible with internal/protocol.
-enum RemoteGPUType: UInt8, Equatable { case hello = 1, vtestBytes = 2, present = 3, error = 4 }
+enum RemoteGPUType: UInt8, Equatable, Sendable { case hello = 1, vtestBytes = 2, present = 3, error = 4 }
 
 enum RemoteGPUProtocolError: Error, Equatable {
     case invalidMagic
@@ -12,7 +12,7 @@ enum RemoteGPUProtocolError: Error, Equatable {
     case sequenceGap(expected: UInt64, received: UInt64)
 }
 
-struct RemoteGPUEnvelope: Equatable {
+struct RemoteGPUEnvelope: Equatable, Sendable {
     static let magic = Data([0x52, 0x47, 0x50, 0x31]) // RGP1
     let type: RemoteGPUType
     let flags: UInt8
@@ -34,6 +34,7 @@ final class RemoteGPUStreamDecoder {
     private static let headerSize = 10
     private static let maxPayload = 16 << 20
     private var pending = Data()
+    var atEnvelopeBoundary: Bool { pending.isEmpty }
 
     func feed(_ bytes: Data) throws -> [RemoteGPUEnvelope] {
         pending.append(bytes)

@@ -45,6 +45,12 @@ A's low-capability remote triangle. No JVM/Minecraft launcher belongs here.
 
 ## A2.0 single-frame VirGL resource interop
 
+**Accepted on device at `98e65d1878ea132dbf4cb169e521facdc62f04a6`.** The user
+supplied the full completion report and correct four-color screenshot on
+iPhone18,3 / iOS 27.0.1. No magenta overwrite, inversion or channel swap was
+observed. Keep the following procedure for regressions, not as a claim that
+new A2.1 network display or sustained leak testing already passed.
+
 Build **Build iOS interop prototype** on `feature/a2-single-frame-interop`, with
 explicit `renderer_run_id=38206257487`. The artifact name includes the app SHA;
 do not install an older main-branch IPA. Sign the IPA **and all embedded
@@ -83,7 +89,16 @@ Minecraft, or network configuration is needed for A2.0.
 Source/interface details and CI-only readback boundary:
 [A2.0 implementation](../docs/a2-single-frame-interop.md).
 
-## Route A: continuous Remote PRESENT (planned, not available in current UI)
+## A2.1 real Remote Display (new diagnostic; device acceptance pending)
+
+Use **Connect Remote Display** and follow the exact isolated proxy / one-frame
+producer / report / live-hold / cancellation steps in
+[A2.1 device procedure](../docs/a21-remote-present.md#device-procedure).
+The capability connection still rejects PRESENT; the A2.0 button still runs a
+local fixture. Neither can substitute for the new mode's actual Ubuntu frame.
+Start with one application frame, then 7/12 only after its visual acceptance.
+
+## Route A: continuous asynchronous Remote PRESENT (A3, not implemented)
 
 Follow [route A tasks](../docs/next-stage-plan.md#route-a-remote-present-poc).
 Use a new Actions-built low-capability demo, preserving existing Core/GLSL 150

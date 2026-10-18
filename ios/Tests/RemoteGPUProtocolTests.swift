@@ -64,4 +64,67 @@ final class RemoteGPUProtocolTests: XCTestCase {
         XCTAssertEqual(order.processedSequence, 0)
         XCTAssertThrowsError(try RemoteGPUPresent(payload: Data(repeating: 0, count: 47)))
     }
+
+    func testStrictDisplayOrderRequiresExactSequenceAndFrame() throws {
+        let order = RemoteGPUSerialDisplayOrder()
+        let vtest = RemoteGPUVTestChunk(sequence: 1, bytes: Data([0x01])).envelope.payload
+        try order.consume(vtest) { _ in }
+        for payload in [present(frame: 1, after: 0), present(frame: 1, after: 2), present(frame: 0, after: 1), present(frame: 2, after: 1)] {
+            XCTAssertThrowsError(try order.beginPresent(payload))
+        }
+        var invalidResource = present(frame: 1, after: 1)
+        invalidResource.replaceSubrange(8..<16, with: Data(repeating: 0, count: 8))
+        XCTAssertThrowsError(try order.beginPresent(invalidResource))
+        invalidResource[8] = 1 // > UInt32.max
+        XCTAssertThrowsError(try order.beginPresent(invalidResource))
+        var invalidRegion = present(frame: 1, after: 1)
+        invalidRegion[35] = 1
+        XCTAssertThrowsError(try order.beginPresent(invalidRegion))
+        let frame = try order.beginPresent(present(frame: 1, after: 1))
+        XCTAssertThrowsError(try order.consume(RemoteGPUVTestChunk(sequence: 2, bytes: Data([2])).envelope.payload) { _ in
+            XCTFail("Later GPU commands escaped the snapshot barrier")
+        })
+        XCTAssertThrowsError(try order.beginPresent(present(frame: 2, after: 1)))
+        try order.completePresent(frame)
+        XCTAssertEqual(order.displayedFrame, 1)
+        XCTAssertThrowsError(try order.beginPresent(present(frame: 1, after: 1)))
+        try order.consume(RemoteGPUVTestChunk(sequence: 2, bytes: Data([2])).envelope.payload) { _ in }
+    }
+
+    func testCancelledDisplayCannotSubmitOrCompleteSnapshot() throws {
+        let order = RemoteGPUSerialDisplayOrder()
+        try order.consume(RemoteGPUVTestChunk(sequence: 1, bytes: Data([1])).envelope.payload) { _ in }
+        let frame = try order.beginPresent(present(frame: 1, after: 1))
+        order.cancel()
+        XCTAssertThrowsError(try order.completePresent(frame))
+        XCTAssertThrowsError(try order.consume(RemoteGPUVTestChunk(sequence: 2, bytes: Data([2])).envelope.payload) { _ in XCTFail() })
+        XCTAssertEqual(order.displayedFrame, 0)
+    }
+
+    func testBoundedIngressBackpressureAndCancellation() throws {
+        let gate = RemoteGPUBoundedIngress()
+        let envelope = RemoteGPUEnvelope(type: .vtestBytes, flags: 0, payload: Data([1]))
+        let ticket = try gate.admit([envelope])
+        XCTAssertThrowsError(try gate.admit([envelope])) // Consumer/GPU still busy.
+        XCTAssertTrue(gate.complete(ticket))
+        XCTAssertFalse(gate.complete(ticket)) // No double receive on duplicate callback.
+        XCTAssertThrowsError(try gate.admit(Array(repeating: envelope, count: 4097)))
+        XCTAssertThrowsError(try gate.admit([RemoteGPUEnvelope(type: .vtestBytes, flags: 0,
+            payload: Data(repeating: 0, count: RemoteGPUBoundedIngress.byteBudget))]))
+        let last = try gate.admit([envelope])
+        gate.cancel()
+        XCTAssertFalse(gate.complete(last))
+        XCTAssertThrowsError(try gate.admit([envelope]))
+        XCTAssertEqual(gate.highWaterBytes, 11)
+    }
+
+    func testFiniteDiagnosticFrameBudget() throws {
+        let order = RemoteGPUSerialDisplayOrder()
+        try order.consume(RemoteGPUVTestChunk(sequence: 1, bytes: Data([1])).envelope.payload) { _ in }
+        for frame in 1...16 {
+            let next = try order.beginPresent(present(frame: UInt64(frame), after: 1))
+            try order.completePresent(next)
+        }
+        XCTAssertThrowsError(try order.beginPresent(present(frame: 17, after: 1)))
+    }
 }

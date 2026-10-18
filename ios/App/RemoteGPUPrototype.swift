@@ -27,6 +27,9 @@ final class ProbeController: UIViewController {
     private var controls: [UIButton] = []
     private var nativeBusy = false
     private var capabilityConnection: NativeCapabilityConnection?
+    private var remoteDisplayConnection: NativeRemoteDisplayConnection?
+    private let remoteDisplayButton = UIButton(type: .system)
+    private var displayHeight: NSLayoutConstraint?
     private let connectButton = UIButton(type: .system)
     private var shareControl: UIButton?
     private let rendererQueue = DispatchQueue(label: "org.remotegpu.native-gate", qos: .userInitiated)
@@ -52,8 +55,10 @@ final class ProbeController: UIViewController {
         share.addTarget(self, action: #selector(shareReport), for: .touchUpInside)
         connectButton.setTitle("Connect Capability Probe", for: .normal)
         connectButton.addTarget(self, action: #selector(connectCapability), for: .touchUpInside)
-        controls = [button, native, interop, share, connectButton]
-        for item in [display, report, button, native, interop, share, connectButton] {
+        remoteDisplayButton.setTitle("Connect Remote Display", for: .normal)
+        remoteDisplayButton.addTarget(self, action: #selector(connectRemoteDisplay), for: .touchUpInside)
+        controls = [button, native, interop, share, connectButton, remoteDisplayButton]
+        for item in [display, report, button, native, interop, share, connectButton, remoteDisplayButton] {
             item.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(item)
         }
@@ -61,7 +66,6 @@ final class ProbeController: UIViewController {
             display.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             display.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             display.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            display.heightAnchor.constraint(equalTo: display.widthAnchor, multiplier: 9.0 / 16.0),
             button.topAnchor.constraint(equalTo: display.bottomAnchor, constant: 12),
             button.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             native.topAnchor.constraint(equalTo: button.bottomAnchor, constant: 8),
@@ -72,11 +76,65 @@ final class ProbeController: UIViewController {
             share.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             connectButton.topAnchor.constraint(equalTo: share.bottomAnchor, constant: 8),
             connectButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            report.topAnchor.constraint(equalTo: connectButton.bottomAnchor, constant: 12),
+            remoteDisplayButton.topAnchor.constraint(equalTo: connectButton.bottomAnchor, constant: 8),
+            remoteDisplayButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            report.topAnchor.constraint(equalTo: remoteDisplayButton.bottomAnchor, constant: 12),
             report.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             report.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             report.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
+        setDisplayAspect(9.0 / 16.0)
+    }
+
+    private func setDisplayAspect(_ ratio: CGFloat) {
+        displayHeight?.isActive = false
+        displayHeight = display.heightAnchor.constraint(equalTo: display.widthAnchor, multiplier: ratio)
+        displayHeight?.isActive = true
+        view.layoutIfNeeded()
+    }
+
+    @objc private func connectRemoteDisplay() {
+        if let connection = remoteDisplayConnection {
+            remoteDisplayButton.isEnabled = false
+            connection.stop()
+            return
+        }
+        guard !nativeBusy else { return }
+        let form = UIAlertController(title: "A2.1 Remote Display", message: "Trusted TLS hostname, UDP port and pairing token. Run the A1 64×64 GL demo on Ubuntu. Max 16 PRESENTs; no readback or video.", preferredStyle: .alert)
+        form.addTextField { field in
+            field.placeholder = "Ubuntu TLS hostname"
+            field.autocapitalizationType = .none; field.autocorrectionType = .no
+        }
+        form.addTextField { $0.placeholder = "UDP port"; $0.text = "4433"; $0.keyboardType = .numberPad }
+        form.addTextField { $0.placeholder = "Pairing token"; $0.isSecureTextEntry = true }
+        form.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        form.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self, weak form] _ in
+            guard let self, let fields = form?.textFields,
+                let host = fields[0].text?.trimmingCharacters(in: .whitespacesAndNewlines), !host.isEmpty,
+                let port = UInt16(fields[1].text ?? ""), port != 0,
+                let token = fields[2].text, !token.isEmpty else { return }
+            self.probe = nil
+            self.setDisplayAspect(1) // A1 is square; do not stretch the triangle.
+            self.nativeBusy = true
+            self.controls.forEach { $0.isEnabled = false }
+            self.remoteDisplayButton.isEnabled = true
+            self.shareControl?.isEnabled = true
+            self.remoteDisplayButton.setTitle("Disconnect Remote Display", for: .normal)
+            let connection = NativeRemoteDisplayConnection(host: host, port: port, token: token, layer: self.display.metalLayer)
+            self.remoteDisplayConnection = connection
+            connection.onReport = { [weak self] text, finished in
+                guard let self else { return }
+                self.report.text = text
+                if finished {
+                    self.remoteDisplayConnection = nil
+                    self.nativeBusy = false
+                    self.controls.forEach { $0.isEnabled = true }
+                    self.remoteDisplayButton.setTitle("Connect Remote Display", for: .normal)
+                }
+            }
+            connection.start()
+        })
+        present(form, animated: true)
     }
 
     @objc private func connectCapability() {
@@ -160,6 +218,7 @@ final class ProbeController: UIViewController {
     @objc private func resourceInterop() {
         guard !nativeBusy else { return }
         probe = nil // Tear down the separate local-triangle display first.
+        setDisplayAspect(9.0 / 16.0)
         nativeBusy = true
         controls.forEach { $0.isEnabled = false }
         let layer = display.metalLayer
@@ -177,6 +236,7 @@ final class ProbeController: UIViewController {
 
     @objc private func render() {
         guard !nativeBusy else { return }
+        setDisplayAspect(9.0 / 16.0)
         do {
             if probe == nil { probe = try RGPUIOSurfaceProbe(layer: display.metalLayer) }
             try probe?.drawTriangle()

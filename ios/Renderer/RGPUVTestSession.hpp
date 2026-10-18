@@ -5,8 +5,13 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <vector>
+#include <array>
+#include <functional>
 
 namespace rgpu {
+struct ResourceDescription {
+    uint32_t target, format, width, height, depth, arraySize, lastLevel, samples;
+};
 // Owns one legacy vtest context. The caller owns virgl_renderer_init/cleanup
 // and serializes this object, poll and fenceCompleted. If callers migrate OS
 // threads, their EGL provider must restore/unbind the context on each call.
@@ -29,6 +34,12 @@ public:
     void retainForPresent(uint32_t resource);
     void releaseFromPresent(uint32_t resource);
     bool atCommandBoundary() const { return pending_.empty(); }
+    ResourceDescription resourceDescription(uint32_t resource) const;
+    ResourceDescription validatePresentResource(uint64_t resource, uint32_t level, uint32_t layer,
+        uint32_t x, uint32_t y, uint32_t width, uint32_t height) const;
+    const std::array<uint64_t, 10>& commandCounts() const { return counts_; }
+    // Set only on the serialized owner queue; callback may read an atomic token.
+    void setCancellationCheck(std::function<bool()> check) { cancelled_ = std::move(check); }
 private:
     std::vector<uint8_t> execute(uint32_t command, const uint8_t* data, size_t size);
     uint32_t context_, submitted_ = 0, completed_ = 0;
@@ -38,5 +49,8 @@ private:
     std::unordered_set<uint32_t> resources_;
     std::unordered_set<uint32_t> retired_;
     std::unordered_map<uint32_t, size_t> presentReferences_;
+    std::unordered_map<uint32_t, ResourceDescription> descriptions_;
+    std::array<uint64_t, 10> counts_{};
+    std::function<bool()> cancelled_;
 };
 }

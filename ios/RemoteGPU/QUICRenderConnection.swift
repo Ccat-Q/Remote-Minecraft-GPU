@@ -20,8 +20,12 @@ final class RemoteGPUQUICRenderConnection: @unchecked Sendable {
     private let pairingToken: Data
     private let decoder = RemoteGPUStreamDecoder()
     private var stopped = false // Accessed only on queue.
+    private let ingress = RemoteGPUBoundedIngress()
 
     var onEvent: ((RemoteGPUConnectionEvent) -> Void)?
+    // Install before start. Caller MUST complete every delivered batch, even
+    // after failure/cancel. Only this optional mode changes receive scheduling.
+    var onBatch: (([RemoteGPUEnvelope], @escaping @Sendable () -> Void) -> Void)?
 
     init(host: String, port: UInt16, pairingToken: String) {
         let options = NWProtocolQUIC.Options(alpn: ["remotegpu/1"])
@@ -57,6 +61,7 @@ final class RemoteGPUQUICRenderConnection: @unchecked Sendable {
     func close() {
         queue.async {
             self.stopped = true
+            self.ingress.cancel()
             self.connection.cancel()
         }
     }
@@ -78,17 +83,35 @@ final class RemoteGPUQUICRenderConnection: @unchecked Sendable {
             if let error { self.onEvent?(.failed(error)); return }
             if let data {
                 do {
-                    for envelope in try self.decoder.feed(data) {
+                    let envelopes = try self.decoder.feed(data)
+                    if complete && !self.decoder.atEnvelopeBoundary { throw RemoteGPUProtocolError.invalidVTestChunk }
+                    if let consumer = self.onBatch, !envelopes.isEmpty {
+                        let ticket = try self.ingress.admit(envelopes)
+                        consumer(envelopes) { [weak self] in
+                            guard let self else { return }
+                            self.queue.async {
+                                guard self.ingress.complete(ticket), !self.stopped else { return }
+                                if complete { self.onEvent?(.closed) } else { self.receiveNext() }
+                            }
+                        }
+                        return
+                    }
+                    for envelope in envelopes {
                         guard !self.stopped else { return }
                         self.onEvent?(.envelope(envelope))
                     }
                 } catch {
+                    self.stopped = true
+                    self.ingress.cancel()
                     self.onEvent?(.failed(error))
                     self.connection.cancel()
                     return
                 }
             }
-            if complete { self.onEvent?(.closed) } else { self.receiveNext() }
+            if complete {
+                if self.decoder.atEnvelopeBoundary { self.onEvent?(.closed) }
+                else { self.onEvent?(.failed(RemoteGPUProtocolError.invalidVTestChunk)); self.connection.cancel() }
+            } else { self.receiveNext() }
         }
     }
 }

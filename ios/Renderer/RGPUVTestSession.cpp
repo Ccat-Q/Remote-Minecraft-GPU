@@ -77,6 +77,22 @@ void VTestSession::retainForPresent(uint32_t resource) {
             "invalid PRESENT resource or incomplete vtest command");
     ++presentReferences_[resource];
 }
+ResourceDescription VTestSession::resourceDescription(uint32_t resource) const {
+    require(!failed_ && atCommandBoundary() && resources_.count(resource), "Unknown resource or incomplete vtest command");
+    return descriptions_.at(resource);
+}
+ResourceDescription VTestSession::validatePresentResource(uint64_t resource, uint32_t level, uint32_t layer,
+    uint32_t x, uint32_t y, uint32_t width, uint32_t height) const {
+    require(resource && resource <= std::numeric_limits<uint32_t>::max(), "Invalid PRESENT resource ID");
+    require(!retired_.count(uint32_t(resource)), "PRESENT resource already retired");
+    auto desc = resourceDescription(uint32_t(resource));
+    require(desc.target == 2 && desc.depth == 1 && desc.arraySize == 1 && desc.lastLevel == 0 && desc.samples <= 1,
+            "Unsupported PRESENT target/mip/array/samples");
+    require((desc.format == 1 || desc.format == 67) && level == 0 && layer == 0 && x == 0 && y == 0 &&
+        width == desc.width && height == desc.height && width && height && width <= 1280 && height <= 720,
+        "Unsupported PRESENT format/region/dimensions");
+    return desc;
+}
 void VTestSession::releaseFromPresent(uint32_t resource) {
     auto reference = presentReferences_.find(resource);
     require(reference != presentReferences_.end(), "unbalanced PRESENT resource release");
@@ -85,6 +101,7 @@ void VTestSession::releaseFromPresent(uint32_t resource) {
         if (retired_.erase(resource)) {
             virgl_renderer_resource_unref(resource);
             resources_.erase(resource);
+            descriptions_.erase(resource);
         }
     }
 }
@@ -93,6 +110,7 @@ std::vector<std::vector<uint8_t>> VTestSession::feed(const uint8_t* bytes, size_
     require(!failed_, "vtest session already failed");
     std::vector<std::vector<uint8_t>> replies;
     try {
+        require(!cancelled_ || !cancelled_(), "vtest session cancelled");
         // Append incrementally: arbitrarily many coalesced messages are allowed
         // without permitting a single incomplete message to exhaust memory.
         for (size_t at = 0; at < count;) {
@@ -143,6 +161,8 @@ std::vector<std::vector<uint8_t>> VTestSession::feed(const uint8_t* bytes, size_
 }
 
 std::vector<uint8_t> VTestSession::execute(uint32_t command, const uint8_t* data, size_t size) {
+    require(!cancelled_ || !cancelled_(), "vtest session cancelled");
+    ++counts_.at(command);
     std::vector<uint8_t> reply;
     if (command == 8) {
         require(!initialized_ && size > 0 && size <= 4096 && data[size - 1] == 0,
@@ -179,6 +199,8 @@ std::vector<uint8_t> VTestSession::execute(uint32_t command, const uint8_t* data
         args.last_level = word(data + 32); args.nr_samples = word(data + 36);
         check(virgl_renderer_resource_create(&args, nullptr, 0), "virgl resource create failed");
         resources_.insert(handle);
+        descriptions_.emplace(handle, ResourceDescription{args.target, args.format, args.width, args.height,
+            args.depth, args.array_size, args.last_level, args.nr_samples});
         virgl_renderer_ctx_attach_resource(context_, handle);
         break;
     }
@@ -190,6 +212,7 @@ std::vector<uint8_t> VTestSession::execute(uint32_t command, const uint8_t* data
         else {
             virgl_renderer_resource_unref(handle);
             resources_.erase(handle);
+            descriptions_.erase(handle);
         }
         break;
     }
@@ -228,6 +251,7 @@ std::vector<uint8_t> VTestSession::execute(uint32_t command, const uint8_t* data
         require(size == 8 && (word(data + 4) & ~1u) == 0, "invalid BUSY_WAIT");
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
         while (busy() && (word(data + 4) & 1)) {
+            require(!cancelled_ || !cancelled_(), "vtest GPU wait cancelled");
             require(std::chrono::steady_clock::now() < deadline, "renderer fence timeout");
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
