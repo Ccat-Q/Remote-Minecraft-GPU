@@ -77,7 +77,7 @@ jobs:
           echo "fingerprint=$(shasum -a 256 _build/b11-diagnostics/toolchain.txt | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
       - name: Restore exact candidate framework cache
         id: candidate-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: _build/mobileglues/MobileGluesProbe.framework
           key: b11-framework-v1-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ env.MG_SHA }}-${{ hashFiles('tools/ci/prepare_mobileglues_probe.py', 'ios/Experiments/MobileGluesProbe/Overlay/**') }}
@@ -112,6 +112,12 @@ jobs:
             grep -E " _${name}$" _build/b11-diagnostics/mobileglues-exports.txt
           done
           python3 tools/ci/inspect_macho.py "$framework" > _build/b11-diagnostics/macho.txt
+      - name: Save verified candidate before app packaging (also reusable if app fails)
+        if: steps.candidate-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: _build/mobileglues/MobileGluesProbe.framework
+          key: ${{ steps.candidate-cache.outputs.cache-primary-key }}
       - name: Preserve LGPL corresponding source and licenses
         run: |
           # Full modified candidate + exact dependency sources, not patch-only.

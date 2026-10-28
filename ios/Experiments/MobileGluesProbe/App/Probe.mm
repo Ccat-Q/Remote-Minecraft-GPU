@@ -179,9 +179,16 @@ NSString *RGPURunMobileGluesProbe(void) {
         }
         Session s{f, report};
         try {
-            auto platform = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(backendProc("eglGetPlatformDisplayEXT"));
-            require(platform && owner(reinterpret_cast<void*>(platform)).find("/EGL.framework/") != std::string::npos,
-                "ANGLE platform provider mismatch");
+            // Pinned libEGL exports wrappers, whereas its proc table (in
+            // libGLESv2/proc_table_egl_autogen.cpp) returns EGL_* implementations
+            // in GLESv2. Validate both deterministic routes, not image-order luck.
+            auto platform = symbol<PFNEGLGETPLATFORMDISPLAYEXTPROC>(backendEGL, "eglGetPlatformDisplayEXT", "/EGL.framework/");
+            void *platformImplementation = reinterpret_cast<void*>(backendProc("eglGetPlatformDisplayEXT"));
+            const auto implementationOwner = owner(platformImplementation);
+            require(implementationOwner == owner(reinterpret_cast<void*>(backendInit)) ||
+                implementationOwner == owner(reinterpret_cast<void*>(backendString)), "ANGLE platform implementation provider mismatch");
+            [report appendFormat:@"Backend EGL platform exported wrapper: %s\nBackend EGL proc-table implementation: %s\n",
+                owner(reinterpret_cast<void*>(platform)).c_str(), implementationOwner.c_str()];
             const EGLint metal[] = {0x3203, 0x3489, EGL_NONE};
             s.display = platform(0x3202, nullptr, metal);
             require(s.display != EGL_NO_DISPLAY, "ANGLE Metal display unavailable");
@@ -257,6 +264,6 @@ NSString *RGPURunMobileGluesProbe(void) {
     NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/MobileGluesProbe/latest.log"];
     NSString *log = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
     if (log) [report appendFormat:@"\nMobileGlues runtime log (bounded tail):\n%@\n", [log substringFromIndex:log.length > 32768 ? log.length - 32768 : 0]];
-    [report appendString:@"Only three 1x1 offscreen diagnostic CPU reads; no remote display, no frame streaming. Library images retained until process exit; context/texture cleanup above is separate from driver leak profiling.\n"];
+    [report appendString:@"Up to three 1x1 offscreen diagnostic CPU reads; no remote display, no frame streaming. Library images retained until process exit; context/texture cleanup above is separate from driver leak profiling.\n"];
     return report;
 }

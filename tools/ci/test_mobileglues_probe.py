@@ -1,9 +1,12 @@
 """Source guards and experiment-isolation tests, not simulated device results."""
 import hashlib
+import json
 from pathlib import Path
+import tempfile
 import unittest
 
 from prepare_mobileglues_probe import HASHES, MOBILEGLUES, diagnostic_apple_errors, replace_once
+from mobileglues_provenance import verify_bundle
 
 ROOT = Path(__file__).resolve().parents[2]
 PROBE = ROOT / "ios/Experiments/MobileGluesProbe"
@@ -47,6 +50,30 @@ class MobileGluesProbeTests(unittest.TestCase):
         self.assertNotIn("epoxy", project)
         self.assertEqual(project.count("link: false"), 3)
         self.assertIn("org.remotegpu.experiments.mobileglues", project)
+        include = PROBE / "../../../_deps/mobileglues/MobileGlues-cpp/include"
+        self.assertEqual(include.resolve(), ROOT / "_deps/mobileglues/MobileGlues-cpp/include")
+        self.assertNotIn("../../../../", project)
+
+    def test_packaged_binary_identity_and_isolation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory)
+            hashes = {}
+            for name in ("MobileGluesProbe", "EGL", "GLESv2"):
+                binary = app / "Frameworks" / (name + ".framework") / name
+                binary.parent.mkdir(parents=True)
+                binary.write_bytes(name.encode())
+                hashes[name] = hashlib.sha256(name.encode()).hexdigest()
+            (app / "B11Provenance.json").write_text(json.dumps({
+                "candidate_framework_sha256": hashes["MobileGluesProbe"],
+                "angle_artifact": {"framework_sha256": {name: hashes[name] for name in ("EGL", "GLESv2")}},
+            }))
+            self.assertEqual(verify_bundle(app), hashes)
+            (app / "Frameworks/EGL.framework/EGL").write_bytes(b"wrong artifact")
+            with self.assertRaisesRegex(ValueError, "hash mismatch"):
+                verify_bundle(app)
+            (app / "Frameworks/epoxy.0.framework").mkdir()
+            with self.assertRaisesRegex(ValueError, "unexpected/missing"):
+                verify_bundle(app)
 
     def test_runtime_checks_are_not_version_string_gates(self):
         source = (PROBE / "App/Probe.mm").read_text()

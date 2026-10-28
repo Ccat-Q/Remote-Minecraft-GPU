@@ -8,7 +8,7 @@ settings:
     CLANG_CXX_LANGUAGE_STANDARD: c++20
     CLANG_ENABLE_OBJC_ARC: YES
     CODE_SIGNING_ALLOWED: NO
-    HEADER_SEARCH_PATHS: "$(SRCROOT)/../../../../_deps/mobileglues/MobileGlues-cpp/include"
+    HEADER_SEARCH_PATHS: "$(SRCROOT)/../../../_deps/mobileglues/MobileGlues-cpp/include"
 targets:
   MobileGluesCompatibilityProbe:
     type: application
@@ -31,13 +31,13 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
     dependencies:
-      - framework: ../../../../_build/mobileglues/MobileGluesProbe.framework
+      - framework: ../../../_build/mobileglues/MobileGluesProbe.framework
         embed: true
         link: false
-      - framework: ../../../../_deps/ios-sysroot/Frameworks/EGL.framework
+      - framework: ../../../_deps/ios-sysroot/Frameworks/EGL.framework
         embed: true
         link: false
-      - framework: ../../../../_deps/ios-sysroot/Frameworks/GLESv2.framework
+      - framework: ../../../_deps/ios-sysroot/Frameworks/GLESv2.framework
         embed: true
         link: false
 schemes:

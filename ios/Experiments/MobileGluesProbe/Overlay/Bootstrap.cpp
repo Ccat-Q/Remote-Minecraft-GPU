@@ -51,8 +51,15 @@ extern "C" void *rgpu_mg_metal_display(void) {
     if (!platform) {
         auto get = reinterpret_cast<__eglMustCastToProperFunctionPointerType (*)(const char*)>(
             rgpu_mg_backend_symbol(egl, "eglGetProcAddress"));
+        if (!get) throw std::runtime_error("ANGLE backend proc resolver unavailable");
         platform = reinterpret_cast<Platform>(get("eglGetPlatformDisplayEXT"));
-        checked(reinterpret_cast<void*>(platform), eglBase, "eglGetPlatformDisplayEXT");
+        // ANGLE's EGL_* proc table is implemented in GLESv2; either exact
+        // installed ANGLE image is legitimate, never the frontend/global scope.
+        if (platform) {
+            void *base = image(reinterpret_cast<void*>(platform));
+            if (base != eglBase && base != glesBase)
+                throw std::runtime_error("Wrong ANGLE platform implementation provider");
+        }
     }
     if (!platform) throw std::runtime_error("ANGLE Metal platform entry unavailable");
     const EGLint attrs[] = {0x3203 /* EGL_PLATFORM_ANGLE_TYPE_ANGLE */,
