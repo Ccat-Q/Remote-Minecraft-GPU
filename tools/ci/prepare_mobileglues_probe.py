@@ -35,6 +35,12 @@ def replace_once(source, before, after):
     return source.replace(before, after)
 
 
+def diagnostic_apple_errors(source):
+    before = "    global_settings.angle_supported = false;\n    global_settings.ignore_error = IgnoreErrorLevel::Partial;"
+    after = "    global_settings.angle_supported = false;\n    global_settings.ignore_error = IgnoreErrorLevel::None; // B1.1 diagnostic"
+    return replace_once(source, before, after)
+
+
 def adapt(sources, overlay):
     """Pure transform, shared by real CI preparation and mutation-guard tests."""
     for name, expected in HASHES.items():
@@ -72,9 +78,7 @@ void* proc_address(void* lib, const char* name) {
         '    throw std::runtime_error("MobileGlues bootstrap EGL initialization failed; see runtime log");')
     # Diagnostics must observe driver errors, not upstream's Apple partial-ignore
     # policy. No version string, feature or extension advertisement is changed.
-    result["config/settings.cpp"] = replace_once(sources["config/settings.cpp"],
-        "    global_settings.ignore_error = IgnoreErrorLevel::Partial;",
-        "    global_settings.ignore_error = IgnoreErrorLevel::None; // B1.1 diagnostic")
+    result["config/settings.cpp"] = diagnostic_apple_errors(sources["config/settings.cpp"])
     # Upstream Apple leaves the bootstrap context current. Unbind and destroy it
     # on Apple too before the app creates its frontend context/share group.
     result["main.cpp"] = replace_once(sources["main.cpp"],

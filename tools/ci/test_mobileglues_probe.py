@@ -3,7 +3,7 @@ import hashlib
 from pathlib import Path
 import unittest
 
-from prepare_mobileglues_probe import HASHES, MOBILEGLUES, replace_once
+from prepare_mobileglues_probe import HASHES, MOBILEGLUES, diagnostic_apple_errors, replace_once
 
 ROOT = Path(__file__).resolve().parents[2]
 PROBE = ROOT / "ios/Experiments/MobileGluesProbe"
@@ -29,6 +29,15 @@ class MobileGluesProbeTests(unittest.TestCase):
         self.assertIn("frontBase == eglBase", source)
         self.assertIn("checked(p, base, name)", source)
         self.assertIn("if (attempted) return -2", source)
+
+    def test_error_policy_targets_only_apple_branch(self):
+        apple = "    global_settings.angle_supported = false;\n    global_settings.ignore_error = IgnoreErrorLevel::Partial;"
+        android = "    global_settings.ignore_error = IgnoreErrorLevel::Partial;"
+        result = diagnostic_apple_errors(apple + "\n#else\n" + android)
+        self.assertIn("IgnoreErrorLevel::None; // B1.1 diagnostic", result)
+        self.assertTrue(result.endswith(android))
+        with self.assertRaises(ValueError):
+            diagnostic_apple_errors(android)
 
     def test_separate_target_no_formal_renderer_or_framework_link(self):
         project = (PROBE / "project.yml").read_text()

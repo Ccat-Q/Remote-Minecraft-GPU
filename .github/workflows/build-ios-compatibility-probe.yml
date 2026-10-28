@@ -168,7 +168,8 @@ jobs:
           key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
       - name: Compiler cache diagnostics
         if: always()
-        run: command -v ccache && ccache --show-stats
+        run: |
+          if command -v ccache; then ccache --show-stats; else echo 'Compiler tools not reached'; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
