@@ -2,7 +2,7 @@
 #import <UIKit/UIKit.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
-#include <GLES3/gl3.h>
+#include <GLES3/gl32.h> // pinned candidate provides the superset header; no ES3.2 request
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
 #include <sys/utsname.h>
