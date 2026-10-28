@@ -29,6 +29,8 @@ final class ProbeController: UIViewController {
     private var capabilityConnection: NativeCapabilityConnection?
     private var remoteDisplayConnection: NativeRemoteDisplayConnection?
     private let remoteDisplayButton = UIButton(type: .system)
+    private let testSettingsButton = UIButton(type: .system)
+    private let testProfileStore = RemoteGPUTestProfileStore()
     private let frameBadge = UILabel()
     private var displayHeight: NSLayoutConstraint?
     private let connectButton = UIButton(type: .system)
@@ -56,10 +58,23 @@ final class ProbeController: UIViewController {
         share.addTarget(self, action: #selector(shareReport), for: .touchUpInside)
         connectButton.setTitle("Connect Capability Probe", for: .normal)
         connectButton.addTarget(self, action: #selector(connectCapability), for: .touchUpInside)
-        remoteDisplayButton.setTitle("Connect Remote Display", for: .normal)
-        remoteDisplayButton.addTarget(self, action: #selector(connectRemoteDisplay), for: .touchUpInside)
-        controls = [button, native, interop, share, connectButton, remoteDisplayButton]
-        for item in [display, report, button, native, interop, share, connectButton, remoteDisplayButton] {
+        remoteDisplayButton.setTitle("一键测试连接", for: .normal)
+        remoteDisplayButton.addTarget(self, action: #selector(quickConnectRemoteDisplay), for: .touchUpInside)
+        testSettingsButton.setTitle("测试设置", for: .normal)
+        testSettingsButton.showsMenuAsPrimaryAction = true
+        testSettingsButton.menu = UIMenu(children: [
+            UIAction(title: "配置/更新一键连接") { [weak self] _ in
+                self?.presentRemoteForm(remember: true, connectAfterSave: false)
+            },
+            UIAction(title: "手动连接（不保存 Token）") { [weak self] _ in self?.connectRemoteDisplay() },
+            UIAction(title: "清除已保存配置", attributes: .destructive) { [weak self] _ in self?.clearTestProfile() }
+        ])
+        let remoteRow = UIStackView(arrangedSubviews: [remoteDisplayButton, testSettingsButton])
+        remoteRow.axis = .horizontal
+        remoteRow.spacing = 16
+        remoteRow.alignment = .center
+        controls = [button, native, interop, share, connectButton, remoteDisplayButton, testSettingsButton]
+        for item in [display, report, button, native, interop, share, connectButton, remoteRow] {
             item.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(item)
         }
@@ -77,9 +92,11 @@ final class ProbeController: UIViewController {
             share.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             connectButton.topAnchor.constraint(equalTo: share.bottomAnchor, constant: 8),
             connectButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            remoteDisplayButton.topAnchor.constraint(equalTo: connectButton.bottomAnchor, constant: 8),
-            remoteDisplayButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            report.topAnchor.constraint(equalTo: remoteDisplayButton.bottomAnchor, constant: 12),
+            remoteRow.topAnchor.constraint(equalTo: connectButton.bottomAnchor, constant: 8),
+            remoteRow.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            remoteRow.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 8),
+            remoteRow.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -8),
+            report.topAnchor.constraint(equalTo: remoteRow.bottomAnchor, constant: 12),
             report.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             report.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             report.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
@@ -118,24 +135,64 @@ final class ProbeController: UIViewController {
             connection.stop()
             return
         }
+        presentRemoteForm(remember: false, connectAfterSave: true)
+    }
+
+    @objc private func quickConnectRemoteDisplay() {
+        if remoteDisplayConnection != nil { connectRemoteDisplay(); return }
         guard !nativeBusy else { return }
-        let form = UIAlertController(title: "A2.1 Remote Display", message: "Trusted TLS hostname, UDP port and pairing token. Run the A1 64×64 GL demo on Ubuntu. Max 16 PRESENTs; no readback or video.", preferredStyle: .alert)
+        do {
+            if let saved = try testProfileStore.load() {
+                startRemoteDisplay(saved)
+            } else {
+                presentRemoteForm(remember: true, connectAfterSave: true)
+            }
+        } catch { report.text = error.localizedDescription }
+    }
+
+    private func clearTestProfile() {
+        guard !nativeBusy else { return }
+        let prompt = UIAlertController(title: "清除测试连接？", message: "仅删除本机保存的配置，不撤销服务端 Token。下次一键连接需要重新配置。", preferredStyle: .alert)
+        prompt.addAction(UIAlertAction(title: "取消", style: .cancel))
+        prompt.addAction(UIAlertAction(title: "清除", style: .destructive) { [weak self] _ in
+            guard let self else { return }
+            do {
+                try self.testProfileStore.clear()
+                UserDefaults.standard.removeObject(forKey: "a21.host")
+                UserDefaults.standard.removeObject(forKey: "a21.port")
+                self.report.text = "本机测试连接已清除；服务端配置未改变。"
+            } catch { self.report.text = error.localizedDescription }
+        })
+        present(prompt, animated: true)
+    }
+
+    private func presentRemoteForm(remember: Bool, connectAfterSave: Bool) {
+        guard !nativeBusy else { return }
+        let saved: RemoteGPUTestProfile?
+        do { saved = remember ? try testProfileStore.load() : nil }
+        catch { report.text = error.localizedDescription; return }
+        let message = remember
+            ? "首次设置后即可一键连接。Token 仅保存在本机 Keychain，不写入 IPA/报告或云同步；地址和端口会被记住。测试设置中可清除。TLS 验证和 GPU 渲染路径不变。"
+            : "手动 Remote Display，不保存 Token。需要可信 TLS 主机名、UDP 端口和配对 Token。最多16次 PRESENT，无显示读回或视频。"
+        let form = UIAlertController(title: remember ? "配置一键测试连接" : "A2.1 Remote Display", message: message, preferredStyle: .alert)
         form.addTextField { field in
             field.placeholder = "Ubuntu TLS hostname"
-            field.text = UserDefaults.standard.string(forKey: "a21.host")
+            field.text = saved?.host ?? UserDefaults.standard.string(forKey: "a21.host") ?? (remember ? "gpu.opencat.cc.cd" : nil)
             field.autocapitalizationType = .none; field.autocorrectionType = .no
         }
         form.addTextField {
             $0.placeholder = "UDP port"
-            $0.text = UserDefaults.standard.string(forKey: "a21.port") ?? "4434"
+            $0.text = saved.map { String($0.port) } ?? UserDefaults.standard.string(forKey: "a21.port") ?? "4434"
             $0.keyboardType = .numberPad
         }
         form.addTextField {
-            $0.placeholder = "Pairing token (never saved)"; $0.isSecureTextEntry = true
+            $0.placeholder = remember ? "Pairing token (本机 Keychain)" : "Pairing token (不保存)"
+            $0.text = saved?.token
+            $0.isSecureTextEntry = true
             $0.autocapitalizationType = .none; $0.autocorrectionType = .no
         }
         form.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        form.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self, weak form] _ in
+        form.addAction(UIAlertAction(title: remember ? (connectAfterSave ? "保存并连接" : "保存") : "Connect", style: .default) { [weak self, weak form] _ in
             guard let self, let fields = form?.textFields,
                 let host = fields[0].text?.trimmingCharacters(in: .whitespacesAndNewlines), !host.isEmpty,
                 let port = UInt16(fields[1].text ?? ""), port != 0,
@@ -143,45 +200,51 @@ final class ProbeController: UIViewController {
                 self?.report.text = "Hostname, valid UDP port and pairing token are required."
                 return
             }
-            guard token == token.trimmingCharacters(in: .whitespacesAndNewlines) else {
-                self.report.text = "Pairing token has leading/trailing whitespace. Remove it and reconnect; token was NOT changed or logged."
-                return
-            }
-            UserDefaults.standard.set(host, forKey: "a21.host")
-            UserDefaults.standard.set(String(port), forKey: "a21.port")
-            self.probe = nil
-            self.setDisplayAspect(1) // A1 is square; do not stretch the triangle.
-            self.nativeBusy = true
-            self.controls.forEach { $0.isEnabled = false }
-            self.remoteDisplayButton.isEnabled = true
-            self.shareControl?.isEnabled = true
-            self.remoteDisplayButton.setTitle("Disconnect Remote Display", for: .normal)
-            self.report.text = "A2.1 INITIALIZING — any previous image is stale, NOT remote evidence. Wait for a numbered remote PRESENT report."
-            let connection = NativeRemoteDisplayConnection(host: host, port: port, token: token, layer: self.display.metalLayer)
-            self.remoteDisplayConnection = connection
-            let sessionID = connection.sessionID
-            UIApplication.shared.isIdleTimerDisabled = true
-            self.frameBadge.isHidden = false
-            self.frameBadge.text = "PRESENT 0 — waiting (not remote evidence)"
-            connection.onDisplayed = { [weak self] frame in
-                guard let self, self.remoteDisplayConnection?.sessionID == sessionID else { return }
-                self.frameBadge.text = "Metal completed PRESENT \(frame) — verify pixels"
-            }
-            connection.onReport = { [weak self] text, finished in
-                guard let self, self.remoteDisplayConnection?.sessionID == sessionID else { return }
-                self.report.text = text
-                if finished {
-                    UIApplication.shared.isIdleTimerDisabled = false
-                    self.frameBadge.text = "Disconnected — retained image is NOT live evidence"
-                    self.remoteDisplayConnection = nil
-                    self.nativeBusy = false
-                    self.controls.forEach { $0.isEnabled = true }
-                    self.remoteDisplayButton.setTitle("Connect Remote Display", for: .normal)
-                }
-            }
-            connection.start()
+            do {
+                let profile = try RemoteGPUTestProfile(host: host, port: port, token: token)
+                if remember { try self.testProfileStore.save(profile) }
+                UserDefaults.standard.set(profile.host, forKey: "a21.host")
+                UserDefaults.standard.set(String(profile.port), forKey: "a21.port")
+                if connectAfterSave { self.startRemoteDisplay(profile) }
+                else { self.report.text = "测试连接已保存到本机 Keychain。点击“一键测试连接”开始；未启动网络会话。" }
+            } catch { self.report.text = error.localizedDescription }
         })
         present(form, animated: true)
+    }
+
+    private func startRemoteDisplay(_ profile: RemoteGPUTestProfile) {
+        guard !nativeBusy else { return }
+        probe = nil
+        setDisplayAspect(1) // Same accepted renderer path for quick AND manual.
+        nativeBusy = true
+        controls.forEach { $0.isEnabled = false }
+        remoteDisplayButton.isEnabled = true
+        shareControl?.isEnabled = true
+        remoteDisplayButton.setTitle("断开测试连接", for: .normal)
+        report.text = "A2.1 INITIALIZING — any previous image is stale, NOT remote evidence. Wait for a numbered remote PRESENT report."
+        let connection = NativeRemoteDisplayConnection(host: profile.host, port: profile.port, token: profile.token, layer: display.metalLayer)
+        remoteDisplayConnection = connection
+        let sessionID = connection.sessionID
+        UIApplication.shared.isIdleTimerDisabled = true
+        frameBadge.isHidden = false
+        frameBadge.text = "PRESENT 0 — waiting (not remote evidence)"
+        connection.onDisplayed = { [weak self] frame in
+            guard let self, self.remoteDisplayConnection?.sessionID == sessionID else { return }
+            self.frameBadge.text = "Metal completed PRESENT \(frame) — verify pixels"
+        }
+        connection.onReport = { [weak self] text, finished in
+            guard let self, self.remoteDisplayConnection?.sessionID == sessionID else { return }
+            self.report.text = text
+            if finished {
+                UIApplication.shared.isIdleTimerDisabled = false
+                self.frameBadge.text = "Disconnected — retained image is NOT live evidence"
+                self.remoteDisplayConnection = nil
+                self.nativeBusy = false
+                self.controls.forEach { $0.isEnabled = true }
+                self.remoteDisplayButton.setTitle("一键测试连接", for: .normal)
+            }
+        }
+        connection.start()
     }
 
     @objc private func connectCapability() {

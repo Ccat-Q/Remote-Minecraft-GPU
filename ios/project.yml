@@ -33,6 +33,7 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
     dependencies:
+      - sdk: Security.framework
       - framework: ../_deps/ios-sysroot/Frameworks/EGL.framework
         embed: true
       - framework: ../_deps/ios-sysroot/Frameworks/GLESv2.framework

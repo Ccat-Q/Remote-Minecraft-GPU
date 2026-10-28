@@ -14,7 +14,7 @@ let package = Package(
         .library(name: "RemoteGPUProtocol", targets: ["RemoteGPUProtocol"])
     ],
     targets: [
-        .target(name: "RemoteGPUProtocol", path: "RemoteGPU", sources: ["Protocol.swift", "QUICRenderConnection.swift", "RenderCoordinator.swift", "SerialDisplaySession.swift", "DisplayEvidence.swift"]),
-        .testTarget(name: "RemoteGPUProtocolTests", dependencies: ["RemoteGPUProtocol"], path: "Tests", sources: ["RemoteGPUProtocolTests.swift"])
+        .target(name: "RemoteGPUProtocol", path: "RemoteGPU", sources: ["Protocol.swift", "QUICRenderConnection.swift", "RenderCoordinator.swift", "SerialDisplaySession.swift", "DisplayEvidence.swift", "TestConnectionProfile.swift"], linkerSettings: [.linkedFramework("Security")]),
+        .testTarget(name: "RemoteGPUProtocolTests", dependencies: ["RemoteGPUProtocol"], path: "Tests", sources: ["RemoteGPUProtocolTests.swift", "TestConnectionProfileTests.swift"])
     ]
 )
