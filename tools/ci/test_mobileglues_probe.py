@@ -12,7 +12,7 @@ PROBE = ROOT / "ios/Experiments/MobileGluesProbe"
 class MobileGluesProbeTests(unittest.TestCase):
     def test_immutable_pin_and_guard_coverage(self):
         self.assertEqual(MOBILEGLUES, "97558a69157b033b890958b1e49258c5b51a80c6")
-        self.assertEqual(len(HASHES), 8)
+        self.assertEqual(len(HASHES), 9)
         for value in HASHES.values():
             self.assertRegex(value, r"^[0-9a-f]{64}$")
 

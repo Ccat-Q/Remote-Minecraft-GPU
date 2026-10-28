@@ -27,6 +27,7 @@ HASHES = {
     "egl/loader.cpp": "99c6fa02cf611f36c6d2082b83d047f234302bf8b5c6b9095697e33b0d69fdeb",
     "config/settings.cpp": "e677009b0390de2fc9fac11907c7cc859415e9780c1c5940d182f7b78c74c262",
     "gl/framebuffer.cpp": "e21359abeeabd2cae8a3f1da3ea71b38824a402351d847d87e5fa045915e7713",
+    "egl/trace.h": "0db2d93b36253ff895b9fb3fc7e0b17624976fd1a94131bfe21f4db0521fac24",
 }
 
 
@@ -90,6 +91,11 @@ void* proc_address(void* lib, const char* name) {
     ):
         framebuffer = replace_once(framebuffer, before, after)
     result["gl/framebuffer.cpp"] = framebuffer
+    trace = replace_once(sources["egl/trace.h"], "#include <sys/syscall.h>", "#include <pthread.h>\n#include <stdint.h>")
+    trace = replace_once(trace,
+        "static inline int mg_egl_tid(void) {\n    return (int)syscall(__NR_gettid);\n}",
+        "static inline unsigned long long mg_egl_tid(void) {\n    uint64_t tid = 0;\n    pthread_threadid_np(nullptr, &tid);\n    return (unsigned long long)tid;\n}")
+    result["egl/trace.h"] = replace_once(trace, '#define EGL_TRACE_TAG "[EGL t%d] "', '#define EGL_TRACE_TAG "[EGL t%llu] "')
     # Upstream Apple leaves the bootstrap context current. Unbind and destroy it
     # on Apple too before the app creates its frontend context/share group.
     result["main.cpp"] = replace_once(sources["main.cpp"],

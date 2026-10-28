@@ -10,11 +10,32 @@ import subprocess
 from prepare_mobileglues_probe import MOBILEGLUES
 
 
+def verify_bundle(app):
+    data = json.loads((app / "B11Provenance.json").read_text())
+    expected = {"MobileGluesProbe": data["candidate_framework_sha256"]}
+    for name in ("EGL", "GLESv2"):
+        expected[name] = data["angle_artifact"]["framework_sha256"][name]
+    frameworks = app / "Frameworks"
+    if {path.name for path in frameworks.glob("*.framework")} != {name + ".framework" for name in expected}:
+        raise ValueError("Independent app contains unexpected/missing frameworks")
+    for name, value in expected.items():
+        actual = hashlib.sha256((frameworks / (name + ".framework") / name).read_bytes()).hexdigest()
+        if actual != value:
+            raise ValueError(f"Bundled unsigned framework hash mismatch: {name}")
+    return expected
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--verify-app", type=Path)
     for name in ("angle", "recipe", "candidate", "output"):
-        parser.add_argument("--" + name, type=Path, required=True)
+        parser.add_argument("--" + name, type=Path)
     args = parser.parse_args()
+    if args.verify_app:
+        print(json.dumps(verify_bundle(args.verify_app), indent=2, sort_keys=True))
+        return
+    if not all((args.angle, args.recipe, args.candidate, args.output)):
+        parser.error("Provide --angle --recipe --candidate --output, or --verify-app")
     angle = json.loads(args.angle.read_text())
     recipe = json.loads(args.recipe.read_text())
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()

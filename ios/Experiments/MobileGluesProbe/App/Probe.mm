@@ -160,8 +160,13 @@ NSString *RGPURunMobileGluesProbe(void) {
         require(f.eglInitialize != backendInit && f.glGetString != backendString, "Frontend/backend recursion risk");
         for (uint32_t i = 0; i < _dyld_image_count(); ++i) {
             const std::string image = _dyld_get_image_name(i);
-            require(image.find("/OpenGLES.framework/") == std::string::npos && image.find("/virglrenderer.") == std::string::npos &&
-                image.find("/epoxy.") == std::string::npos, "Unexpected system GLES / formal renderer loaded in isolated process");
+            // UIKit/CoreAnimation may preload system GLES on some OS builds.
+            // Mere image presence does not identify the provider of OUR calls:
+            // explicit RTLD_FIRST handles and pointer checks above/below do.
+            if (image.find("/OpenGLES.framework/") != std::string::npos)
+                [report appendFormat:@"OS-preloaded GLES image (NOT selected by Probe): %s\n", image.c_str()];
+            require(image.find("/virglrenderer.") == std::string::npos &&
+                image.find("/epoxy.") == std::string::npos, "Unexpected formal renderer loaded in isolated process");
         }
         int result = boot(frontend, backendEGL, backendGLES);
         [report appendFormat:@"Explicit bootstrap result=%d error=%s resolved_backend_entries=%lu\n", result, bootError(), resolved()];

@@ -145,6 +145,7 @@ jobs:
           test -f "$app/Frameworks/MobileGluesProbe.framework/MobileGluesProbe"
           test ! -e "$app/Frameworks/virglrenderer.1.framework"
           test ! -e "$app/Frameworks/epoxy.0.framework"
+          python3 tools/ci/mobileglues_provenance.py --verify-app "$app" | tee _build/b11-diagnostics/bundled-framework-hashes.json
           otool -L "$app/MobileGluesCompatibilityProbe" | tee _build/b11-diagnostics/app-linkage.txt
           ! otool -L "$app/MobileGluesCompatibilityProbe" | grep -E 'OpenGLES.framework|OpenGL.framework|virglrenderer|epoxy|EGL.framework|GLESv2.framework|MobileGluesProbe.framework'
           mkdir -p _stage/b11/Payload
