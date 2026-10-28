@@ -6,8 +6,11 @@ protocol, DNS, server deployment or ADR is changed. All compilation is Actions-o
 
 Build/link/packaging and retained regressions now passed at `ff4fae6`.
 [Exact Actions/IPA/source evidence](evidence/b11-build-2026-10-28/README.md).
-Device execution is still **PENDING**: no actual provider/context/sharing PASS
-or desktop GL capability is claimed from compilation.
+Device execution at `ff4fae6` is **PARTIAL / BLOCKED**: the user confirmed
+successful bootstrap (384 backend resolutions) and seven frontend direct/proc
+ownership checks, then a generic dladdr failure before frontend context creation.
+The corrected diagnostic is pending device retest. No context/sharing PASS or
+desktop GL capability is claimed. See the retained device report below.
 
 ## Implementation boundary
 
@@ -41,6 +44,12 @@ ANGLE's exported EGL wrappers and its `EGL_*` proc-table implementations can
 live in different installed ANGLE images; both are identified explicitly.
 OS-preloaded GLES images are reported, not confused with the actual selected
 function providers. Their mere presence is not a binding failure.
+The selected exported `eglGetPlatformDisplayEXT` entry is mandatory and strictly
+validated. Its duplicate `eglGetProcAddress` query is an optional diagnostic:
+NULL is recorded as UNAVAILABLE, not a passed lookup or missing GL feature.
+A non-null result still requires a resolvable identity in one of the exact
+installed ANGLE images; unresolved/foreign pointers fail closed. Symbol names,
+NULL versus dladdr errors, addresses, EGL errors and stage markers are retained.
 
 ## Build and test
 
@@ -74,3 +83,28 @@ B1.2 actual shader/feature draws and then a separately gated B1.3
 dispatch integration are subsequent gates. CI compile/link success is not
 device bootstrap or feature success. Keep failures and missing features;
 never convert them into simulated PASS results.
+
+## First device report (retained failure, not acceptance)
+
+The user supplied a full report from iPhone18,3 / iOS 27.0.1 (24A446), app
+source `ff4fae65b068409964fc5b45d688b7abe95a23ee`, run `40783974009`, unchanged
+candidate framework `47fafd8b923cefd1c8c28e11b580ba01a8f2b716e5877d8c8f2e14d178399f2c`.
+This is a summary of that report, not reconstructed raw device output.
+
+- Frontend GL/EGL owners: the bundled MobileGluesProbe framework.
+- Backend EGL/GLES owners: the bundled EGL and GLESv2 frameworks respectively.
+- System OpenGLES images were preloaded by the OS, explicitly NOT selected.
+- Explicit bootstrap result 0, empty error, 384 resolved backend entries.
+- All seven reported frontend direct/proc identities matched: eglCreateContext,
+  eglMakeCurrent, eglGetProcAddress, glGetString, glBindTexture,
+  glFramebufferTexture2D, glReadPixels.
+- Cleanup released the owner thread successfully (EGL 0x3000).
+- Failure: `BLOCKED: dladdr provider identity unavailable`; no frontend display,
+  context, sharing, migration or pixel-result line was reached.
+
+The code location is the subsequent platform export/duplicate-proc ownership
+check. Bootstrap already used the validated exported platform entry; requiring
+the additional unused proc-table route was an erroneous extra prerequisite.
+The old generic error does not itself distinguish NULL from a non-null pointer
+whose image could not be resolved. The new report must provide that distinction;
+do not invent a device NULL result or call this a driver/MobileGlues feature failure.

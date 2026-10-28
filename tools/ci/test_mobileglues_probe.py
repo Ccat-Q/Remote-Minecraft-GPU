@@ -85,6 +85,15 @@ class MobileGluesProbeTests(unittest.TestCase):
         self.assertNotIn('setenv("MESA_GL_VERSION_OVERRIDE"', source)
         self.assertNotIn('setenv("MG_GL_VERSION"', source)
 
+    def test_platform_export_remains_mandatory_duplicate_proc_is_diagnostic(self):
+        source = (PROBE / "App/Probe.mm").read_text()
+        self.assertIn('symbol<PFNEGLGETPLATFORMDISPLAYEXTPROC>(backendEGL, "eglGetPlatformDisplayEXT"', source)
+        self.assertIn("validateOptionalPlatform(platformImplementation", source)
+        self.assertNotIn("owner(platformImplementation)", source)
+        self.assertIn("NOT a passed proc lookup", source)
+        self.assertIn("B11_STAGE create_frontend_contexts", source)
+        self.assertIn('"dlsym "', source)
+
 
 if __name__ == "__main__":
     unittest.main()

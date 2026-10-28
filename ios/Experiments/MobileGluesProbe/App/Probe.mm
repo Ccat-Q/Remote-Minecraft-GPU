@@ -1,4 +1,5 @@
 #import "Probe.h"
+#include "ProviderPolicy.hpp"
 #import <UIKit/UIKit.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -18,9 +19,11 @@ std::atomic<bool> ran{false};
 void require(bool value, const char *message) {
     if (!value) throw std::runtime_error(message);
 }
-std::string owner(void *address) {
+std::string owner(void *address, const char *entry = "unnamed pointer") {
     Dl_info info{};
-    require(address && dladdr(address, &info) && info.dli_fname, "dladdr provider identity unavailable");
+    if (!address) throw std::runtime_error(std::string(entry) + ": NULL symbol/proc pointer");
+    if (!dladdr(address, &info) || !info.dli_fname || !info.dli_fbase)
+        throw std::runtime_error(std::string(entry) + ": non-null pointer has no dladdr provider identity");
     return info.dli_fname;
 }
 void *load(NSString *name) {
@@ -32,9 +35,13 @@ void *load(NSString *name) {
     return handle; // intentionally process-resident; MobileGlues TLS/statics forbid unsafe dlclose
 }
 template<class T> T symbol(void *handle, const char *name, const char *expected) {
+    dlerror(); // Distinguish a missing symbol from a dladdr failure.
     void *p = dlsym(handle, name);
-    std::string actual = owner(p);
-    require(actual.find(expected) != std::string::npos, "Entry point bound to wrong image");
+    const char *error = dlerror();
+    if (!p || error) throw std::runtime_error(std::string("dlsym ") + name + ": " + (error ?: "NULL address"));
+    std::string actual = owner(p, name);
+    if (actual.find(expected) == std::string::npos)
+        throw std::runtime_error(std::string(name) + ": unexpected provider " + actual);
     return reinterpret_cast<T>(p);
 }
 
@@ -154,6 +161,7 @@ NSString *RGPURunMobileGluesProbe(void) {
         auto backendString = symbol<decltype(&::glGetString)>(backendGLES, "glGetString", "/GLESv2.framework/");
         auto backendInit = symbol<decltype(&::eglInitialize)>(backendEGL, "eglInitialize", "/EGL.framework/");
         auto backendProc = symbol<decltype(&::eglGetProcAddress)>(backendEGL, "eglGetProcAddress", "/EGL.framework/");
+        auto backendError = symbol<decltype(&::eglGetError)>(backendEGL, "eglGetError", "/EGL.framework/");
         [report appendFormat:@"Frontend EGL provider: %s\nFrontend GL provider: %s\nBackend EGL provider: %s\nBackend GLES provider: %s\n",
             owner(reinterpret_cast<void*>(f.eglCreateContext)).c_str(), owner(reinterpret_cast<void*>(f.glGetString)).c_str(),
             owner(reinterpret_cast<void*>(backendInit)).c_str(), owner(reinterpret_cast<void*>(backendString)).c_str()];
@@ -179,17 +187,31 @@ NSString *RGPURunMobileGluesProbe(void) {
         }
         Session s{f, report};
         try {
+            [report appendString:@"B11_STAGE resolve_platform_export_and_optional_proc\n"];
             // Pinned libEGL exports wrappers, whereas its proc table (in
             // libGLESv2/proc_table_egl_autogen.cpp) returns EGL_* implementations
             // in GLESv2. Validate both deterministic routes, not image-order luck.
             auto platform = symbol<PFNEGLGETPLATFORMDISPLAYEXTPROC>(backendEGL, "eglGetPlatformDisplayEXT", "/EGL.framework/");
+            [report appendFormat:@"Backend EGL mandatory platform export: address=%p provider=%s VERIFIED\n",
+                reinterpret_cast<void*>(platform), owner(reinterpret_cast<void*>(platform), "exported eglGetPlatformDisplayEXT").c_str()];
+            const auto priorBackendError = backendError();
             void *platformImplementation = reinterpret_cast<void*>(backendProc("eglGetPlatformDisplayEXT"));
-            const auto implementationOwner = owner(platformImplementation);
-            require(implementationOwner == owner(reinterpret_cast<void*>(backendInit)) ||
-                implementationOwner == owner(reinterpret_cast<void*>(backendString)), "ANGLE platform implementation provider mismatch");
-            [report appendFormat:@"Backend EGL platform exported wrapper: %s\nBackend EGL proc-table implementation: %s\n",
-                owner(reinterpret_cast<void*>(platform)).c_str(), implementationOwner.c_str()];
+            const auto procError = backendError();
+            Dl_info implementation{}, eglIdentity{}, glesIdentity{};
+            const int implementationResolved = platformImplementation ? dladdr(platformImplementation, &implementation) : 0;
+            require(dladdr(reinterpret_cast<void*>(backendInit), &eglIdentity) && eglIdentity.dli_fbase,
+                "backend eglInitialize anchor identity unavailable");
+            require(dladdr(reinterpret_cast<void*>(backendString), &glesIdentity) && glesIdentity.dli_fbase,
+                "backend glGetString anchor identity unavailable");
+            [report appendFormat:@"Backend optional eglGetProcAddress(eglGetPlatformDisplayEXT): address=%p dladdr=%d provider=%s prior_EGL=0x%x query_EGL=0x%x\n",
+                platformImplementation, implementationResolved, implementation.dli_fname ?: "UNAVAILABLE", priorBackendError, procError];
+            const auto procRoute = rgpu::b11::validateOptionalPlatform(platformImplementation,
+                implementationResolved && implementation.dli_fname ? implementation.dli_fbase : nullptr,
+                eglIdentity.dli_fbase, glesIdentity.dli_fbase);
+            [report appendFormat:@"Backend optional platform proc route: %s; selected route=verified EGL exported wrapper\n",
+                procRoute == rgpu::b11::OptionalRoute::verified ? "VERIFIED" : "UNAVAILABLE (not a required duplicate route; NOT a passed proc lookup)"];
             const EGLint metal[] = {0x3203, 0x3489, EGL_NONE};
+            [report appendString:@"B11_STAGE frontend_display_initialize\n"];
             s.display = platform(0x3202, nullptr, metal);
             require(s.display != EGL_NO_DISPLAY, "ANGLE Metal display unavailable");
             f.eglCheck(f.eglInitialize(s.display, nullptr, nullptr), report, "frontend initialize explicit Metal display");
@@ -206,6 +228,7 @@ NSString *RGPURunMobileGluesProbe(void) {
             f.eglCheck(s.surface != EGL_NO_SURFACE, report, "create pbuffer");
             const EGLint core[] = {EGL_CONTEXT_MAJOR_VERSION_KHR, 3, EGL_CONTEXT_MINOR_VERSION_KHR, 2,
                 EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR, EGL_NONE};
+            [report appendString:@"B11_STAGE create_frontend_contexts\n"];
             s.root = f.eglCreateContext(s.display, config, EGL_NO_CONTEXT, core);
             f.eglCheck(s.root != EGL_NO_CONTEXT, report, "create frontend 3.2 Core request (metadata only, NOT capability gate)");
             s.shared = f.eglCreateContext(s.display, config, s.root, core);
@@ -220,6 +243,7 @@ NSString *RGPURunMobileGluesProbe(void) {
             f.eglCheck(f.eglQueryContext(s.display, s.root, EGL_CONTEXT_MINOR_VERSION_KHR, &minor), report, "query frontend context minor");
             f.eglCheck(f.eglQueryContext(s.display, s.root, EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR, &profile), report, "query frontend profile");
             [report appendFormat:@"Frontend context metadata: %d.%d profile=0x%x; NOT GL semantic conformance evidence\n", major, minor, profile];
+            [report appendString:@"B11_STAGE shared_gpu_content_and_migration\n"];
             f.glGenTextures(1, &s.texture); f.glBindTexture(GL_TEXTURE_2D, s.texture);
             f.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             f.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
