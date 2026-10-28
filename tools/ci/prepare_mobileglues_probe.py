@@ -26,6 +26,7 @@ HASHES = {
     "glx/lookup.cpp": "894fb518435e7de0b4233301851282e42a7bf078f9ed8097aa9ef9d3fb345715",
     "egl/loader.cpp": "99c6fa02cf611f36c6d2082b83d047f234302bf8b5c6b9095697e33b0d69fdeb",
     "config/settings.cpp": "e677009b0390de2fc9fac11907c7cc859415e9780c1c5940d182f7b78c74c262",
+    "gl/framebuffer.cpp": "e21359abeeabd2cae8a3f1da3ea71b38824a402351d847d87e5fa045915e7713",
 }
 
 
@@ -79,6 +80,16 @@ void* proc_address(void* lib, const char* name) {
     # Diagnostics must observe driver errors, not upstream's Apple partial-ignore
     # policy. No version string, feature or extension advertisement is changed.
     result["config/settings.cpp"] = diagnostic_apple_errors(sources["config/settings.cpp"])
+    # Three ARB entry points missed upstream's Apple forwarding-wrapper guard.
+    # Mach-O rejects ELF alias attributes; keep identical signatures/behavior.
+    framebuffer = sources["gl/framebuffer.cpp"]
+    for before, after in (
+        ('__attribute__((alias("glDeleteFramebuffers")));', '{ glDeleteFramebuffers(n, names); }'),
+        ('__attribute__((alias("glFramebufferRenderbuffer")));', '{ glFramebufferRenderbuffer(target, attachment, renderbuffertarget, renderbuffer); }'),
+        ('__attribute__((alias("glFramebufferTextureLayer")));', '{ glFramebufferTextureLayer(target, attachment, texture, level, layer); }'),
+    ):
+        framebuffer = replace_once(framebuffer, before, after)
+    result["gl/framebuffer.cpp"] = framebuffer
     # Upstream Apple leaves the bootstrap context current. Unbind and destroy it
     # on Apple too before the app creates its frontend context/share group.
     result["main.cpp"] = replace_once(sources["main.cpp"],

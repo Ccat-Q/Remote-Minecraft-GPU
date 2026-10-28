@@ -78,7 +78,16 @@ extern "C" int rgpu_mg_bootstrap(void *frontend, void *backendEGL, void *backend
         if (!GLES.glGetString || !GLES.glGetError || g_gles_caps.major < 3)
             throw std::runtime_error("MobileGlues bootstrap did not establish GLES 3 backend");
         return 0;
-    } catch (const std::exception& e) { failure = e.what(); return -1; }
+    } catch (const std::exception& e) {
+        failure = e.what();
+        // Early EGL failures already clear their handles; a later resolver or
+        // GLES-probe failure must also release any successful temporary setup.
+        if (frontBase && eglBase && glesBase) {
+            try { destroy_temp_egl_ctx(); }
+            catch (const std::exception& cleanup) { failure += std::string("; bootstrap cleanup: ") + cleanup.what(); }
+        }
+        return -1;
+    }
 }
 extern "C" const char *rgpu_mg_bootstrap_error(void) { return failure.c_str(); }
 extern "C" unsigned long rgpu_mg_resolved_count(void) { return resolved; }
