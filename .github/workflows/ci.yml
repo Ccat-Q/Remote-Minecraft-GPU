@@ -74,6 +74,13 @@ jobs:
         run: swift build --package-path ios
       - name: Test Swift protocol package
         run: swift test --package-path ios
+      - name: Type-check actual iPhone UI and Keychain interfaces (no renderer link)
+        run: |
+          xcrun --sdk iphoneos swiftc -typecheck -parse-as-library -swift-version 5 \
+            -module-name RemoteGPUPrototype -target arm64-apple-ios17.0 \
+            -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -import-objc-header ios/App/RemoteGPU-Bridging-Header.h \
+            ios/App/*.swift ios/RemoteGPU/*.swift
 
   mesa-patch-contract:
     name: Mesa patch contract
