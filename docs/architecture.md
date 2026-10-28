@@ -16,7 +16,8 @@ unchanged; no video streaming or phone JVM is introduced.
 | Device-verified A3.2 basic gates | [User-confirmed `6dd8b04`](evidence/a32-double-slot-2026-10-28/README.md): normal and 750ms retirement cases each complete 13 correct PRESENTs, >30s live hold, GET=0, two allocations / eleven reuses and release both slots; diagnostic high_water=2. User disconnect vs producer EOF closure and startup stall are explicitly retained; no sustained performance claim. |
 | Known failed prerequisite | GLES 3.1/3.2 requests rejected (EGL 0x3004); GLES 3.0 works. Guest capset GLSL is 130, below 150. Actual Ubuntu GL 3.2 Core creation remains an unaccepted separate test. |
 | Not implemented / accepted | A3 sustained overlapping throughput/resource memory budgets/ten-minute performance; Minecraft and input/audio/Modpack acceptance. |
-| Candidate experiments only | MobileGlues + existing ANGLE Metal; MobileGL iOS interfaces; UTM MoltenVK with a suitable GL/Vulkan implementation. None replaces the renderer or has passed the guest gate. |
+| Isolated B1.1 build verified, device pending | [MobileGlues Probe at `ff4fae6`](b11-mobileglues-probe.md): separate app, explicit frontend/backend handles, ARM64/link/IPA verification passed. Runtime provider ownership/context/sharing and GL 3.2/GLSL150 remain unaccepted; no formal renderer replacement. |
+| Later candidates only | MobileGL iOS interfaces and UTM MoltenVK with a suitable GL/Vulkan implementation. Not developed concurrently; none has passed the guest gate. |
 
 The completed [feasibility audit](../exa-results/remotegpu-feasibility-2026-10-12/audit.md)
 is the research baseline. The blocker applies to the current capability

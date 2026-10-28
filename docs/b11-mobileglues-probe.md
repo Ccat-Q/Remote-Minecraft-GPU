@@ -4,6 +4,11 @@ Experimental branch `experiment/b11-mobileglues-probe`, based on accepted
 A3.2 source `6dd8b04` and its later evidence record. No production renderer,
 protocol, DNS, server deployment or ADR is changed. All compilation is Actions-only.
 
+Build/link/packaging and retained regressions now passed at `ff4fae6`.
+[Exact Actions/IPA/source evidence](evidence/b11-build-2026-10-28/README.md).
+Device execution is still **PENDING**: no actual provider/context/sharing PASS
+or desktop GL capability is claimed from compilation.
+
 ## Implementation boundary
 
 Separate bundle `org.remotegpu.experiments.mobileglues`, not a mode of the
@@ -20,6 +25,9 @@ bootstrap context on Apple, and disables the upstream Apple error-ignore
 policy. It does not change GL/GLSL versions, feature implementations or caps.
 The replacement Apple CMake recipe keeps upstream compilation units and
 shader dependencies but removes GNU linker flags and accidental GL linkage.
+Three unsupported Mach-O framebuffer aliases become equivalent forwarding
+exports, and EGL trace thread IDs use the Apple pthread API instead of an
+Android syscall. These are platform adaptations, not new GL features.
 
 The app uses absolute framework paths and `RTLD_FIRST | RTLD_LOCAL | RTLD_NOW`.
 Frontend GL/EGL symbols and proc lookup must resolve to MobileGlues; backend
@@ -29,6 +37,10 @@ symbols stay missing. There is no global-provider or system-GLES fallback.
 Framework images stay process-resident: unsafe unloading of C++/TLS state is
 not a cleanup strategy. Contexts, texture, FBOs and surfaces are cleaned up
 separately and their errors are reported.
+ANGLE's exported EGL wrappers and its `EGL_*` proc-table implementations can
+live in different installed ANGLE images; both are identified explicitly.
+OS-preloaded GLES images are reported, not confused with the actual selected
+function providers. Their mere presence is not a binding failure.
 
 ## Build and test
 
@@ -38,6 +50,8 @@ applies guarded source changes, builds only the candidate for iOS ARM64,
 checks exports/linkage, builds the independent unsigned IPA, and publishes
 full logs, hashes, recipe and modified LGPL corresponding source plus licenses.
 Exact framework results and partial compiler results are cached separately;
+the verified candidate is saved before app packaging, including when a later
+app step fails. Packaged unsigned binaries must match the recorded hashes.
 ANGLE/Mesa are not rebuilt. Source guard/isolation unit tests run in CI.
 
 Install the externally signed **RemoteGPU B1.1** app alongside the accepted
@@ -56,7 +70,7 @@ RemoteGPU app. No server restart or pairing token is required.
 The frontend 3.2 Core context request and version/profile strings are explicitly
 **metadata, not semantic acceptance**. B1.1 does not yet compile GLSL 150,
 test full desktop features, integrate VirGL or pass Ubuntu guest GL 3.2.
-B1.2 actual shader/feature draws and then a separately authorized B1.3
+B1.2 actual shader/feature draws and then a separately gated B1.3
 dispatch integration are subsequent gates. CI compile/link success is not
 device bootstrap or feature success. Keep failures and missing features;
 never convert them into simulated PASS results.

@@ -189,7 +189,28 @@ Frame/UI durations include this policy, so do not treat them as GPU/FPS data.
 GPU-in-flight cancellation and long-run stability still need separate tests.
 See [full A3.2 ownership/procedure](../docs/a32-double-surface.md).
 
-## Route B: candidate graphics capability (planned)
+## B1.1 standalone Provider/Context Probe (built, device pending)
+
+Install the separately signed **RemoteGPU B1.1** IPA, bundle
+`org.remotegpu.experiments.mobileglues`, alongside the accepted RemoteGPU App.
+[Build/IPA/source evidence](../docs/evidence/b11-build-2026-10-28/README.md)
+at source `ff4fae6`, Actions `40783974009`. No Ubuntu connection, service
+restart, pairing Token or Remote Display test mode is needed.
+
+Tap **Run Provider + Context Probe**, wait for PASS/BLOCKED, then
+**Share Full Report**. Run once per process; relaunch only this independent
+Probe to repeat. If it crashes, preserve its actual crash log rather than
+reporting a completed test. Do not replace the accepted RemoteGPU app.
+
+Require all four actual GL/EGL provider identities and function ownership,
+explicit bootstrap result, frontend and actual backend strings (metadata only),
+create/share/make-current/unbind/destroy results, verified shared GPU-clear
+content, worker-thread migration/return and cleanup errors. Up to three 1x1
+offscreen reads are content-test oracles, not a display/transport path. No
+GLSL150 shader or guest GL3.2 capability verdict follows from this B1.1 report.
+See [implementation and reproducible procedure](../docs/b11-mobileglues-probe.md).
+
+## Route B: subsequent shader and guest capability gates (unaccepted)
 
 Investigate MobileGlues + ANGLE Metal first, then MobileGL iOS interfaces, then
 UTM MoltenVK with a suitable GL/Vulkan compatibility implementation. Build one
