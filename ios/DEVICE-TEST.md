@@ -110,7 +110,8 @@ The first frame is accepted; now follow the
 [multi-frame batch procedure](../docs/a21-remote-present.md#a21-final-multi-frame-batch).
 Use its NEW IPA for per-PRESENT completion, a unique session ID, quiet-hold
 checkpoints and cleanup evidence. Record all changing frames, wait for live
-quiet_s >= 120, Disconnect, save the cleanup report, then reconnect without
+quiet_s >= 30 by default (or the case's explicitly requested longer duration),
+Disconnect, save the cleanup report, then reconnect without
 restarting the app. Do not count a retained image after disconnect as live hold.
 
 ## Route A: A3.1 single-slot async (implemented, device pending)
@@ -127,6 +128,10 @@ and same-process reconnect. Do not mistake scheduler unit tests or a successful
 IPA build for phone acceptance. A3.1 still uses one slot, pauses all later
 vtest and keeps the 64x64/16-PRESENT diagnostic limits. Double buffering,
 resource budgets, ten-minute stress and throughput tests are not implemented.
+New live-hold observations default to 30 seconds; the producer adds five seconds
+of explicit resource cleanup margin. The app keeps 30/60/90/120... checkpoints.
+Previously accepted 120-second cases remain historical evidence, not shortened
+or replaced by the new default.
 
 Follow [route A tasks](../docs/next-stage-plan.md#route-a-remote-present-poc).
 Use a new Actions-built low-capability demo, preserving existing Core/GLSL 150

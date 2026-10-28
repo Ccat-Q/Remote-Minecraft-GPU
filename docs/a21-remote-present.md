@@ -78,7 +78,7 @@ No new renderer, Mesa patch, PRESENT wire layout, ACK, DNS or deployment change.
   phone latency measurements. `A21_HOLD` reports quiet time since the latest
   completion OR render-stream data, including incomplete envelopes. Partial
   activity is coalesced under a lock, not one queued renderer task per packet.
-  Quiet duration is truncated (never rounded up to 120). A timer works without new data; at >=120 s a
+  Quiet duration is truncated (never rounded up across the requested boundary). A timer works without new data; every 30 seconds a
   bounded checkpoint is retained. This is liveness observation, not pixel
   inspection. Foreground display mode prevents auto-lock; backgrounding cancels
   the test. No claim is made about background/suspension recovery.
@@ -131,7 +131,7 @@ export REMOTEGPU_PRESENT_SOCKET="$case_dir/present.sock"
 export RGPU_MESA_ROOT=/absolute/path/to/verified-linux-bundle/mesa
 export VTEST_SOCKET_NAME=/tmp/rgpu-a21.REPLACE/vtest.sock
 export REMOTEGPU_PRESENT_SOCKET=/tmp/rgpu-a21.REPLACE/present.sock
-sh ./a21-tools/run-gl-remote-present.sh --frames 1 --fps 1 --hold-seconds 120 \
+sh ./a21-tools/run-gl-remote-present.sh --frames 1 --fps 1 --hold-seconds 35 \
   2>&1 | tee /tmp/rgpu-a21-one-frame.log
 ```
 
@@ -142,7 +142,8 @@ this code change does not grant permission to alter firewall/production rules.
    possible startup PRESENT precedes application frame 0, so PRESENT IDs need
    not equal application frame IDs. Expect a small upward triangle toward the
    lower-left for frame 0: RGB 40/50/60, offset (-0.32,-0.12), dark RGB 8/16/24.
-   Share full phone report and screenshot DURING the 120-second hold. It must
+   Share full phone report and screenshot DURING the default 30-second live
+   observation (the direct producer above retains resources for 35 seconds). It must
    show actual vtest/PRESENT sequences, live resource metadata, producer/copy
    completion, Metal displayed frame, counts including TRANSFER_GET=0, and no
    local fixture evidence substituted for Ubuntu's frame.
@@ -151,7 +152,7 @@ this code change does not grant permission to alter firewall/production rules.
    during GPU work if practical. Share cleanup/error logs; rerun A2.0 and caps
    to catch stale global EGL/renderer ownership. Crash recovery is not tested.
 6. **Only after one-frame visual acceptance**, start fresh sessions for
-   `--frames 7 --fps 1 --hold-seconds 120`, then 12 frames. Compare Ubuntu frame
+   `--frames 7 --fps 1 --hold-seconds 35`, then 12 frames. Compare Ubuntu frame
    colors/positions with phone snapshots/reports; no frame-state command loss,
    ordering errors, unexpected stalls or full-frame CPU fallback is acceptable.
    These finite synchronous diagnostics do not establish A3 throughput/FPS.
@@ -169,20 +170,25 @@ environment variables as above, run each case in a FRESH session:
 
 ```sh
 bash ./a21-tools/run-a21-case.sh 7 /tmp/a21-seven-NEW
-# Equivalent producer: --frames 7 --fps 1 --hold-seconds 120
+# Default: observe 30s; producer --frames 7 --fps 1 --hold-seconds 35 (5s cleanup margin)
 # Save full phone report AND screen recording while connected, then Disconnect.
 # Save the report again after native cleanup; only then start the next case.
 bash ./a21-tools/run-a21-case.sh 12 /tmp/a21-twelve-NEW
-# Equivalent producer: --frames 12 --fps 2 --hold-seconds 120
+# Default: observe 30s; producer --frames 12 --fps 2 --hold-seconds 35
+# For a longer image/test: bash ./a21-tools/run-a21-case.sh 12 /tmp/a21-long-NEW 60
+# This requests 60s observation, 65s resource lifetime. Use 120 for historical-duration retests.
 ```
 
 No script restarts a server or auto-reconnects. Start a fresh Ubuntu producer
 after every disconnect. A cancelled producer may still be in its timed hold;
 stop ONLY that diagnostic process before relaunch, not the production service.
-After the final PRESENT, keep the app foreground and observe `quiet_s >= 120`
-with `live=YES`. Keepalive traffic is not vtest/draw traffic. If the producer
-ends too close to the observation boundary, rerun with an explicit 150-second
-hold (`run-a21-case.sh 7 NEW_DIRECTORY 150`), never weaken the 120 s criterion.
+After the final PRESENT, keep the app foreground and observe `quiet_s >= 30`
+with `live=YES`, or the longer requested observation. Keepalive traffic is not
+vtest/draw traffic. The producer keeps resources five seconds longer, capped
+at 3600s, to avoid racing the app checkpoint at EOF. The app retains checkpoints
+every 30 seconds. This user-approved new default does not alter the earlier
+accepted 120-second records. For their strict retest, request 120 and use the
+checker option `--min-hold-seconds 120`.
 
 Record EVERY changing frame with the visible Metal-completed PRESENT badge.
 Allow a startup PRESENT: application frame i is not always PRESENT i.
@@ -201,9 +207,13 @@ are device-accepted; same-process rendering after disconnect remains deferred.
 python3 ./a21-tools/a21_device_evidence.py \
   --ubuntu-log /tmp/a21-seven-NEW/ubuntu.log --iphone-report seven-after-disconnect.txt \
   --frames 7 --expected-sha FULL_IPA_SOURCE_SHA --require-cleanup \
+  --min-hold-seconds 30 \
   --output seven-check-NEW.json
 # For the 12-frame check add --previous-iphone-report seven-after-disconnect.txt
 # to require different session IDs and previous user-cancellation cleanup.
+# New case logs declare observation_s; the checker automatically enforces that
+# longer target even if --min-hold-seconds is omitted. Output records the actual
+# quiet_live_seconds and required_hold_seconds; a 30s result is NOT a 120s result.
 ```
 
 The checker rejects missing completion, wrong sequence, invalid frame count,

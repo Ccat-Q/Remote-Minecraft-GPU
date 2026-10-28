@@ -54,13 +54,18 @@ if cancellation happens before consumption. No CPU pixel mapping/copy,
 2. Under **测试设置**, choose **使用 A3.1 单槽异步测试**, then one-click connect.
    Confirm `SCHEDULER=A3.1_ASYNC_SINGLE_SLOT`. This selection lasts only for
    the app process and does not modify formal renderer/provider settings.
-3. Start a fresh existing 7-frame/1fps or 12-frame/2fps Ubuntu case with a
-   >=120-second live hold. Do not change server deployment for this batch.
+3. Start a fresh existing 7-frame/1fps or 12-frame/2fps Ubuntu case. The new
+   default live observation is **30 seconds**; pass a longer third argument
+   when the image/test duration requires it. Resources stay alive for five
+   extra cleanup-margin seconds (35s by default, capped at 3600 total); this
+   margin does not increase the required user observation. The case log records
+   both `observation_s` and `resource_hold_s`.
 4. Record every changed image and the final held image. Save the full report:
    `A3_BEGIN`, exact ordered vtest/PRESENT IDs, resource info, producer fence,
    copy fence, Metal completion, `A3_COMPLETED`, counters and build provenance.
    The final frame must complete even when no further packet arrives.
-5. Wait for a live >=120-second quiet checkpoint, actively disconnect and save
+5. Wait for a live >=30-second quiet checkpoint (or the longer requested
+   duration), actively disconnect and save
    cleanup evidence. Without quitting/reinstalling the app, start a fresh
    Ubuntu case and one-click reconnect without entering the Token again. This
    also covers the deferred A2.1 reconnect criterion; test sync mode as needed.
@@ -73,6 +78,9 @@ context/IOSurface/pipeline setup and polling. They are neither hardware GPU
 timestamps nor cross-device latency. There are no RTT/jitter/percentile/FPS/
 memory performance claims yet. Existing A21_FRAME/HOLD lines are retained for
 comparison; the A2.1 log checker must not be used to certify A3 device success.
+The app retains live checkpoints every 30 seconds, so longer 60/120-second
+observations remain measurable. This policy change does not alter the already
+accepted historical 120-second A2.1 records or imply a new long-duration PASS.
 
 ## Automated evidence / boundaries
 

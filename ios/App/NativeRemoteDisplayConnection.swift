@@ -26,6 +26,7 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
     private var evidence: RemoteGPUDisplayEvidence!
     private var lastHoldReport: TimeInterval = 0
     private var holdMilestone: UInt64?
+    private var holdCheckpoint = 0
     private let mode: RemoteGPUDisplayMode
     private let batchCursor = RemoteGPUDisplayBatchCursor()
     private let completionState = RemoteGPUSingleSlotCompletion()
@@ -52,6 +53,7 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                 }
                 self.header += "\nA21_SESSION session=\(self.sessionID) clock=local_monotonic\n"
                 self.header += "SCHEDULER=\(self.mode == .synchronous ? "A2.1_SYNC" : "A3.1_ASYNC_SINGLE_SLOT")\n"
+                self.header += "HOLD_POLICY default_observation_s=30 checkpoint_interval_s=30; longer cases require actual measured quiet_s\n"
                 let timer = DispatchSource.makeTimerSource(queue: self.rendererQueue)
                 timer.schedule(deadline: .now() + 1, repeating: 1)
                 timer.setEventHandler { [weak self] in self?.observeHold() }
@@ -118,9 +120,12 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
         guard !closed && !cancellation.isCancelled && order.displayedFrame > 0 else { return }
         let now = ProcessInfo.processInfo.systemUptime
         if let activity = streamActivity.latest { evidence.receivedVTest(at: activity) }
-        let milestone = evidence.quietSeconds(at: now) >= 120 && holdMilestone != order.displayedFrame
+        let checkpoint = evidence.holdCheckpoint(at: now)
+        if checkpoint < holdCheckpoint { holdCheckpoint = 0 }
+        let milestone = checkpoint > 0 && (holdMilestone != order.displayedFrame || checkpoint > holdCheckpoint)
         if milestone {
             holdMilestone = order.displayedFrame
+            holdCheckpoint = checkpoint
             append(evidence.holdLine(at: now, live: true))
         }
         if milestone || now - lastHoldReport >= 5 {
@@ -184,7 +189,7 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                     append(try endpoint.present(envelope.payload, layer: layer))
                     try order.completePresent(present)
                     append(try evidence.completed(present, began: began, ended: ProcessInfo.processInfo.systemUptime))
-                    holdMilestone = nil
+                    holdMilestone = nil; holdCheckpoint = 0
                     let frame = present.frameID
                     DispatchQueue.main.async { self.onDisplayed?(frame) }
                     // Report EVERY completed PRESENT, even if one bounded
@@ -220,7 +225,7 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
             try order.completePresent(present)
             append(try evidence.completed(present, began: asyncBegan, ended: ProcessInfo.processInfo.systemUptime))
             append("A3_COMPLETED frame=\(ticket.frame) generation=\(ticket.generation) polls=\(completionState.polls); snapshot barrier RELEASED; slots_in_use=0")
-            asyncPresent = nil; holdMilestone = nil
+            asyncPresent = nil; holdMilestone = nil; holdCheckpoint = 0
             DispatchQueue.main.async { self.onDisplayed?(ticket.frame) }
             report("A3 SINGLE-SLOT FRAME COMPLETED; visual acceptance required. No new packet needed for GPU progress.")
             consumePendingBatch()

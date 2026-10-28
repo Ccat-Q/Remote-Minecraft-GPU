@@ -18,6 +18,7 @@ final class RemoteGPUStreamActivity: @unchecked Sendable {
 // Local monotonic evidence only. Completion means native GPU copy AND Metal
 // completion returned; it never asserts that the human saw the right pixels.
 final class RemoteGPUDisplayEvidence {
+    static let defaultHoldSeconds: TimeInterval = 30
     let sessionID: String
     let startedAt: TimeInterval
     private(set) var completedCount = 0
@@ -47,9 +48,12 @@ final class RemoteGPUDisplayEvidence {
         return max(0, time - max(completion, lastVTest ?? completion))
     }
     func holdLine(at time: TimeInterval, live: Bool) -> String {
-        // Never round 119.9996 up to an apparent 120-second observation.
+        // Never round up across any requested observation boundary.
         let seconds = (quietSeconds(at: time) * 1000).rounded(.down) / 1000
         return String(format: "A21_HOLD live=%@ last_present=%llu quiet_s=%.3f completed=%d visual_confirmation=USER_REQUIRED",
             live ? "YES" : "NO", lastPresent, seconds, completedCount)
+    }
+    func holdCheckpoint(at time: TimeInterval) -> Int {
+        Int(quietSeconds(at: time) / Self.defaultHoldSeconds)
     }
 }

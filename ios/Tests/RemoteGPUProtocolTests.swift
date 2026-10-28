@@ -177,4 +177,16 @@ final class RemoteGPUProtocolTests: XCTestCase {
         evidence.receivedVTest(at: activity.latest!)
         XCTAssertEqual(evidence.quietSeconds(at: 221), 1)
     }
+    func test30SecondAndLongerHoldCheckpointsNeverRoundUp() throws {
+        let evidence = RemoteGPUDisplayEvidence(sessionID: "30-second-policy", startedAt: 0)
+        XCTAssertEqual(evidence.holdCheckpoint(at: 1000), 0) // No displayed frame.
+        _ = try evidence.completed(RemoteGPUPresent(payload: present(frame: 1, after: 1)), began: 0, ended: 1)
+        for seconds in [30.0, 60, 90, 120] {
+            XCTAssertEqual(evidence.holdCheckpoint(at: 1 + seconds - 0.0004), Int(seconds / 30) - 1)
+            XCTAssertEqual(evidence.holdCheckpoint(at: 1 + seconds), Int(seconds / 30))
+        }
+        XCTAssertTrue(evidence.holdLine(at: 30.9996, live: true).contains("quiet_s=29.999"))
+        evidence.receivedVTest(at: 130)
+        XCTAssertEqual(evidence.holdCheckpoint(at: 131), 0)
+    }
 }

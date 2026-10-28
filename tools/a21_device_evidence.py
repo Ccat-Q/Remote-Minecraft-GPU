@@ -20,8 +20,16 @@ def phone_identity(report, expected_sha):
     return sessions[0]
 
 
-def analyze(ubuntu, phone, frames, expected_sha, require_cleanup=False, previous_phone=None):
+def analyze(ubuntu, phone, frames, expected_sha, require_cleanup=False, previous_phone=None, min_hold_seconds=30):
     require(frames in (1, 7, 12), 'Only finite A2.1 cases 1/7/12 are supported')
+    require(30 <= min_hold_seconds <= 3600, 'Requested observation must be 30..3600 seconds')
+    # New case logs declare their observation separately from resource cleanup
+    # grace. Never silently accept 30s for an explicitly requested longer case.
+    declared = re.findall(r'A21_CASE [^\n]*\bobservation_s=(\d+)\b', ubuntu)
+    require(len(declared) <= 1, 'Ambiguous case observation policy')
+    if declared:
+        require(30 <= int(declared[0]) <= 3600, 'Invalid declared observation policy')
+        min_hold_seconds = max(min_hold_seconds, int(declared[0]))
     session = phone_identity(phone, expected_sha)
     require('GL_RENDERER=virgl' in ubuntu, 'Ubuntu did not report remote VirGL')
     draws = re.findall(r'DRAW frame=(\d+) offset=([-\d.]+),([-\d.]+) rgb=(\d+),(\d+),(\d+)', ubuntu)
@@ -34,8 +42,8 @@ def analyze(ubuntu, phone, frames, expected_sha, require_cleanup=False, previous
         require((int(r), int(g), int(b)) == (40 + i * 37 % 180, 50 + i * 67 % 170, 60 + i * 97 % 160),
                 'Unexpected triangle color')
     hold_begin = re.search(r'HOLD_BEGIN frames=(\d+) seconds=([\d.]+) resources_alive=1', ubuntu)
-    require(hold_begin and int(hold_begin[1]) == frames and float(hold_begin[2]) >= 120,
-            'Ubuntu live-resource hold was not configured for at least 120 seconds')
+    require(hold_begin and int(hold_begin[1]) == frames and float(hold_begin[2]) >= min_hold_seconds,
+            f'Ubuntu live-resource hold was not configured for at least {min_hold_seconds:g} seconds')
     completed = re.findall(r'A21_FRAME present=(\d+) resource=(\d+) after=(\d+) completed_ms=([\d.]+) duration_ms=([\d.]+)', phone)
     count = len(completed)
     require(count in (frames, frames + 1), 'Missing/extra completed Metal frames (startup PRESENT is allowed)')
@@ -61,7 +69,8 @@ def analyze(ubuntu, phone, frames, expected_sha, require_cleanup=False, previous
             'Device reported a failed session')
     holds = re.findall(r'A21_HOLD live=YES last_present=(\d+) quiet_s=([\d.]+) completed=(\d+)', phone)
     quiet = max((float(seconds) for frame, seconds, n in holds if int(frame) == count and int(n) == count), default=0)
-    require(quiet >= 120, 'No 120-second quiet live-session observation for the final displayed frame')
+    require(quiet >= min_hold_seconds,
+            f'No {min_hold_seconds:g}-second quiet live-session observation for the final displayed frame')
     closed = f'A21_SESSION_CLOSED session={session} displayed={count} cleanup_returned=YES reason=User cancelled display session' in phone
     require(not require_cleanup or closed, 'User-disconnect/native-cleanup evidence missing')
     reconnect = False
@@ -75,6 +84,8 @@ def analyze(ubuntu, phone, frames, expected_sha, require_cleanup=False, previous
             'session_id': session, 'app_source_sha': expected_sha, 'application_frames': frames,
             'completed_presents': count, 'startup_present_count': count - frames,
             'quiet_live_seconds': quiet, 'display_TRANSFER_GET': 0,
+            'required_hold_seconds': min_hold_seconds,
+            'meets_120_second_hold': quiet >= 120 and float(hold_begin[2]) >= 120,
             'user_disconnect_cleanup_observed': closed, 'fresh_session_after_cleanup_observed': reconnect,
             'timing_scope': 'phone-local monotonic completion durations, NOT cross-device latency',
             'present_duration_ms': [float(row[4]) for row in completed],
@@ -90,12 +101,15 @@ def main():
     parser.add_argument('--expected-sha', required=True)
     parser.add_argument('--require-cleanup', action='store_true')
     parser.add_argument('--previous-iphone-report', type=Path)
+    parser.add_argument('--min-hold-seconds', type=int, default=30,
+                        help='Required measured quiet live hold (default 30; use 120 for historical acceptance)')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     try:
         result = analyze(args.ubuntu_log.read_text(), args.iphone_report.read_text(), args.frames,
                          args.expected_sha, args.require_cleanup,
-                         args.previous_iphone_report.read_text() if args.previous_iphone_report else None)
+                         args.previous_iphone_report.read_text() if args.previous_iphone_report else None,
+                         args.min_hold_seconds)
     except ValueError as error:
         parser.exit(1, f'INCOMPLETE/FAILED evidence: {error}\n')
     # Exclusive creation: never overwrite a previous device acceptance record.

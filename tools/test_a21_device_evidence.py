@@ -34,7 +34,7 @@ class DeviceEvidenceTests(unittest.TestCase):
             (ubuntu.replace('rgb=40,50,60', 'rgb=40,0,60'), phone),
             (ubuntu, phone.replace('after=2 processed=2', 'after=2 processed=1')),
             (ubuntu, phone.replace('TRANSFER_GET=0', 'TRANSFER_GET=1')),
-            (ubuntu, phone.replace('quiet_s=120.100', 'quiet_s=119.999')),
+            (ubuntu, phone.replace('quiet_s=120.100', 'quiet_s=29.999')),
             (ubuntu, phone.replace('live=YES', 'live=NO')),
             (ubuntu, phone.replace('cleanup_returned=YES', 'cleanup_returned=NO')),
             (ubuntu, phone.replace('Metal command status: COMPLETED', 'Metal command status: FAILED')),
@@ -53,3 +53,35 @@ class DeviceEvidenceTests(unittest.TestCase):
             analyze(ubuntu, phone, 7, SHA, True, phone)
         with self.assertRaises(ValueError):
             analyze(ubuntu, phone, 7, SHA, True, previous.replace('cleanup_returned=YES', 'cleanup_returned=NO'))
+
+    def test_30_second_default_does_not_claim_historical_120_second_hold(self):
+        ubuntu, phone = fixture()
+        ubuntu = ubuntu.replace('seconds=120.000', 'seconds=35.000')
+        phone = phone.replace('quiet_s=120.100', 'quiet_s=30.100')
+        result = analyze(ubuntu, phone, 7, SHA, True)
+        self.assertEqual(result['required_hold_seconds'], 30)
+        self.assertFalse(result['meets_120_second_hold'])
+        with self.assertRaises(ValueError):
+            analyze(ubuntu, phone, 7, SHA, True, min_hold_seconds=120)
+
+    def test_explicit_longer_observation_and_historical_threshold(self):
+        ubuntu, phone = fixture()
+        for seconds in (30, 60, 120):
+            result = analyze(ubuntu, phone, 7, SHA, True, min_hold_seconds=seconds)
+            self.assertTrue(result['meets_120_second_hold'])
+        for seconds in (0, 29, 3601, float('nan'), float('inf')):
+            with self.assertRaises(ValueError):
+                analyze(ubuntu, phone, 7, SHA, min_hold_seconds=seconds)
+        with self.assertRaises(ValueError):
+            analyze(ubuntu, phone.replace('quiet_s=120.100', 'quiet_s=119.999'), 7, SHA, min_hold_seconds=120)
+        with self.assertRaises(ValueError):
+            analyze(ubuntu.replace('seconds=120.000', 'seconds=29.000'), phone, 7, SHA)
+
+    def test_declared_case_target_cannot_be_silently_weakened_by_checker_default(self):
+        ubuntu, phone = fixture()
+        ubuntu = 'A21_CASE frames=7 fps=1 hold_s=60 observation_s=60 resource_hold_s=65; UTC=test\n' + ubuntu
+        phone = phone.replace('quiet_s=120.100', 'quiet_s=30.100')
+        with self.assertRaises(ValueError):
+            analyze(ubuntu, phone, 7, SHA)
+        result = analyze(ubuntu, phone.replace('quiet_s=30.100', 'quiet_s=60.100'), 7, SHA)
+        self.assertEqual(result['required_hold_seconds'], 60)

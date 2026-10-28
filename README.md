@@ -80,6 +80,11 @@ display is implemented in a separate bounded synchronous A2.1 mode, with an
 opt-in A3.1 single-slot asynchronous experiment; Minecraft
 is not functional yet. See [multi-frame device procedure](docs/a21-remote-present.md#a21-final-multi-frame-batch).
 
+New device tests default to a 30-second live quiet observation, with five extra
+seconds of resource cleanup margin. Increase the case's hold argument for
+longer tests; the app retains checkpoints every 30 seconds. Historical accepted
+120-second evidence remains unchanged.
+
 Retained pre-A2 local diagnostic build: [run 38245180997](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38245180997)
 at `816bf85`; the user subsequently reported corrected local orientation and
 the GLES request results. The subsequently accepted A2.1 app is run
