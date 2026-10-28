@@ -11,8 +11,8 @@ unchanged; no video streaming or phone JVM is introduced.
 | --- | --- |
 | CI-verified | Linux virpipe/vtest/QUIC rendering, PRESENT/readback separation, native parser and resource/fence lifetime tests. Historical run links remain below; the Linux host uses software rendering, not the phone GPU. |
 | Device-verified (user reports) | A2.0 `98e65d1`: real resource/shared-EGL/GPU snapshot/Metal isolation. A2.1 `3b5e80d`: actual Ubuntu frame over QUIC to iPhone18,3 / iOS 27.0.1, PRESENT 1/2, GPU-only snapshot/display and correct image, TRANSFER_GET=0. |
-| Device-verified multi-frame | [7/12-frame records](evidence/a21-multiframe-2026-10-28/README.md), app `9ed016c` / `acce896`: distinct correct frames, >=120s live hold, GET=0, active disconnect cleanup returned. Same-process render reconnect still pending. |
-| Implemented, device pending | [A3.1 single-slot begin/poll](a31-async-single-slot.md), independent GPU completion timer, bounded batch suffix and Keychain quick connection. Defaults to accepted sync mode; mock/CI results do not certify device behavior. |
+| Device-verified multi-frame | [7/12-frame records](evidence/a21-multiframe-2026-10-28/README.md), app `9ed016c` / `acce896`: distinct correct frames, >=120s live hold, GET=0, active disconnect cleanup returned. |
+| Device-verified A3.1 basic gates | [User-confirmed `a87970e`](evidence/a31-single-slot-2026-10-28/README.md): independent timer-driven single-slot path, 13 completed PRESENTs, correct images, 30.761s live hold, GET=0 and idle cleanup; specific same-process sync→async render reconnect without Token re-entry passed. Defaults to sync; no overlap/double buffering. |
 | Known failed prerequisite | GLES 3.1/3.2 requests rejected (EGL 0x3004); GLES 3.0 works. Guest capset GLSL is 130, below 150. Actual Ubuntu GL 3.2 Core creation remains an unaccepted separate test. |
 | Not implemented / accepted | A3 double buffering/overlapping production/memory budgets/ten-minute performance; Minecraft and input/audio/Modpack acceptance. |
 | Candidate experiments only | MobileGlues + existing ANGLE Metal; MobileGL iOS interfaces; UTM MoltenVK with a suitable GL/Vulkan implementation. None replaces the renderer or has passed the guest gate. |
@@ -63,7 +63,7 @@ initialization only; the separate synchronous snapshot/display adapter now
 exists and passed A2.1 single-frame device acceptance. Its bounded waits are
 NOT A3 asynchronous scheduling. The opt-in A3.1 implementation now uses
 independent timer-driven producer/copy/Metal polls, but holds its single-slot
-barrier through Metal completion. It is device-pending and is not the final
+barrier through Metal completion. Its basic device gate is now accepted, but it is not the final
 overlapped or double-buffered scheduler; see its dedicated implementation notes.
 
 ## Wire format
@@ -172,8 +172,9 @@ with AddressSanitizer/UBSan. A separate lightweight rendering gate downloads
 the verified Linux bundle and compiles only the endpoint, avoiding a dependency
 rebuild. The iOS EGL adapter and capability-only QUIC connection now exist.
 Synchronous PRESENT snapshots now display real remote frames in A2.1;
-opt-in A3.1 now adds single-slot asynchronous GPU/Metal polling, still awaiting
-device acceptance. Overlapped scheduling and double buffering remain later work.
+opt-in A3.1 now adds single-slot asynchronous GPU/Metal polling, with its basic
+device acceptance recorded above. GPU-in-flight cancellation, overlapped
+scheduling and double buffering remain later work.
 
 The shared native endpoint passed the actual GL/QUIC gate in
 [run 38204899580](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38204899580)

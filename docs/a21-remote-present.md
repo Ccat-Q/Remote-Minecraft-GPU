@@ -201,7 +201,9 @@ The manual form does not persist pairing credentials. The later **一键测试�
 mode saves the validated profile in device-only, when-unlocked Keychain (never
 the IPA, report or UserDefaults); see [profile/test procedure](a31-async-single-slot.md#device-procedure-all-builds-in-actions).
 The [7/12-frame image/hold/cleanup gates](evidence/a21-multiframe-2026-10-28/README.md)
-are device-accepted; same-process rendering after disconnect remains deferred.
+are device-accepted. The later [A3.1 device record](evidence/a31-single-slot-2026-10-28/README.md)
+also accepts the specific same-process sync→async rendering after disconnect,
+without Token re-entry. It does not certify repeated reconnect or crash recovery.
 
 ```sh
 python3 ./a21-tools/a21_device_evidence.py \

@@ -7,9 +7,10 @@ Separate route A single-frame remote display is now device-accepted at
 NOT pass the GL 3.2 Core/GLSL 150 capability gate described here. Use
 [Connect Remote Display](a21-remote-present.md), not this capability-only mode,
 for remote draws. The [7/12-frame device batch](evidence/a21-multiframe-2026-10-28/README.md)
-has passed visual/120-second hold/cleanup acceptance; full same-process
-render reconnect is deferred. [A3.1](a31-async-single-slot.md) is a separate,
-opt-in single-slot asynchronous implementation, still device-pending.
+has passed visual/120-second hold/cleanup acceptance. The later
+[A3.1 device evidence](evidence/a31-single-slot-2026-10-28/README.md) accepts
+basic single-slot async display/30-second hold/idle cleanup and the specific
+same-process sync→async render reconnect. This is independent of capability.
 
 The network capability endpoint is **implemented and CI-built, not accepted
 end-to-end on device**. User reports separately confirm local IOSurface/Metal
@@ -122,8 +123,8 @@ until native teardown completes. Counters/sequence numbers advance only after
 native submit succeeds; already queued messages are ignored after closure.
 
 This capability-only endpoint verifies transport/capabilities only. The separate
-remote-display endpoint now has accepted synchronous snapshots and an opt-in,
-device-pending A3.1 timer-driven scheduler; capability mode still rejects PRESENT.
+remote-display endpoint now has accepted synchronous snapshots and basic device
+acceptance for the opt-in A3.1 timer-driven scheduler; capability mode still rejects PRESENT.
 
 The local **VirGL Context + Caps** diagnostic also tries GLES 3.2, 3.1 and 3.0
 before virgl initialization and reports the actual versions. Rejected contexts
@@ -155,6 +156,7 @@ Existing counters show bytes/sequences, not FPS/GPU-wait/RTT. Those metrics,
 full performance attribution remain future work. Bounded command admission,
 proxy phase timeouts/cancellation/keepalive and local completion/quiet-hold
 records are implemented for A2.1-Final; the 7/12-frame image/hold/cleanup gates
-are now device-accepted, while same-process render reconnect remains deferred.
+are now device-accepted. The later A3.1 record closes the specific same-process
+sync→async render reconnect; other stress/recovery cases remain unaccepted.
 Historical CI/source records remain in
 [architecture.md](architecture.md#retained-ci-and-source-evidence).

@@ -114,11 +114,14 @@ quiet_s >= 30 by default (or the case's explicitly requested longer duration),
 Disconnect, save the cleanup report, then reconnect without
 restarting the app. Do not count a retained image after disconnect as live hold.
 
-## Route A: A3.1 single-slot async (implemented, device pending)
+## Route A: A3.1 single-slot async (basic device gates accepted)
 
 The A2.1 7/12-frame image/120-second live-hold/active-cleanup cases are
 [device accepted](../docs/evidence/a21-multiframe-2026-10-28/README.md).
-Successful same-process full rendering after cleanup remains deferred.
+The subsequent [A3.1 device report](../docs/evidence/a31-single-slot-2026-10-28/README.md)
+at `a87970e` accepts correct 12-frame async display, 30-second live hold, idle
+cleanup and specific same-process sync→async rendering without Token re-entry.
+GPU-in-flight cancellation, repeated reconnect stress and leaks remain pending.
 
 For the next IPA select **测试设置 → 使用 A3.1 单槽异步测试**, then use
 one-click connection. Default remains A2.1 synchronous. Follow the exact
@@ -175,6 +178,6 @@ Then exercise the candidate through virglrenderer and Ubuntu Mesa. Host-native
 desktop GL is not required if the chain implements the virtual desktop GL
 semantics, but guest Core-context creation and real shaders/draws must pass.
 Never substitute GL_VERSION, GLSL_VERSION or cap-bit overrides for implementation.
-Route A's A2.1 multi-frame gates are accepted as recorded above; A3.1 and route
-B remain unaccepted until their corresponding reports are supplied.
+Route A's A2.1 multi-frame and A3.1 basic gates are accepted as recorded above;
+the remaining A3 gates and route B remain unaccepted.
 See [the interface investigation/task plan](../docs/next-stage-plan.md).

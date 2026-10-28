@@ -39,3 +39,9 @@ ready with zero vtest/PRESENT while the Ubuntu producer was not running.
 This does not pass reconnect rendering, saved-token persistence across app
 restart/re-signing, leak profiling, A3, or the guest GL 3.2/GLSL 150 gate.
 The user deferred reconnect rendering to the next device test.
+
+Subsequent evidence: the [A3.1 basic acceptance record](../a31-single-slot-2026-10-28/README.md)
+now closes the specific same-process sync→async reconnect at app `a87970e`,
+with actual frames and explicit user confirmation. The earlier QUIC-only
+session above remains insufficient evidence by itself; historical records are
+not rewritten as though that old session rendered.

@@ -1,6 +1,10 @@
 # A3.1: independent completion, single slot
 
-Implementation batch, **device acceptance pending**. A2.1's accepted synchronous
+**Basic device gates accepted at `a87970e`**, including the correct 12-frame
+sequence, 30-second live hold, idle cleanup and specific same-process
+sync→async reconnect. [Exact evidence and exclusions](evidence/a31-single-slot-2026-10-28/README.md).
+GPU-in-flight cancellation, leaks, stress and performance remain pending.
+A2.1's accepted synchronous
 mode remains the default. No double buffering, Minecraft, backend change,
 new wire opcode, per-frame remote ACK, or performance target is added here.
 
@@ -90,8 +94,10 @@ source-overwrite barrier. CI also compiles the real iOS UI and full native IPA.
 The existing native Linux gate retains real pixel, shared-context GPU copy,
 source overwrite, resource-lifetime, Core/GLSL 150 and legal application-readback
 regressions. Linux software rendering and mock scheduling are NOT phone GPU
-acceptance. Device correctness, cancellation/leaks and reconnect remain pending
-until user reports; dual IOSurfaces and ten-minute performance remain later A3.
+acceptance. The subsequent user-confirmed device record now accepts the basic
+image/hold/idle-cleanup and specific sync→async reconnect gates. GPU-in-flight
+cancellation/leaks and repeated reconnect stress remain pending; dual IOSurfaces
+and ten-minute performance remain later A3.
 
 The original A1 dependency artifact (run `38186021966`) expired. Actions-only
 [refresh 40676968489](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40676968489)
