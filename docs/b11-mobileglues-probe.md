@@ -108,3 +108,19 @@ the additional unused proc-table route was an erroneous extra prerequisite.
 The old generic error does not itself distinguish NULL from a non-null pointer
 whose image could not be resolved. The new report must provide that distinction;
 do not invent a device NULL result or call this a driver/MobileGlues feature failure.
+
+### Targeted correction build (device retest pending)
+
+- Source `59c7001bb93b6d7c93994e72507034fdfffce73a` on the same experiment branch.
+- [IPA Actions 40785620860](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40785620860), [IPA artifact 12859780300](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40785620860/artifacts/12859780300), [diagnostics/source 12859141498](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40785620860/artifacts/12859141498).
+- [CI 40785620766](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40785620766) passed, including the actual `ProviderPolicy.hpp` compiled with ASan/UBSan. Its absent/known/foreign/unresolvable pointer fixtures test the policy, not iPhone dladdr or rendering.
+- IPA SHA256 `59dee3113d9a816f6d9a039911b4e25268a66c3f2a8729d5e28f4249db62bfbc`; ZIP integrity and embedded source/run checked.
+- Candidate framework SHA256 remains `47fafd8b923cefd1c8c28e11b580ba01a8f2b716e5877d8c8f2e14d178399f2c`; recipe/overlays, ANGLE and formal route A renderer are unchanged. Only the Probe app and tests changed, with verified dependency caches reused.
+
+Update **only the independent B1.1 app**, launch a fresh process and share the
+full report. Expect `B11_STAGE resolve_platform_export_and_optional_proc`,
+the mandatory exported wrapper identity and optional query address/dladdr/EGL
+status. An absent duplicate route must be explicitly UNAVAILABLE, not a passed
+lookup. A non-null wrong/unresolvable pointer still blocks. Subsequent display,
+context, sharing, migration and cleanup results must actually execute on the
+phone before acceptance; this build is not a device PASS.
