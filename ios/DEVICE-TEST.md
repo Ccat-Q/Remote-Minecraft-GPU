@@ -130,7 +130,7 @@ including last-frame completion without new packets, live hold, cancellation
 and same-process reconnect. Do not mistake scheduler unit tests or a successful
 IPA build for phone acceptance. A3.1 still uses one slot, pauses all later
 vtest and keeps the 64x64/16-PRESENT diagnostic limits. A3.1 itself has no double
-buffering; the separate A3.2 implementation below is device-pending. Resource
+buffering; the separate A3.2 implementation below has basic device acceptance. Resource
 budgets, ten-minute stress and throughput acceptance remain later work.
 New live-hold observations default to 30 seconds; the producer adds five seconds
 of explicit resource cleanup margin. The app keeps 30/60/90/120... checkpoints.
@@ -162,7 +162,17 @@ Reject local-only triangles, missing VirGL-resource snapshots, completion that
 needs a later packet, or normal framebuffer readback to Ubuntu. A PASS proves
 remote rendering/presentation, not Minecraft capabilities.
 
-## A3.2 double-slot acceptance (not yet passed)
+## A3.2 double-slot acceptance (finite basic gates passed)
+
+The [accepted `6dd8b04` device cases](../docs/evidence/a32-double-slot-2026-10-28/README.md)
+include normal retirement and the separate 750ms diagnostic, with correct
+12-frame images, 13 completed PRESENTs, >30s live quiet hold, GET=0, two
+allocations / eleven reuses, and both slots released. Diagnostic high_water=2
+proves actual saturation in that case. Normal idle user-disconnect passed;
+the diagnostic ended instead at producer EOF (phone POSIX 54), with cleanup
+returned. Do not relabel it user cancellation or erase the startup stall.
+The following remains the reproducible regression procedure, not a claim of
+ten-minute performance, GPU-in-flight cancellation or crash recovery.
 
 Use the new Actions-built IPA and choose **测试设置 → 使用 A3.2 双槽异步测试**.
 Require `SCHEDULER=A3.2_ASYNC_DOUBLE_SLOT`, then use a fresh 12-frame Ubuntu
@@ -196,6 +206,6 @@ Then exercise the candidate through virglrenderer and Ubuntu Mesa. Host-native
 desktop GL is not required if the chain implements the virtual desktop GL
 semantics, but guest Core-context creation and real shaders/draws must pass.
 Never substitute GL_VERSION, GLSL_VERSION or cap-bit overrides for implementation.
-Route A's A2.1 multi-frame and A3.1 basic gates are accepted as recorded above;
+Route A's A2.1 multi-frame and A3.1/A3.2 basic gates are accepted as recorded above;
 the remaining A3 gates and route B remain unaccepted.
 See [the interface investigation/task plan](../docs/next-stage-plan.md).

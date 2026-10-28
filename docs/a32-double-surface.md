@@ -1,4 +1,14 @@
-# A3.2 double IOSurface slots (implemented, device acceptance pending)
+# A3.2 double IOSurface slots (basic device gates accepted)
+
+[User-confirmed device evidence](evidence/a32-double-slot-2026-10-28/README.md)
+at `6dd8b04` accepts the normal finite 12-frame sequence and separate 750ms
+retirement/backpressure diagnostic: 13 completed PRESENTs each, correct images,
+live quiet holds over 30s, GET=0, two persistent allocations / eleven reuses,
+and both slots released. The diagnostic reached actual high_water=2; normal
+mode reached 1. Normal idle user-disconnect and diagnostic remote-end cleanup
+are distinct results. Sustained performance and GPU-in-flight cancellation
+remain unaccepted. Preserve the startup stall and producer-EOF closure noted
+in that evidence record.
 
 Based on accepted A3.1 app `a87970e`; separate branch
 `feature/a32-double-surface`. A2.1 sync remains default, A3.1 single-slot stays

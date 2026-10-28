@@ -32,9 +32,9 @@ Status as of 2026-10-28:
 | Device-verified (user reports) | A2.0 `98e65d1`: real VirGL GPU resource snapshot/isolation. A2.1 `3b5e80d`: actual Ubuntu GL 2.1/GLSL 120 frame over QUIC, iPhone18,3 / iOS 27.0.1, GPU Copy/IOSurface/Metal, correct visual output and GET=0. |
 | Device-verified multi-frame | 7 frames at `9ed016c`, 12 frames at `acce896`: all PRESENTs completed, correct changing image, live hold >=120s, GET=0, user disconnect cleanup returned. [Evidence](docs/evidence/a21-multiframe-2026-10-28/README.md). |
 | Device-verified A3.1 basic gates | `a87970e`: 13 async PRESENTs, correct 12-frame image sequence, 30.761s live hold, GET=0, idle disconnect cleanup, user-confirmed same-process sync→async reconnect without Token re-entry. [Evidence/bounds](docs/evidence/a31-single-slot-2026-10-28/README.md). |
-| Implemented, device pending | [A3.2 double IOSurface slots](docs/a32-double-surface.md): persistent two-slot storage, copy-safe source barrier, ordered Metal retirement, bounded ingress and opt-in delayed-retirement backpressure diagnostic. No phone acceptance or performance claim yet. |
+| Device-verified A3.2 basic gates | `6dd8b04`: normal and separate 750ms retirement/backpressure cases, 13 correct PRESENTs each, >30s live hold, GET=0, two allocations / eleven reuses, both slots released; diagnostic high_water=2. [Evidence/closure and performance limits](docs/evidence/a32-double-slot-2026-10-28/README.md). |
 | Known failed prerequisite | GLES 3.1/3.2 requests rejected; guest GLSL capset 130, below 150. Actual Ubuntu guest GL 3.2 Core acceptance remains pending. |
-| Not implemented / accepted | A3 GPU-in-flight cancellation, sustained overlapping throughput/ten-minute performance; Minecraft/input/audio/Mods. Basic A3.1 acceptance does not pass these gates. |
+| Not implemented / accepted | A3 GPU-in-flight cancellation, sustained overlapping throughput/ten-minute performance; Minecraft/input/audio/Mods. Basic A3.1/A3.2 acceptance does not pass these gates. |
 | Candidate experiments | MobileGlues + ANGLE Metal, MobileGL interfaces, UTM MoltenVK with a compatibility implementation; no renderer replacement or candidate acceptance. |
 
 The current blocker does **not** imply remote GPU is impossible. Two independent
@@ -78,7 +78,8 @@ Mesa/virglrenderer while iterating on the endpoint. See
 The iPhone capability endpoint connects this module to QUIC but deliberately
 rejects PRESENT/readback in that diagnostic mode. Formal resource snapshot/
 display is implemented in a separate bounded synchronous A2.1 mode, with an
-opt-in A3.1 single-slot asynchronous experiment; Minecraft
+opt-in A3.1 single-slot and A3.2 double-slot asynchronous modes with basic
+device acceptance; Minecraft
 is not functional yet. See [multi-frame device procedure](docs/a21-remote-present.md#a21-final-multi-frame-batch).
 
 New device tests default to a 30-second live quiet observation, with five extra
