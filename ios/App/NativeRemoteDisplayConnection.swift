@@ -26,11 +26,18 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
     private var evidence: RemoteGPUDisplayEvidence!
     private var lastHoldReport: TimeInterval = 0
     private var holdMilestone: UInt64?
+    private let mode: RemoteGPUDisplayMode
+    private let batchCursor = RemoteGPUDisplayBatchCursor()
+    private let completionState = RemoteGPUSingleSlotCompletion()
+    private var completionTimer: RemoteGPUCompletionPulse?
+    private var asyncPresent: RemoteGPUPresent?
+    private var asyncBegan: TimeInterval = 0
     var onReport: ((String, Bool) -> Void)?
     var onDisplayed: ((UInt64) -> Void)?
 
-    init(host: String, port: UInt16, token: String, layer: CAMetalLayer) {
+    init(host: String, port: UInt16, token: String, layer: CAMetalLayer, mode: RemoteGPUDisplayMode = .synchronous) {
         self.host = host; self.port = port; self.token = token; self.layer = layer
+        self.mode = mode
     }
     func start() {
         rendererQueue.async {
@@ -39,7 +46,12 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
             do {
                 self.endpoint = try RGPURemoteDisplayEndpoint.create(cancellation: self.cancellation)
                 self.header = self.endpoint?.hostReport ?? ""
+                if self.mode == .asyncSingleSlot {
+                    self.header = self.header.replacingOccurrences(of: "A2.1 REAL REMOTE DISPLAY (bounded diagnostic, not A3)",
+                        with: "A3.1 ASYNC SINGLE-SLOT REMOTE DISPLAY (device acceptance pending; NOT double buffering)")
+                }
                 self.header += "\nA21_SESSION session=\(self.sessionID) clock=local_monotonic\n"
+                self.header += "SCHEDULER=\(self.mode == .synchronous ? "A2.1_SYNC" : "A3.1_ASYNC_SINGLE_SLOT")\n"
                 let timer = DispatchSource.makeTimerSource(queue: self.rendererQueue)
                 timer.schedule(deadline: .now() + 1, repeating: 1)
                 timer.setEventHandler { [weak self] in self?.observeHold() }
@@ -52,8 +64,14 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                 connection.onBatch = { [weak self] batch, complete in
                     guard let self else { complete(); return }
                     self.rendererQueue.async {
-                        defer { complete() }
-                        self.consume(batch)
+                        guard !self.closed else { complete(); return }
+                        do {
+                            try self.batchCursor.admit(batch, complete: complete)
+                            self.consumePendingBatch()
+                        } catch {
+                            complete()
+                            self.finish("BATCH ADMISSION FAILED: \(error)")
+                        }
                     }
                 }
                 connection.onEvent = { [weak self] event in
@@ -89,7 +107,8 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
         }
     }
     private func report(_ status: String, finished: Bool = false) {
-        let counters = "\nVTEST processed=\(order.processedSequence) displayed PRESENT=\(order.displayedFrame)\nReceived vtest=\(received) reply bytes=\(sent) batch high-water=\(highWaterBatch) bytes\nOne batch in flight; one snapshot at a time; max 16 PRESENTs. No per-frame network ACK.\n"
+        let counters = "\nVTEST processed=\(order.processedSequence) displayed PRESENT=\(order.displayedFrame)\nReceived vtest=\(received) reply bytes=\(sent) batch high-water=\(highWaterBatch) bytes\nOne batch in flight; one snapshot at a time; max 16 PRESENTs. No per-frame network ACK.\n" +
+            (mode == .asyncSingleSlot ? "A3_QUEUE slots=1 in_use=\(asyncPresent == nil ? 0 : 1) pending_envelopes=\(batchCursor.remaining) stage=\(completionState.stage) polls=\(completionState.polls)\n" : "")
         if let activity = streamActivity.latest { evidence?.receivedVTest(at: activity) }
         let hold = evidence?.holdLine(at: ProcessInfo.processInfo.systemUptime, live: !closed && !cancellation.isCancelled) ?? ""
         let text = header + "\n" + status + counters + hold + "\n" + history.joined(separator: "\n")
@@ -113,19 +132,23 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
         guard !closed else { return }
         closed = true
         timer?.cancel(); timer = nil
+        completionTimer?.cancel(); completionTimer = nil
         cancellation.cancel()
+        completionState.cancel()
         order.cancel()
         transport?.close(); transport = nil
+        batchCursor.release()
         append(endpoint?.close() ?? "No native session allocated")
         endpoint = nil
+        asyncPresent = nil
         append("A21_SESSION_CLOSED session=\(sessionID) displayed=\(order.displayedFrame) cleanup_returned=YES reason=\(status)")
         report(status, finished: true)
     }
-    private func consume(_ batch: [RemoteGPUEnvelope]) {
+    private func consumePendingBatch() {
         guard !closed else { return }
         do {
-            highWaterBatch = max(highWaterBatch, batch.reduce(0) { $0 + $1.payload.count + 10 })
-            for envelope in batch {
+            highWaterBatch = max(highWaterBatch, batchCursor.highWaterBytes)
+            while let envelope = batchCursor.next() {
                 guard !cancellation.isCancelled else { throw RemoteGPUProtocolError.invalidPresent }
                 if envelope.flags != 0 { append("Rejected envelope type=\(envelope.type) flags=\(envelope.flags)") }
                 guard envelope.flags == 0 else { throw RemoteGPUProtocolError.invalidPresent }
@@ -146,6 +169,15 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                     append("PRESENT received frame=\(requested.frameID) resource=\(requested.resourceID) after=\(requested.afterSequence) processed=\(order.processedSequence)")
                     let present = try order.beginPresent(envelope.payload)
                     guard let endpoint else { throw RemoteGPUProtocolError.invalidPresent }
+                    if mode == .asyncSingleSlot {
+                        asyncPresent = present
+                        asyncBegan = ProcessInfo.processInfo.systemUptime
+                        let ticket = try completionState.begin(present, at: asyncBegan)
+                        try endpoint.beginAsyncPresent(envelope.payload, layer: layer)
+                        append("A3_ENQUEUED frame=\(ticket.frame) resource=\(ticket.resource) after=\(ticket.after) generation=\(ticket.generation); snapshot barrier HELD")
+                        startCompletionDriver(ticket)
+                        return // Retain batch suffix AND receive lease; timer resumes it.
+                    }
                     // This blocks only the serialized diagnostic renderer, not
                     // UIKit/network. NO later native command is submitted here.
                     let began = ProcessInfo.processInfo.systemUptime
@@ -161,6 +193,37 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                 case .hello, .error: throw RemoteGPUProtocolError.invalidPresent
                 }
             }
+            batchCursor.release()
         } catch { finish("REMOTE DISPLAY FAILED: \(String(describing: error))\n\(error.localizedDescription)") }
+    }
+
+    private func startCompletionDriver(_ ticket: RemoteGPUFrameTicket) {
+        completionTimer = RemoteGPUCompletionPulse(queue: rendererQueue) { [weak self] in self?.pollGPU(ticket) }
+    }
+    private func pollGPU(_ ticket: RemoteGPUFrameTicket) {
+        guard !closed && completionState.active == ticket else { return } // Stale callback is inert.
+        do {
+            guard !cancellation.isCancelled, let endpoint, let present = asyncPresent,
+                  present.frameID == ticket.frame && present.resourceID == ticket.resource &&
+                  present.afterSequence == ticket.after else { throw RemoteGPUProtocolError.invalidPresent }
+            // Native restores/unbinds EGL on EVERY call, even when this serial
+            // queue runs on a different OS thread. Polls use zero CPU wait.
+            let result = try endpoint.pollAsyncPresent()
+            guard let phase = RemoteGPUCompletionStage(rawValue: Int(endpoint.asyncPresentStage)) else {
+                throw RemoteGPUProtocolError.invalidPresent
+            }
+            try completionState.observe(ticket, stage: phase, at: ProcessInfo.processInfo.systemUptime)
+            guard phase == .complete else { return }
+            guard !result.isEmpty else { throw RemoteGPUProtocolError.invalidPresent }
+            completionTimer?.cancel(); completionTimer = nil
+            append(result)
+            try order.completePresent(present)
+            append(try evidence.completed(present, began: asyncBegan, ended: ProcessInfo.processInfo.systemUptime))
+            append("A3_COMPLETED frame=\(ticket.frame) generation=\(ticket.generation) polls=\(completionState.polls); snapshot barrier RELEASED; slots_in_use=0")
+            asyncPresent = nil; holdMilestone = nil
+            DispatchQueue.main.async { self.onDisplayed?(ticket.frame) }
+            report("A3 SINGLE-SLOT FRAME COMPLETED; visual acceptance required. No new packet needed for GPU progress.")
+            consumePendingBatch()
+        } catch { finish("ASYNC DISPLAY FAILED: \(error.localizedDescription)") }
     }
 }

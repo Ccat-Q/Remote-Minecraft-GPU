@@ -20,8 +20,8 @@ inline NSString *glText(GLenum name) {
     auto value = glGetString(name);
     return value ? [NSString stringWithUTF8String:reinterpret_cast<const char *>(value)] : @"unavailable";
 }
-// Deliberately diagnostic-only: serial ownership excludes future vtest feeds
-// until snapshot completion. This is not the A2-A4 steady-state scheduler.
+// Shared GPU-copy primitive: A2 uses diagnostic blocking wrappers, A3.1 uses
+// begin/poll. The owner excludes future vtest until this single slot retires.
 class SingleFrameCopy {
     ANGLEHost& host_;
     EGLContext copy_ = EGL_NO_CONTEXT;
@@ -29,14 +29,16 @@ class SingleFrameCopy {
     GLsync done_ = nullptr;
     RGPUIOSurfaceTarget target_;
     bool closed_ = false;
+    bool copied_ = false;
     std::function<bool()> cancelled_;
     void checkCancellation() { require(!cancelled_ || !cancelled_(), "Snapshot cancelled"); }
 public:
     explicit SingleFrameCopy(ANGLEHost& host, std::function<bool()> cancelled = {})
         : host_(host), cancelled_(std::move(cancelled)) {}
-    void copy(CAMetalLayer *layer, const virgl_renderer_resource_info& info, const rgpu::ResourceDescription& desc,
+    void beginCopy(CAMetalLayer *layer, const virgl_renderer_resource_info& info, const rgpu::ResourceDescription& desc,
               NSMutableString *report, bool galliumWindowRows = false) try {
         checkCancellation();
+        require(copy_ == EGL_NO_CONTEXT && !closed_, "Snapshot already allocated/closed");
         require(desc.target == 2 && desc.depth == 1 && desc.arraySize == 1 && desc.lastLevel == 0 && desc.samples <= 1,
             "Unsupported source target/mip/layer/array/sample count");
         require(info.tex_id && (info.virgl_format == 67 || info.virgl_format == 1) && info.flags == 0 &&
@@ -107,14 +109,21 @@ public:
         done_ = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         require(done_ != nullptr, "GPU copy fence creation failed");
         glFlush();
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        GLenum status;
-        do {
-            checkCancellation();
-            status = glClientWaitSync(done_, 0, 5'000'000); // Local one-shot wait, NOT a network wait.
-            require(status != GL_WAIT_FAILED, "GPU copy fence wait failed");
-            require(std::chrono::steady_clock::now() < deadline, "GPU copy fence timeout");
-        } while (status != GL_ALREADY_SIGNALED && status != GL_CONDITION_SATISFIED);
+        host_.resume(); // No context remains current across owner-queue jobs.
+    } catch (const std::exception& error) {
+        [report appendFormat:@"Copy failure before teardown: %s; GL=0x%x EGL=0x%x\n",
+            error.what(), glGetError(), eglGetError()];
+        throw;
+    }
+    bool pollCopy(NSMutableString *report) {
+        checkCancellation();
+        require(done_ && copy_ != EGL_NO_CONTEXT && !closed_, "No pending GPU copy");
+        require(eglMakeCurrent(host_.display, target_.surface, target_.surface, copy_),
+                "Cannot resume shared copy context");
+        const auto status = glClientWaitSync(done_, 0, 0); // Zero CPU wait, A3 timer drives progress.
+        require(status != GL_WAIT_FAILED, "GPU copy fence poll failed");
+        if (status == GL_TIMEOUT_EXPIRED) { host_.resume(); return false; }
+        require(status == GL_ALREADY_SIGNALED || status == GL_CONDITION_SATISFIED, "Unexpected GPU fence status");
         glCheck(report, "GPU copy completion");
         [report appendFormat:@"GPU copy fence complete: 0x%x; source held throughout snapshot\n", status];
         glDeleteSync(done_); done_ = nullptr;
@@ -123,13 +132,20 @@ public:
         // No more GL writes to IOSurface. Unbind before cross-API consumption.
         host_.resume();
         eglCheck(report, "Restore producer context after snapshot");
-    } catch (const std::exception& error) {
-        // Capture errors while the failing context is still alive, BEFORE
-        // RAII teardown can replace EGL/GL's thread-local error state.
-        [report appendFormat:@"Copy failure before teardown: %s; GL=0x%x EGL=0x%x\n",
-            error.what(), glGetError(), eglGetError()];
-        throw;
+        copied_ = true;
+        return true;
     }
+    void copy(CAMetalLayer *layer, const virgl_renderer_resource_info& info, const rgpu::ResourceDescription& desc,
+              NSMutableString *report, bool galliumWindowRows = false) {
+        beginCopy(layer, info, desc, report, galliumWindowRows);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (!pollCopy(report)) {
+            require(std::chrono::steady_clock::now() < deadline, "GPU copy fence timeout");
+            std::this_thread::sleep_for(std::chrono::milliseconds(1)); // A2 diagnostic ONLY.
+        }
+    }
+    void beginDisplay() { checkCancellation(); require(copied_, "Snapshot incomplete"); target_.presentAsync(); }
+    bool pollDisplay() { checkCancellation(); return target_.presentationComplete(); }
     void display(NSMutableString *report) {
         checkCancellation();
         target_.presentAndWait(cancelled_);
@@ -143,7 +159,9 @@ public:
             // attachments/IOSurface. glFinish is diagnostic-only, never transport.
             const auto surface = target_.surface != EGL_NO_SURFACE ? target_.surface : host_.surface;
             if (eglMakeCurrent(host_.display, surface, surface, copy_)) {
-                glFinish();
+                // Cancellation/error drain ONLY. Successful A2/A3 frames have
+                // observed their copy fence, so steady-state never glFinish.
+                if (!copied_) glFinish();
                 if (done_) { glDeleteSync(done_); done_ = nullptr; }
                 if (read_) { glDeleteFramebuffers(1, &read_); read_ = 0; }
             } else ok = false;

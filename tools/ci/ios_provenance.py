@@ -12,6 +12,7 @@ A1 = "f7413ff245b06c27aa1fbb9b3dcbd527ba32be42"
 A2 = "98e65d1878ea132dbf4cb169e521facdc62f04a6"
 A21 = "3b5e80d25f04de4b96b3c3ed2381537ba90b57ed"
 A21_SEVEN = "9ed016c0f42c1c6abbf126ac7b5b67be324b789b"
+A21_TWELVE = "acce89631e7312bd93c6b8d1fcf51b5224fac599"
 
 
 def command(*args):
@@ -48,6 +49,7 @@ def main():
     subprocess.run(["git", "merge-base", "--is-ancestor", A2, source], check=True)
     subprocess.run(["git", "merge-base", "--is-ancestor", A21, source], check=True)
     subprocess.run(["git", "merge-base", "--is-ancestor", A21_SEVEN, source], check=True)
+    subprocess.run(["git", "merge-base", "--is-ancestor", A21_TWELVE, source], check=True)
     repository = os.environ["GITHUB_REPOSITORY"]
     run = json.loads(command("gh", "api", f"repos/{repository}/actions/runs/{args.renderer_run_id}"))
     if run["conclusion"] != "success" or run["name"] != "Build iOS renderer sysroot":
@@ -73,6 +75,7 @@ def main():
         "app_source_sha": source, "accepted_a1_sha": A1, "accepted_a20_sha": A2,
         "accepted_a21_single_frame_sha": A21,
         "accepted_a21_seven_frame_sha": A21_SEVEN,
+        "accepted_a21_twelve_frame_sha": A21_TWELVE,
         "app_actions_run": os.environ["GITHUB_RUN_ID"],
         "renderer_actions_run": args.renderer_run_id, "sysroot_recipe_source_sha": run["head_sha"],
         "utm_sha": utm, "dependency_source_sha": pins_from_source(sources),

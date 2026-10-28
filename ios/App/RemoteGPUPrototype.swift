@@ -30,6 +30,7 @@ final class ProbeController: UIViewController {
     private var remoteDisplayConnection: NativeRemoteDisplayConnection?
     private let remoteDisplayButton = UIButton(type: .system)
     private let testSettingsButton = UIButton(type: .system)
+    private var displayMode: RemoteGPUDisplayMode = .synchronous
     private let testProfileStore = RemoteGPUTestProfileStore()
     private let credentialsQueue = DispatchQueue(label: "org.remotegpu.test-credentials", qos: .userInitiated)
     private let frameBadge = UILabel()
@@ -64,6 +65,8 @@ final class ProbeController: UIViewController {
         testSettingsButton.setTitle("测试设置", for: .normal)
         testSettingsButton.showsMenuAsPrimaryAction = true
         testSettingsButton.menu = UIMenu(children: [
+            UIAction(title: "使用 A2.1 同步诊断（默认）") { [weak self] _ in self?.selectDisplayMode(.synchronous) },
+            UIAction(title: "使用 A3.1 单槽异步测试") { [weak self] _ in self?.selectDisplayMode(.asyncSingleSlot) },
             UIAction(title: "配置/更新一键连接") { [weak self] _ in
                 self?.configureQuickConnection()
             },
@@ -276,8 +279,8 @@ final class ProbeController: UIViewController {
         remoteDisplayButton.isEnabled = true
         shareControl?.isEnabled = true
         remoteDisplayButton.setTitle("断开测试连接", for: .normal)
-        report.text = "A2.1 INITIALIZING — any previous image is stale, NOT remote evidence. Wait for a numbered remote PRESENT report."
-        let connection = NativeRemoteDisplayConnection(host: profile.host, port: profile.port, token: profile.token, layer: display.metalLayer)
+        report.text = "\(displayMode == .synchronous ? "A2.1 SYNC" : "A3.1 ASYNC SINGLE-SLOT") INITIALIZING — previous image is stale, NOT remote evidence."
+        let connection = NativeRemoteDisplayConnection(host: profile.host, port: profile.port, token: profile.token, layer: display.metalLayer, mode: displayMode)
         remoteDisplayConnection = connection
         let sessionID = connection.sessionID
         UIApplication.shared.isIdleTimerDisabled = true
@@ -300,6 +303,14 @@ final class ProbeController: UIViewController {
             }
         }
         connection.start()
+    }
+
+    private func selectDisplayMode(_ mode: RemoteGPUDisplayMode) {
+        guard !nativeBusy else { return }
+        displayMode = mode
+        report.text = mode == .synchronous
+            ? "已选择 A2.1 同步诊断基线；点击一键测试连接。"
+            : "已选择 A3.1 单槽异步实验（尚待真机验收）；点击一键测试连接。仍限 16 个 PRESENT / 64×64，不代表双缓冲或性能验收通过。"
     }
 
     @objc private func connectCapability() {

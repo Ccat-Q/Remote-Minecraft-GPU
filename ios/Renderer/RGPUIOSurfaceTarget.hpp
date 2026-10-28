@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <functional>
 #include <chrono>
+#include <thread>
 
 // Borrows the caller's EGLDisplay/config; never creates a display or context.
 // Caller unbinds this surface before close(), and keeps the display alive.
@@ -80,8 +81,8 @@ public:
         texture_ = [device newTextureWithDescriptor:texture iosurface:iosurface plane:0];
         if (!texture_) throw std::runtime_error("IOSurface MTLTexture allocation failed");
     }
-    void presentAndWait(std::function<bool()> cancelled = {}) {
-        // Diagnostic only: EGL GPU completion must precede this call. Keep
+    void presentAsync() {
+        // EGL GPU completion must precede this call. Keep
         // pixels_/texture_ alive through Metal completion (including failures).
         if (completion_ && completion_.status >= MTLCommandBufferStatusCommitted &&
             completion_.status < MTLCommandBufferStatusCompleted)
@@ -107,22 +108,28 @@ public:
         // explicitly until actual consumption, not until the CPU wait returns.
         CVPixelBufferRef lease = CVPixelBufferRetain(pixels_);
         id<MTLTexture> heldTexture = texture_;
-        dispatch_semaphore_t completed = dispatch_semaphore_create(0);
         [completion_ addCompletedHandler:^(id<MTLCommandBuffer>) {
             (void)heldTexture; // Strong capture until the completion handler retires.
             CVPixelBufferRelease(lease);
-            dispatch_semaphore_signal(completed);
         }];
         [completion_ commit];
+    }
+    bool presentationComplete() {
+        if (!completion_) throw std::runtime_error("No Metal presentation submitted");
+        if (completion_.status == MTLCommandBufferStatusError)
+            throw std::runtime_error(completion_.error.localizedDescription.UTF8String ?: "Metal completion failed");
+        return completion_.status == MTLCommandBufferStatusCompleted;
+    }
+    void presentAndWait(std::function<bool()> cancelled = {}) {
+        presentAsync();
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        while (dispatch_semaphore_wait(completed, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_MSEC))) {
+        while (!presentationComplete()) {
             if (cancelled && cancelled())
                 throw std::runtime_error("Metal wait cancelled; IOSurface lease retained until GPU completion");
             if (std::chrono::steady_clock::now() >= deadline)
                 throw std::runtime_error("Metal wait timed out; IOSurface lease retained until GPU completion");
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        if (completion_.status != MTLCommandBufferStatusCompleted)
-            throw std::runtime_error(completion_.error.localizedDescription.UTF8String ?: "Metal completion failed");
     }
     bool close() {
         // Successful path has consumed Metal already. On cancel/timeout the

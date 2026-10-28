@@ -112,7 +112,20 @@ checkpoints and cleanup evidence. Record all changing frames, wait for live
 quiet_s >= 120, Disconnect, save the cleanup report, then reconnect without
 restarting the app. Do not count a retained image after disconnect as live hold.
 
-## Route A: continuous asynchronous Remote PRESENT (A3, not implemented)
+## Route A: A3.1 single-slot async (implemented, device pending)
+
+The A2.1 7/12-frame image/120-second live-hold/active-cleanup cases are
+[device accepted](../docs/evidence/a21-multiframe-2026-10-28/README.md).
+Successful same-process full rendering after cleanup remains deferred.
+
+For the next IPA select **测试设置 → 使用 A3.1 单槽异步测试**, then use
+one-click connection. Default remains A2.1 synchronous. Follow the exact
+[A3.1 device procedure](../docs/a31-async-single-slot.md#device-procedure-all-builds-in-actions),
+including last-frame completion without new packets, live hold, cancellation
+and same-process reconnect. Do not mistake scheduler unit tests or a successful
+IPA build for phone acceptance. A3.1 still uses one slot, pauses all later
+vtest and keeps the 64x64/16-PRESENT diagnostic limits. Double buffering,
+resource budgets, ten-minute stress and throughput tests are not implemented.
 
 Follow [route A tasks](../docs/next-stage-plan.md#route-a-remote-present-poc).
 Use a new Actions-built low-capability demo, preserving existing Core/GLSL 150

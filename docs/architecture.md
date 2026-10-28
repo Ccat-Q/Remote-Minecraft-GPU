@@ -1,6 +1,6 @@
 # Architecture
 
-## Scope and evidence status (2026-10-18)
+## Scope and evidence status (2026-10-28)
 
 The Minecraft data flow is the approved **target**. Low-capability remote
 iPhone single-frame display now works (A2.1); Minecraft does not. Ubuntu owns the real client/JVM/mods; iPhone owns GPU
@@ -11,9 +11,10 @@ unchanged; no video streaming or phone JVM is introduced.
 | --- | --- |
 | CI-verified | Linux virpipe/vtest/QUIC rendering, PRESENT/readback separation, native parser and resource/fence lifetime tests. Historical run links remain below; the Linux host uses software rendering, not the phone GPU. |
 | Device-verified (user reports) | A2.0 `98e65d1`: real resource/shared-EGL/GPU snapshot/Metal isolation. A2.1 `3b5e80d`: actual Ubuntu frame over QUIC to iPhone18,3 / iOS 27.0.1, PRESENT 1/2, GPU-only snapshot/display and correct image, TRANSFER_GET=0. |
-| Implemented, device pending | A2.1-Final multi-frame/quiet-hold/cleanup/reconnect evidence and transport liveness hardening. See source-tagged Actions results and device procedure; code availability is not device acceptance. |
+| Device-verified multi-frame | [7/12-frame records](evidence/a21-multiframe-2026-10-28/README.md), app `9ed016c` / `acce896`: distinct correct frames, >=120s live hold, GET=0, active disconnect cleanup returned. Same-process render reconnect still pending. |
+| Implemented, device pending | [A3.1 single-slot begin/poll](a31-async-single-slot.md), independent GPU completion timer, bounded batch suffix and Keychain quick connection. Defaults to accepted sync mode; mock/CI results do not certify device behavior. |
 | Known failed prerequisite | GLES 3.1/3.2 requests rejected (EGL 0x3004); GLES 3.0 works. Guest capset GLSL is 130, below 150. Actual Ubuntu GL 3.2 Core creation remains an unaccepted separate test. |
-| Not implemented / accepted | A3 independent asynchronous completion/double buffering/ten-minute performance; multi-frame device acceptance; Minecraft and input/audio/Modpack acceptance. |
+| Not implemented / accepted | A3 double buffering/overlapping production/memory budgets/ten-minute performance; Minecraft and input/audio/Modpack acceptance. |
 | Candidate experiments only | MobileGlues + existing ANGLE Metal; MobileGL iOS interfaces; UTM MoltenVK with a suitable GL/Vulkan implementation. None replaces the renderer or has passed the guest gate. |
 
 The completed [feasibility audit](../exa-results/remotegpu-feasibility-2026-10-12/audit.md)
@@ -60,7 +61,10 @@ writes to the same resource. Its local completion poller must run independently
 of incoming network messages. The native ANGLE context/caps diagnostic tests
 initialization only; the separate synchronous snapshot/display adapter now
 exists and passed A2.1 single-frame device acceptance. Its bounded waits are
-NOT A3 asynchronous scheduling.
+NOT A3 asynchronous scheduling. The opt-in A3.1 implementation now uses
+independent timer-driven producer/copy/Metal polls, but holds its single-slot
+barrier through Metal completion. It is device-pending and is not the final
+overlapped or double-buffered scheduler; see its dedicated implementation notes.
 
 ## Wire format
 

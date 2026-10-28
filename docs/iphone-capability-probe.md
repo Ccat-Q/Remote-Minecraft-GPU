@@ -1,12 +1,15 @@
 # Ubuntu -> iPhone capability probe
 
-## Status and independent routes (2026-10-18)
+## Status and independent routes (2026-10-28)
 
 Separate route A single-frame remote display is now device-accepted at
 `3b5e80d` (Ubuntu GL 2.1/GLSL 120, real VirGL draw, GET=0). That result does
 NOT pass the GL 3.2 Core/GLSL 150 capability gate described here. Use
 [Connect Remote Display](a21-remote-present.md), not this capability-only mode,
-for the pending 7/12-frame acceptance batch.
+for remote draws. The [7/12-frame device batch](evidence/a21-multiframe-2026-10-28/README.md)
+has passed visual/120-second hold/cleanup acceptance; full same-process
+render reconnect is deferred. [A3.1](a31-async-single-slot.md) is a separate,
+opt-in single-slot asynchronous implementation, still device-pending.
 
 The network capability endpoint is **implemented and CI-built, not accepted
 end-to-end on device**. User reports separately confirm local IOSurface/Metal
@@ -118,8 +121,9 @@ releasing session resources. Concurrent diagnostics/reconnects are disabled
 until native teardown completes. Counters/sequence numbers advance only after
 native submit succeeds; already queued messages are ignored after closure.
 
-This verifies transport/capabilities only. Ordered GPU snapshot at PRESENT,
-independent fence completion and Metal display scheduling remain future work.
+This capability-only endpoint verifies transport/capabilities only. The separate
+remote-display endpoint now has accepted synchronous snapshots and an opt-in,
+device-pending A3.1 timer-driven scheduler; capability mode still rejects PRESENT.
 
 The local **VirGL Context + Caps** diagnostic also tries GLES 3.2, 3.1 and 3.0
 before virgl initialization and reports the actual versions. Rejected contexts

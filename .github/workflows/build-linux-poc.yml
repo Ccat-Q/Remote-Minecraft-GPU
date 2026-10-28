@@ -190,7 +190,7 @@ jobs:
           name: linux-poc-${{ github.sha }}
           path: _stage
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
       - name: Preserve compiler cache even if a rendering gate fails
         if: always() && steps.compiler-cache.outcome == 'success'
         uses: actions/cache/save@v4

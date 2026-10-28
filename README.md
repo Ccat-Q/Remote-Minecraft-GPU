@@ -3,7 +3,7 @@
 RemoteGPU aims to run the real Minecraft Java client on GPU-less Ubuntu while
 a paired iPhone executes GPU rendering/display. The approved design sends a
 restricted VirGL vtest profile over one ordered QUIC render stream, not video.
-One real Ubuntu-originated remote frame has passed iPhone display acceptance;
+Real Ubuntu-originated single-frame and 7/12-frame remote draws have passed iPhone display acceptance;
 Minecraft is not functional yet. No
 Minecraft JVM or replacement game client is installed on the phone.
 
@@ -24,15 +24,16 @@ layers does not invalidate it.
 
 ## Status
 
-Status as of 2026-10-18:
+Status as of 2026-10-28:
 
 | Category | Evidence / remaining boundary |
 | --- | --- |
 | CI-verified | Linux rendering/transport, Mesa PRESENT/readback separation, native decoder/resource/fence lifetime. Linux software rendering is not phone hardware acceptance. |
 | Device-verified (user reports) | A2.0 `98e65d1`: real VirGL GPU resource snapshot/isolation. A2.1 `3b5e80d`: actual Ubuntu GL 2.1/GLSL 120 frame over QUIC, iPhone18,3 / iOS 27.0.1, GPU Copy/IOSurface/Metal, correct visual output and GET=0. |
-| Implemented, device pending | Multi-frame completion/quiet-hold evidence, per-frame badge, proxy transport keepalive/timeouts/cancellation and 7/12-frame log checker. New device runs must match their IPA/proxy source SHA. |
+| Device-verified multi-frame | 7 frames at `9ed016c`, 12 frames at `acce896`: all PRESENTs completed, correct changing image, live hold >=120s, GET=0, user disconnect cleanup returned. [Evidence](docs/evidence/a21-multiframe-2026-10-28/README.md). |
+| Implemented, device pending | A3.1 opt-in single-slot timer-driven GPU completion; one-click Keychain profile. Full same-process render reconnect is deferred, not passed by a QUIC-only connection. [Procedure/bounds](docs/a31-async-single-slot.md). |
 | Known failed prerequisite | GLES 3.1/3.2 requests rejected; guest GLSL capset 130, below 150. Actual Ubuntu guest GL 3.2 Core acceptance remains pending. |
-| Not implemented / accepted | A3 asynchronous scheduling/double buffers/ten-minute performance; 7/12-frame and 120-second device hold/cleanup/reconnect acceptance; Minecraft/input/audio/Mods. |
+| Not implemented / accepted | A3 double buffers/overlapping throughput/ten-minute performance; Minecraft/input/audio/Mods. A3.1 is code, not phone acceptance. |
 | Candidate experiments | MobileGlues + ANGLE Metal, MobileGL interfaces, UTM MoltenVK with a compatibility implementation; no renderer replacement or candidate acceptance. |
 
 The current blocker does **not** imply remote GPU is impossible. Two independent
@@ -75,7 +76,8 @@ Mesa/virglrenderer while iterating on the endpoint. See
 [ios/README.md](ios/README.md#native-vtest-adapter-gate) for its safety boundary.
 The iPhone capability endpoint connects this module to QUIC but deliberately
 rejects PRESENT/readback in that diagnostic mode. Formal resource snapshot/
-display is implemented in a separate bounded synchronous A2.1 mode; Minecraft
+display is implemented in a separate bounded synchronous A2.1 mode, with an
+opt-in A3.1 single-slot asynchronous experiment; Minecraft
 is not functional yet. See [multi-frame device procedure](docs/a21-remote-present.md#a21-final-multi-frame-batch).
 
 Retained pre-A2 local diagnostic build: [run 38245180997](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38245180997)
