@@ -114,7 +114,7 @@ jobs:
           name: ios-renderer-sysroot-${{ github.sha }}
           path: _deps/UTM/sysroot-iOS-arm64
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
       - name: Publish build diagnostics on every result
         if: always()
         uses: actions/upload-artifact@v4
@@ -126,7 +126,7 @@ jobs:
             _deps/UTM/build-iOS-arm64/**/meson-logs/meson-log.txt
             _deps/UTM/build-iOS-arm64/**/config.log
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - name: Report compiler cache statistics
         if: always() && steps.sysroot.outputs.cache-hit != 'true'
         run: command -v ccache && ccache --show-stats

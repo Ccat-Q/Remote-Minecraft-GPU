@@ -2,7 +2,7 @@ import XCTest
 @testable import RemoteGPUProtocol
 
 // In-memory fixtures test app policy, NOT iPhone Keychain persistence/signing.
-private final class TestCredentialVault: RemoteGPUCredentialVault {
+private final class TestCredentialVault: RemoteGPUCredentialVault, @unchecked Sendable {
     var data: Data?
     var fail = false
     func read() throws -> Data? {

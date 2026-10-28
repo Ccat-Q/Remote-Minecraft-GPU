@@ -31,6 +31,7 @@ final class ProbeController: UIViewController {
     private let remoteDisplayButton = UIButton(type: .system)
     private let testSettingsButton = UIButton(type: .system)
     private let testProfileStore = RemoteGPUTestProfileStore()
+    private let credentialsQueue = DispatchQueue(label: "org.remotegpu.test-credentials", qos: .userInitiated)
     private let frameBadge = UILabel()
     private var displayHeight: NSLayoutConstraint?
     private let connectButton = UIButton(type: .system)
@@ -64,7 +65,7 @@ final class ProbeController: UIViewController {
         testSettingsButton.showsMenuAsPrimaryAction = true
         testSettingsButton.menu = UIMenu(children: [
             UIAction(title: "配置/更新一键连接") { [weak self] _ in
-                self?.presentRemoteForm(remember: true, connectAfterSave: false)
+                self?.configureQuickConnection()
             },
             UIAction(title: "手动连接（不保存 Token）") { [weak self] _ in self?.connectRemoteDisplay() },
             UIAction(title: "清除已保存配置", attributes: .destructive) { [weak self] _ in self?.clearTestProfile() }
@@ -141,13 +142,44 @@ final class ProbeController: UIViewController {
     @objc private func quickConnectRemoteDisplay() {
         if remoteDisplayConnection != nil { connectRemoteDisplay(); return }
         guard !nativeBusy else { return }
-        do {
-            if let saved = try testProfileStore.load() {
-                startRemoteDisplay(saved)
-            } else {
-                presentRemoteForm(remember: true, connectAfterSave: true)
+        withTestProfile(status: "正在读取本机测试配置…", operation: { try $0.load() }) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let saved):
+                if let saved { self.startRemoteDisplay(saved) }
+                else { self.presentRemoteForm(remember: true, connectAfterSave: true) }
+            case .failure(let error): self.report.text = error.localizedDescription
             }
-        } catch { report.text = error.localizedDescription }
+        }
+    }
+
+    private func withTestProfile<Value: Sendable>(status: String,
+        operation: @escaping @Sendable (RemoteGPUTestProfileStore) throws -> Value,
+        completion: @escaping @MainActor @Sendable (Result<Value, Error>) -> Void) {
+        guard !nativeBusy else { return }
+        nativeBusy = true
+        controls.forEach { $0.isEnabled = false }
+        report.text = status
+        let store = testProfileStore
+        credentialsQueue.async {
+            let result = Result { try operation(store) }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.nativeBusy = false
+                self.controls.forEach { $0.isEnabled = true }
+                completion(result)
+            }
+        }
+    }
+
+    private func configureQuickConnection() {
+        withTestProfile(status: "正在读取本机测试配置…", operation: { try $0.load() }) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let saved): self.presentRemoteForm(remember: true, connectAfterSave: false, saved: saved)
+            case .failure(let error): self.report.text = error.localizedDescription
+            }
+        }
     }
 
     private func clearTestProfile() {
@@ -156,21 +188,26 @@ final class ProbeController: UIViewController {
         prompt.addAction(UIAlertAction(title: "取消", style: .cancel))
         prompt.addAction(UIAlertAction(title: "清除", style: .destructive) { [weak self] _ in
             guard let self else { return }
-            do {
-                try self.testProfileStore.clear()
-                UserDefaults.standard.removeObject(forKey: "a21.host")
-                UserDefaults.standard.removeObject(forKey: "a21.port")
-                self.report.text = "本机测试连接已清除；服务端配置未改变。"
-            } catch { self.report.text = error.localizedDescription }
+            self.withTestProfile(status: "正在清除本机配置…", operation: { try $0.clear() }) { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success:
+                    UserDefaults.standard.removeObject(forKey: "a21.host")
+                    UserDefaults.standard.removeObject(forKey: "a21.port")
+                    self.report.text = "本机测试连接已清除；服务端配置未改变。"
+                case .failure(let error): self.report.text = error.localizedDescription
+                }
+            }
         })
         present(prompt, animated: true)
     }
 
-    private func presentRemoteForm(remember: Bool, connectAfterSave: Bool) {
+    private func presentRemoteForm(remember: Bool, connectAfterSave: Bool, saved: RemoteGPUTestProfile? = nil) {
         guard !nativeBusy else { return }
-        let saved: RemoteGPUTestProfile?
-        do { saved = remember ? try testProfileStore.load() : nil }
-        catch { report.text = error.localizedDescription; return }
+        guard UIApplication.shared.applicationState == .active else {
+            report.text = "App 不在前台，未打开配置。回到前台后请再次操作。"
+            return
+        }
         let message = remember
             ? "首次设置后即可一键连接。Token 仅保存在本机 Keychain，不写入 IPA/报告或云同步；地址和端口会被记住。测试设置中可清除。TLS 验证和 GPU 渲染路径不变。"
             : "手动 Remote Display，不保存 Token。需要可信 TLS 主机名、UDP 端口和配对 Token。最多16次 PRESENT，无显示读回或视频。"
@@ -202,18 +239,36 @@ final class ProbeController: UIViewController {
             }
             do {
                 let profile = try RemoteGPUTestProfile(host: host, port: port, token: token)
-                if remember { try self.testProfileStore.save(profile) }
-                UserDefaults.standard.set(profile.host, forKey: "a21.host")
-                UserDefaults.standard.set(String(profile.port), forKey: "a21.port")
-                if connectAfterSave { self.startRemoteDisplay(profile) }
-                else { self.report.text = "测试连接已保存到本机 Keychain。点击“一键测试连接”开始；未启动网络会话。" }
+                if remember {
+                    self.withTestProfile(status: "正在保存本机测试配置…", operation: { store in
+                        try store.save(profile)
+                        return profile
+                    }) { [weak self] result in
+                        guard let self else { return }
+                        switch result {
+                        case .success(let checked): self.completeRemoteSetup(checked, connectAfterSave: connectAfterSave)
+                        case .failure(let error): self.report.text = error.localizedDescription
+                        }
+                    }
+                } else { self.completeRemoteSetup(profile, connectAfterSave: connectAfterSave) }
             } catch { self.report.text = error.localizedDescription }
         })
         present(form, animated: true)
     }
 
+    private func completeRemoteSetup(_ profile: RemoteGPUTestProfile, connectAfterSave: Bool) {
+        UserDefaults.standard.set(profile.host, forKey: "a21.host")
+        UserDefaults.standard.set(String(profile.port), forKey: "a21.port")
+        if connectAfterSave { startRemoteDisplay(profile) }
+        else { report.text = "测试连接已保存到本机 Keychain。点击“一键测试连接”开始；未启动网络会话。" }
+    }
+
     private func startRemoteDisplay(_ profile: RemoteGPUTestProfile) {
         guard !nativeBusy else { return }
+        guard UIApplication.shared.applicationState == .active else {
+            report.text = "App 不在前台，未发起连接。回到前台后请再次点击一键测试连接。"
+            return
+        }
         probe = nil
         setDisplayAspect(1) // Same accepted renderer path for quick AND manual.
         nativeBusy = true

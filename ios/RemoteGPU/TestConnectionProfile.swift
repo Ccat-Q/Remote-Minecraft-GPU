@@ -12,7 +12,7 @@ enum RemoteGPUTestProfileError: Error, LocalizedError {
     }
 }
 
-struct RemoteGPUTestProfile: Codable, CustomStringConvertible, CustomDebugStringConvertible {
+struct RemoteGPUTestProfile: Codable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
     let host: String
     let port: UInt16
     let token: String
@@ -35,7 +35,7 @@ struct RemoteGPUTestProfile: Codable, CustomStringConvertible, CustomDebugString
 
 // Separate storage from validation so failures can be tested without pretending
 // that a macOS in-memory fixture proves iPhone Keychain persistence.
-protocol RemoteGPUCredentialVault {
+protocol RemoteGPUCredentialVault: Sendable {
     func read() throws -> Data?
     func write(_ data: Data) throws
     func clear() throws
@@ -81,7 +81,7 @@ struct RemoteGPUKeychainVault: RemoteGPUCredentialVault {
     }
 }
 
-final class RemoteGPUTestProfileStore {
+final class RemoteGPUTestProfileStore: Sendable {
     private let vault: any RemoteGPUCredentialVault
     init(vault: any RemoteGPUCredentialVault = RemoteGPUKeychainVault()) { self.vault = vault }
     func load() throws -> RemoteGPUTestProfile? {
