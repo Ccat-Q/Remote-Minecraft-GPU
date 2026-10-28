@@ -30,15 +30,20 @@ class SingleFrameCopy {
     RGPUIOSurfaceTarget target_;
     bool closed_ = false;
     bool copied_ = false;
+    bool reusable_ = false;
+    unsigned width_ = 0, height_ = 0;
+    id<MTLCommandQueue> sharedQueue_;
     std::function<bool()> cancelled_;
     void checkCancellation() { require(!cancelled_ || !cancelled_(), "Snapshot cancelled"); }
 public:
-    explicit SingleFrameCopy(ANGLEHost& host, std::function<bool()> cancelled = {})
-        : host_(host), cancelled_(std::move(cancelled)) {}
+    explicit SingleFrameCopy(ANGLEHost& host, std::function<bool()> cancelled = {}, bool reusable = false,
+                             id<MTLCommandQueue> sharedQueue = nil)
+        : host_(host), reusable_(reusable), sharedQueue_(sharedQueue), cancelled_(std::move(cancelled)) {}
     void beginCopy(CAMetalLayer *layer, const virgl_renderer_resource_info& info, const rgpu::ResourceDescription& desc,
               NSMutableString *report, bool galliumWindowRows = false) try {
         checkCancellation();
-        require(copy_ == EGL_NO_CONTEXT && !closed_, "Snapshot already allocated/closed");
+        require(!closed_ && (copy_ == EGL_NO_CONTEXT ||
+            (reusable_ && copied_ && target_.presentationComplete())), "Snapshot slot still in use/closed");
         require(desc.target == 2 && desc.depth == 1 && desc.arraySize == 1 && desc.lastLevel == 0 && desc.samples <= 1,
             "Unsupported source target/mip/layer/array/sample count");
         require(info.tex_id && (info.virgl_format == 67 || info.virgl_format == 1) && info.flags == 0 &&
@@ -46,6 +51,7 @@ public:
             info.width >= 1 && info.width <= 1280 && info.height >= 1 && info.height <= 720 && info.depth == 1,
             "Unsupported source info: only linear RGBA8/BGRA8 2D, flags=0, up to 1280x720");
         require(host_.root != EGL_NO_CONTEXT, "VirGL share-group root missing");
+        if (copy_ == EGL_NO_CONTEXT) {
         const EGLint attributes[] = {EGL_CONTEXT_MAJOR_VERSION_KHR, 3,
                                     EGL_CONTEXT_MINOR_VERSION_KHR, 0, EGL_NONE};
         copy_ = eglCreateContext(host_.display, host_.config, host_.root, attributes);
@@ -53,7 +59,13 @@ public:
         require(copy_ != EGL_NO_CONTEXT, "Shared EGL context creation failed");
         eglCheck(report, "Query copy context", eglQueryContext(host_.display, copy_, EGL_CONTEXT_CLIENT_VERSION, &major_));
         require(major_ >= 3, "Copy requires real GLES 3.0 core framebuffer blit");
-        target_.initialize(host_.display, host_.config, layer, info.width, info.height);
+        target_.initialize(host_.display, host_.config, layer, info.width, info.height, sharedQueue_);
+        width_ = info.width; height_ = info.height;
+        } else {
+            require(width_ == info.width && height_ == info.height, "Reusable slot dimensions changed");
+            [report appendString:@"Reuse completed shared copy context and IOSurface; prior Metal consumption complete\n"];
+        }
+        copied_ = false;
         eglCheck(report, "Bind IOSurface on borrowed EGLDisplay",
             eglMakeCurrent(host_.display, target_.surface, target_.surface, copy_));
         require(glIsTexture(info.tex_id), "VirGL tex_id is NOT visible in shared context");

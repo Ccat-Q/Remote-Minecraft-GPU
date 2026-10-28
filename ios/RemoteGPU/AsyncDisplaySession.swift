@@ -1,6 +1,22 @@
 import Foundation
 
-enum RemoteGPUDisplayMode { case synchronous, asyncSingleSlot }
+enum RemoteGPUDisplayMode {
+    case synchronous, asyncSingleSlot, asyncDoubleSlot
+    var schedulerName: String {
+        switch self {
+        case .synchronous: return "A2.1_SYNC"
+        case .asyncSingleSlot: return "A3.1_ASYNC_SINGLE_SLOT"
+        case .asyncDoubleSlot: return "A3.2_ASYNC_DOUBLE_SLOT"
+        }
+    }
+    var reportTitle: String {
+        switch self {
+        case .synchronous: return "A2.1 REAL REMOTE DISPLAY (bounded diagnostic, not A3)"
+        case .asyncSingleSlot: return "A3.1 ASYNC SINGLE-SLOT REMOTE DISPLAY (basic gate accepted; not double buffering)"
+        case .asyncDoubleSlot: return "A3.2 DOUBLE-SLOT REMOTE DISPLAY (device acceptance pending; not sustained performance)"
+        }
+    }
+}
 enum RemoteGPUCompletionStage: Int { case producer = 1, copy = 2, metal = 3, complete = 4 }
 
 // This is the actual driver used by the app, not a packet callback. Dispatch

@@ -1,5 +1,6 @@
 #import "RGPURemotePresent.h"
 #include "RGPUFrameCopy.hpp"
+#include "RGPUBufferedPresent.hpp"
 #include <atomic>
 #include <thread>
 #include <sys/utsname.h>
@@ -10,6 +11,9 @@
 - (instancetype)init { self = [super init]; if (self) _cancelled.store(false); return self; }
 - (BOOL)isCancelled { return _cancelled.load(); }
 - (void)cancel { _cancelled.store(true); }
+@end
+
+@implementation RGPUBufferedDisplayEvent
 @end
 
 namespace {
@@ -44,6 +48,7 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
     RGPUDisplayCancellation *_cancellation;
     std::unique_ptr<AsyncFrame> _asyncFrame;
     NSUInteger _asyncPresentStage;
+    std::unique_ptr<rgpu::interop::BufferedPresent> _buffered;
 }
 + (instancetype)createWithCancellation:(RGPUDisplayCancellation *)cancellation error:(NSError **)error {
     try {
@@ -73,7 +78,8 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
 }
 - (NSArray<NSData *> *)submitVTest:(NSData *)bytes error:(NSError **)error {
     try {
-        rgpu::interop::require(_host && !_cancellation.cancelled && !_asyncFrame,
+        rgpu::interop::require(_host && !_cancellation.cancelled && !_asyncFrame &&
+            (!_buffered || _buffered->canAdvance()),
             "Display session closed/cancelled or snapshot barrier active");
         _host->resume();
         auto replies = _host->session->feed(static_cast<const uint8_t *>(bytes.bytes), bytes.length);
@@ -92,7 +98,7 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
     bool retained = false;
     uint32_t resource = 0;
     try {
-        require(_host && !_cancellation.cancelled && !_asyncFrame && payload.length == 48, "Invalid/closed PRESENT");
+        require(_host && !_cancellation.cancelled && !_asyncFrame && !_buffered && payload.length == 48, "Invalid/closed PRESENT");
         _host->resume();
         auto bytes = static_cast<const uint8_t *>(payload.bytes);
         const auto frame = bigEndian(bytes, 8), handle = bigEndian(bytes + 8, 8), after = bigEndian(bytes + 16, 8);
@@ -156,7 +162,7 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
 - (BOOL)beginAsyncPresent:(NSData *)payload layer:(CAMetalLayer *)layer error:(NSError **)error {
     using namespace rgpu::interop;
     try {
-        require(_host && !_cancellation.cancelled && !_asyncFrame && payload.length == 48,
+        require(_host && !_cancellation.cancelled && !_asyncFrame && !_buffered && payload.length == 48,
                 "Invalid/closed/overlapping async PRESENT");
         _host->resume();
         const auto *bytes = static_cast<const uint8_t *>(payload.bytes);
@@ -234,9 +240,46 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
         failure(error, _asyncFrame ? _asyncFrame->report : @"Async poll", failed); return nil;
     }
 }
+- (BOOL)enableDoubleBufferingWithError:(NSError **)error {
+    try {
+        rgpu::interop::require(_host && !_asyncFrame && !_buffered && !_cancellation.cancelled &&
+            _host->session->commandCounts()[8] == 0, "Double-buffer mode must be selected before vtest context creation");
+        RGPUDisplayCancellation *cancel = _cancellation;
+        _buffered = std::make_unique<rgpu::interop::BufferedPresent>(*_host, [cancel] { return bool(cancel.cancelled); });
+        return YES;
+    } catch (const std::exception& failed) { failure(error, @"Double-buffer setup", failed); return NO; }
+}
+- (BOOL)bufferedCanAdvance { return _buffered && !_cancellation.cancelled && _buffered->canAdvance(); }
+- (NSUInteger)bufferedPendingFrames { return _buffered ? _buffered->pending() : 0; }
+- (NSString *)bufferedStatistics { return _buffered ? _buffered->statistics() : @"Double buffering not enabled"; }
+- (RGPUBufferedDisplayEvent *)beginBufferedPresent:(NSData *)payload layer:(CAMetalLayer *)layer error:(NSError **)error {
+    try {
+        rgpu::interop::require(_host && _buffered && !_cancellation.cancelled, "Double-buffer session closed");
+        _host->resume(); auto result = _buffered->begin(payload, layer); _host->suspend();
+        return result;
+    } catch (const std::exception& failed) {
+        if (_host) { try { _host->suspend(); } catch (...) {} }
+        failure(error, @"Double-buffer PRESENT", failed); return nil;
+    }
+}
+- (NSArray<RGPUBufferedDisplayEvent *> *)pollBufferedWithError:(NSError **)error {
+    try {
+        rgpu::interop::require(_host && _buffered && !_cancellation.cancelled, "Double-buffer poll closed/cancelled");
+        _host->resume(); auto result = _buffered->poll(); _host->suspend();
+        return result;
+    } catch (const std::exception& failed) {
+        if (_host) { try { _host->suspend(); } catch (...) {} }
+        failure(error, @"Double-buffer GPU completion", failed); return nil;
+    }
+}
 - (NSString *)close {
     if (!_host) return @"Native display endpoint already closed";
     NSMutableString *drain = [NSMutableString string];
+    if (_buffered) {
+        try { _host->resume(); [drain appendString:_buffered->close()]; }
+        catch (const std::exception& failed) { [drain appendFormat:@"A32_CLEANUP_ERROR %s\n", failed.what()]; }
+        _buffered.reset(); // Slots and shared-context teardown precede ANGLEHost.
+    }
     if (_asyncFrame) {
         [drain appendString:_asyncFrame->report];
         // Cancellation/error path ONLY: drain an incomplete GL copy before

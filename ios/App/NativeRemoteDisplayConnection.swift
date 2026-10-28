@@ -30,11 +30,15 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
     private let mode: RemoteGPUDisplayMode
     private let batchCursor = RemoteGPUDisplayBatchCursor()
     private let completionState = RemoteGPUSingleSlotCompletion()
+    private let bufferedOrder = RemoteGPUBufferedDisplayOrder()
+    private var bufferedBegan: [UInt64: TimeInterval] = [:]
     private var completionTimer: RemoteGPUCompletionPulse?
     private var asyncPresent: RemoteGPUPresent?
     private var asyncBegan: TimeInterval = 0
     var onReport: ((String, Bool) -> Void)?
     var onDisplayed: ((UInt64) -> Void)?
+    private var processedSequence: UInt64 { mode == .asyncDoubleSlot ? bufferedOrder.processedSequence : order.processedSequence }
+    private var displayedFrame: UInt64 { mode == .asyncDoubleSlot ? bufferedOrder.displayedFrame : order.displayedFrame }
 
     init(host: String, port: UInt16, token: String, layer: CAMetalLayer, mode: RemoteGPUDisplayMode = .synchronous) {
         self.host = host; self.port = port; self.token = token; self.layer = layer
@@ -46,13 +50,11 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
             guard !self.closed && !self.cancellation.isCancelled else { self.finish("Cancelled before start"); return }
             do {
                 self.endpoint = try RGPURemoteDisplayEndpoint.create(cancellation: self.cancellation)
+                if self.mode == .asyncDoubleSlot { try self.endpoint?.enableDoubleBuffering() }
                 self.header = self.endpoint?.hostReport ?? ""
-                if self.mode == .asyncSingleSlot {
-                    self.header = self.header.replacingOccurrences(of: "A2.1 REAL REMOTE DISPLAY (bounded diagnostic, not A3)",
-                        with: "A3.1 ASYNC SINGLE-SLOT REMOTE DISPLAY (device acceptance pending; NOT double buffering)")
-                }
+                self.header = self.header.replacingOccurrences(of: RemoteGPUDisplayMode.synchronous.reportTitle, with: self.mode.reportTitle)
                 self.header += "\nA21_SESSION session=\(self.sessionID) clock=local_monotonic\n"
-                self.header += "SCHEDULER=\(self.mode == .synchronous ? "A2.1_SYNC" : "A3.1_ASYNC_SINGLE_SLOT")\n"
+                self.header += "SCHEDULER=\(self.mode.schedulerName)\n"
                 self.header += "HOLD_POLICY default_observation_s=30 checkpoint_interval_s=30; longer cases require actual measured quiet_s\n"
                 let timer = DispatchSource.makeTimerSource(queue: self.rendererQueue)
                 timer.schedule(deadline: .now() + 1, repeating: 1)
@@ -109,22 +111,23 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
         }
     }
     private func report(_ status: String, finished: Bool = false) {
-        let counters = "\nVTEST processed=\(order.processedSequence) displayed PRESENT=\(order.displayedFrame)\nReceived vtest=\(received) reply bytes=\(sent) batch high-water=\(highWaterBatch) bytes\nOne batch in flight; one snapshot at a time; max 16 PRESENTs. No per-frame network ACK.\n" +
+        let counters = "\nVTEST processed=\(processedSequence) displayed PRESENT=\(displayedFrame)\nReceived vtest=\(received) reply bytes=\(sent) batch high-water=\(highWaterBatch) bytes\nOne batch in flight; one snapshot at a time; max 16 PRESENTs. No per-frame network ACK.\n" +
             (mode == .asyncSingleSlot ? "A3_QUEUE slots=1 in_use=\(asyncPresent == nil ? 0 : 1) pending_envelopes=\(batchCursor.remaining) stage=\(completionState.stage) polls=\(completionState.polls)\n" : "")
+            + (mode == .asyncDoubleSlot ? "\(endpoint?.bufferedStatistics ?? "Double-buffer endpoint closed") pending_envelopes=\(batchCursor.remaining)\n" : "")
         if let activity = streamActivity.latest { evidence?.receivedVTest(at: activity) }
         let hold = evidence?.holdLine(at: ProcessInfo.processInfo.systemUptime, live: !closed && !cancellation.isCancelled) ?? ""
         let text = header + "\n" + status + counters + hold + "\n" + history.joined(separator: "\n")
         DispatchQueue.main.async { self.onReport?(text, finished) }
     }
     private func observeHold() {
-        guard !closed && !cancellation.isCancelled && order.displayedFrame > 0 else { return }
+        guard !closed && !cancellation.isCancelled && displayedFrame > 0 else { return }
         let now = ProcessInfo.processInfo.systemUptime
         if let activity = streamActivity.latest { evidence.receivedVTest(at: activity) }
         let checkpoint = evidence.holdCheckpoint(at: now)
         if checkpoint < holdCheckpoint { holdCheckpoint = 0 }
-        let milestone = checkpoint > 0 && (holdMilestone != order.displayedFrame || checkpoint > holdCheckpoint)
+        let milestone = checkpoint > 0 && (holdMilestone != displayedFrame || checkpoint > holdCheckpoint)
         if milestone {
-            holdMilestone = order.displayedFrame
+            holdMilestone = displayedFrame
             holdCheckpoint = checkpoint
             append(evidence.holdLine(at: now, live: true))
         }
@@ -140,17 +143,21 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
         completionTimer?.cancel(); completionTimer = nil
         cancellation.cancel()
         completionState.cancel()
+        bufferedOrder.cancel()
         order.cancel()
         transport?.close(); transport = nil
         batchCursor.release()
+        if mode == .asyncDoubleSlot, let endpoint { append(endpoint.bufferedStatistics) }
         append(endpoint?.close() ?? "No native session allocated")
         endpoint = nil
         asyncPresent = nil
-        append("A21_SESSION_CLOSED session=\(sessionID) displayed=\(order.displayedFrame) cleanup_returned=YES reason=\(status)")
+        bufferedBegan.removeAll()
+        append("A21_SESSION_CLOSED session=\(sessionID) displayed=\(displayedFrame) cleanup_returned=YES reason=\(status)")
         report(status, finished: true)
     }
     private func consumePendingBatch() {
         guard !closed else { return }
+        if mode == .asyncDoubleSlot { consumeBufferedBatch(); return }
         do {
             highWaterBatch = max(highWaterBatch, batchCursor.highWaterBytes)
             while let envelope = batchCursor.next() {
@@ -200,6 +207,78 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
             }
             batchCursor.release()
         } catch { finish("REMOTE DISPLAY FAILED: \(String(describing: error))\n\(error.localizedDescription)") }
+    }
+
+    private func bufferedTicket(_ event: RGPUBufferedDisplayEvent) -> RemoteGPUBufferedTicket {
+        RemoteGPUBufferedTicket(slot: Int(event.slot), generation: event.generation,
+                                frame: event.frameID, resource: event.resourceID, after: event.afterSequence)
+    }
+    private func consumeBufferedBatch() {
+        guard !closed, let endpoint else { return }
+        do {
+            highWaterBatch = max(highWaterBatch, batchCursor.highWaterBytes)
+            while batchCursor.remaining > 0 {
+                // Leave the suffix untouched while copying or both slots are
+                // occupied. Completion pulses, not packets, resume this cursor.
+                guard endpoint.bufferedCanAdvance && bufferedOrder.canAdvance else { return }
+                guard !cancellation.isCancelled, let envelope = batchCursor.next(), envelope.flags == 0 else {
+                    throw RemoteGPUProtocolError.invalidPresent
+                }
+                switch envelope.type {
+                case .vtestBytes:
+                    evidence.receivedVTest(at: ProcessInfo.processInfo.systemUptime)
+                    try bufferedOrder.consume(envelope.payload) { bytes in
+                        received += UInt64(bytes.count)
+                        for reply in try endpoint.submit(bytes) {
+                            replySequence += 1; sent += UInt64(reply.count)
+                            transport?.sendVTestReply(sequence: replySequence, bytes: reply)
+                        }
+                    }
+                    append("VTEST processed seq=\(bufferedOrder.processedSequence)")
+                case .present:
+                    let present = try bufferedOrder.beginPresent(envelope.payload)
+                    append("PRESENT received frame=\(present.frameID) resource=\(present.resourceID) after=\(present.afterSequence) processed=\(bufferedOrder.processedSequence)")
+                    bufferedBegan[present.frameID] = ProcessInfo.processInfo.systemUptime
+                    let admitted = try endpoint.beginBufferedPresent(envelope.payload, layer: layer)
+                    guard admitted.kind == 0 else { throw RemoteGPUProtocolError.invalidPresent }
+                    try bufferedOrder.admitted(bufferedTicket(admitted))
+                    append(admitted.report)
+                    if completionTimer == nil {
+                        completionTimer = RemoteGPUCompletionPulse(queue: rendererQueue) { [weak self] in self?.pollBufferedGPU() }
+                    }
+                    return // Snapshot barrier is active; no source overwrite.
+                case .hello, .error: throw RemoteGPUProtocolError.invalidPresent
+                }
+            }
+            batchCursor.release()
+        } catch { finish("BUFFERED DISPLAY FAILED: \(error.localizedDescription)") }
+    }
+    private func pollBufferedGPU() {
+        guard !closed, let endpoint else { return }
+        do {
+            guard !cancellation.isCancelled else { throw RemoteGPUProtocolError.invalidPresent }
+            for event in try endpoint.pollBuffered() {
+                let ticket = bufferedTicket(event)
+                switch event.kind {
+                case 1:
+                    try bufferedOrder.snapshot(ticket)
+                    append(event.report)
+                case 2:
+                    let present = try bufferedOrder.complete(ticket)
+                    guard let began = bufferedBegan.removeValue(forKey: present.frameID) else {
+                        throw RemoteGPUProtocolError.invalidPresent
+                    }
+                    append(event.report)
+                    append(try evidence.completed(present, began: began, ended: ProcessInfo.processInfo.systemUptime))
+                    holdMilestone = nil; holdCheckpoint = 0
+                    DispatchQueue.main.async { self.onDisplayed?(present.frameID) }
+                    report("A3.2 METAL COMPLETED; verify pixels. Slot may now be reused; no remote ACK.")
+                default: throw RemoteGPUProtocolError.invalidPresent
+                }
+            }
+            consumeBufferedBatch()
+            if endpoint.bufferedPendingFrames == 0 { completionTimer?.cancel(); completionTimer = nil }
+        } catch { finish("BUFFERED DISPLAY FAILED: \(error.localizedDescription)") }
     }
 
     private func startCompletionDriver(_ ticket: RemoteGPUFrameTicket) {

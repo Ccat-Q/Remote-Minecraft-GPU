@@ -67,6 +67,7 @@ final class ProbeController: UIViewController {
         testSettingsButton.menu = UIMenu(children: [
             UIAction(title: "使用 A2.1 同步诊断（默认）") { [weak self] _ in self?.selectDisplayMode(.synchronous) },
             UIAction(title: "使用 A3.1 单槽异步测试") { [weak self] _ in self?.selectDisplayMode(.asyncSingleSlot) },
+            UIAction(title: "使用 A3.2 双槽异步测试") { [weak self] _ in self?.selectDisplayMode(.asyncDoubleSlot) },
             UIAction(title: "配置/更新一键连接") { [weak self] _ in
                 self?.configureQuickConnection()
             },
@@ -279,7 +280,7 @@ final class ProbeController: UIViewController {
         remoteDisplayButton.isEnabled = true
         shareControl?.isEnabled = true
         remoteDisplayButton.setTitle("断开测试连接", for: .normal)
-        report.text = "\(displayMode == .synchronous ? "A2.1 SYNC" : "A3.1 ASYNC SINGLE-SLOT") INITIALIZING — previous image is stale, NOT remote evidence."
+        report.text = "\(displayMode.schedulerName) INITIALIZING — previous image is stale, NOT remote evidence."
         let connection = NativeRemoteDisplayConnection(host: profile.host, port: profile.port, token: profile.token, layer: display.metalLayer, mode: displayMode)
         remoteDisplayConnection = connection
         let sessionID = connection.sessionID
@@ -308,9 +309,7 @@ final class ProbeController: UIViewController {
     private func selectDisplayMode(_ mode: RemoteGPUDisplayMode) {
         guard !nativeBusy else { return }
         displayMode = mode
-        report.text = mode == .synchronous
-            ? "已选择 A2.1 同步诊断基线；点击一键测试连接。"
-            : "已选择 A3.1 单槽异步实验（尚待真机验收）；点击一键测试连接。仍限 16 个 PRESENT / 64×64，不代表双缓冲或性能验收通过。"
+        report.text = "已选择 \(mode.schedulerName)；点击一键测试连接。A2.1 / A3.1 基本门槛已验收，A3.2 双槽尚待真机验收。仍限 16 个 PRESENT / 64×64，不代表性能验收通过。"
     }
 
     @objc private func connectCapability() {

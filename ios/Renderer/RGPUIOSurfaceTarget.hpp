@@ -30,19 +30,23 @@ public:
     RGPUIOSurfaceTarget() = default;
     RGPUIOSurfaceTarget(const RGPUIOSurfaceTarget&) = delete;
     RGPUIOSurfaceTarget& operator=(const RGPUIOSurfaceTarget&) = delete;
-    void initialize(EGLDisplay display, EGLConfig config, CAMetalLayer *layer, unsigned width, unsigned height) {
+    void initialize(EGLDisplay display, EGLConfig config, CAMetalLayer *layer, unsigned width, unsigned height,
+                    id<MTLCommandQueue> sharedQueue = nil) {
         display_ = display;
         layer_ = layer;
         auto extensions = eglQueryString(display, EGL_EXTENSIONS);
         if (!extensions || !std::strstr(extensions, "EGL_ANGLE_iosurface_client_buffer"))
             throw std::runtime_error("EGL_ANGLE_iosurface_client_buffer missing");
-        id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+        id<MTLDevice> device = sharedQueue ? sharedQueue.device : MTLCreateSystemDefaultDevice();
         if (!device) throw std::runtime_error("Metal device unavailable");
-        layer.device = device;
-        layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-        layer.framebufferOnly = YES;
-        layer.drawableSize = CGSizeMake(width, height);
-        queue_ = [device newCommandQueue];
+        // A second slot may initialize while the first has a drawable in use.
+        // Do not reconfigure the layer for identical shared-device dimensions.
+        if (layer.device != device) layer.device = device;
+        if (layer.pixelFormat != MTLPixelFormatBGRA8Unorm) layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+        if (!layer.framebufferOnly) layer.framebufferOnly = YES;
+        const auto size = CGSizeMake(width, height);
+        if (!CGSizeEqualToSize(layer.drawableSize, size)) layer.drawableSize = size;
+        queue_ = sharedQueue ? sharedQueue : [device newCommandQueue];
         id<MTLLibrary> library = [device newDefaultLibrary];
         if (!queue_ || !library) throw std::runtime_error("Metal queue/default.metallib unavailable");
         MTLRenderPipelineDescriptor *descriptor = [MTLRenderPipelineDescriptor new];

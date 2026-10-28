@@ -24,6 +24,11 @@ jobs:
           c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
             -Iios/Renderer ios/Renderer/RGPUVTestSession.cpp tests/native_vtest.cpp -o /tmp/native-vtest-contract
           /tmp/native-vtest-contract
+      - name: Test actual double-buffer slot ownership with sanitizers
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+            -Iios/Renderer tests/display_slots.cpp -o /tmp/display-slots-contract
+          /tmp/display-slots-contract
 
   ios-build-compatibility:
     name: Pinned iOS build compatibility

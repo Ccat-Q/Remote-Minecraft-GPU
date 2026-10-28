@@ -14,7 +14,7 @@ let package = Package(
         .library(name: "RemoteGPUProtocol", targets: ["RemoteGPUProtocol"])
     ],
     targets: [
-        .target(name: "RemoteGPUProtocol", path: "RemoteGPU", sources: ["Protocol.swift", "QUICRenderConnection.swift", "RenderCoordinator.swift", "SerialDisplaySession.swift", "AsyncDisplaySession.swift", "DisplayEvidence.swift", "TestConnectionProfile.swift"], linkerSettings: [.linkedFramework("Security")]),
-        .testTarget(name: "RemoteGPUProtocolTests", dependencies: ["RemoteGPUProtocol"], path: "Tests", sources: ["RemoteGPUProtocolTests.swift", "TestConnectionProfileTests.swift", "AsyncDisplaySessionTests.swift"])
+        .target(name: "RemoteGPUProtocol", path: "RemoteGPU", sources: ["Protocol.swift", "QUICRenderConnection.swift", "RenderCoordinator.swift", "SerialDisplaySession.swift", "AsyncDisplaySession.swift", "BufferedDisplaySession.swift", "DisplayEvidence.swift", "TestConnectionProfile.swift"], linkerSettings: [.linkedFramework("Security")]),
+        .testTarget(name: "RemoteGPUProtocolTests", dependencies: ["RemoteGPUProtocol"], path: "Tests", sources: ["RemoteGPUProtocolTests.swift", "TestConnectionProfileTests.swift", "AsyncDisplaySessionTests.swift", "BufferedDisplaySessionTests.swift"])
     ]
 )
