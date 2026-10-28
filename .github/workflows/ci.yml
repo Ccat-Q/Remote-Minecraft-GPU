@@ -39,6 +39,8 @@ jobs:
         run: python3 -m unittest discover -s tools/ci -p 'test_utm_renderer.py'
       - name: Verify iOS dependency provenance parser
         run: python3 -m unittest discover -s tools/ci -p 'test_ios_provenance.py'
+      - name: Verify isolated MobileGlues source/provider guards (not device acceptance)
+        run: python3 -m unittest discover -s tools/ci -p 'test_mobileglues_probe.py'
       - name: Verify device evidence checker (synthetic logs, NOT device acceptance)
         run: python3 -m unittest discover -s tools -p 'test_a21_device_evidence.py'
       - name: Verify configurable live hold shell policy (stub producer only)

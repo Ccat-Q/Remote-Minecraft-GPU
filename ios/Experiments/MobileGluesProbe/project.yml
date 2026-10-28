@@ -1,0 +1,47 @@
+name: MobileGluesCompatibilityProbe
+options:
+  projectFormat: xcode15_3
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    CLANG_CXX_LANGUAGE_STANDARD: c++20
+    CLANG_ENABLE_OBJC_ARC: YES
+    CODE_SIGNING_ALLOWED: NO
+    HEADER_SEARCH_PATHS: "$(SRCROOT)/../../../../_deps/mobileglues/MobileGlues-cpp/include"
+targets:
+  MobileGluesCompatibilityProbe:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - path: Generated/B11Provenance.json
+        buildPhase: resources
+      - path: Generated/Licenses
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.remotegpu.experiments.mobileglues
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: Generated/Info.plist
+      properties:
+        CFBundleDisplayName: RemoteGPU B1.1
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+    dependencies:
+      - framework: ../../../../_build/mobileglues/MobileGluesProbe.framework
+        embed: true
+        link: false
+      - framework: ../../../../_deps/ios-sysroot/Frameworks/EGL.framework
+        embed: true
+        link: false
+      - framework: ../../../../_deps/ios-sysroot/Frameworks/GLESv2.framework
+        embed: true
+        link: false
+schemes:
+  MobileGluesCompatibilityProbe:
+    build:
+      targets:
+        MobileGluesCompatibilityProbe: all

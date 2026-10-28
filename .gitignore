@@ -13,3 +13,5 @@ server.key
 /ios/Generated/
 /ios/App/RGPUProvenance.json
 /ios/RemoteGPUPrototype.xcodeproj/
+/ios/Experiments/MobileGluesProbe/Generated/
+/ios/Experiments/MobileGluesProbe/MobileGluesCompatibilityProbe.xcodeproj/
