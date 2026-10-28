@@ -240,12 +240,13 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
         failure(error, _asyncFrame ? _asyncFrame->report : @"Async poll", failed); return nil;
     }
 }
-- (BOOL)enableDoubleBufferingWithError:(NSError **)error {
+- (BOOL)enableDoubleBufferingWithRetirementDelayMs:(NSUInteger)delay error:(NSError **)error {
     try {
         rgpu::interop::require(_host && !_asyncFrame && !_buffered && !_cancellation.cancelled &&
             _host->session->commandCounts()[8] == 0, "Double-buffer mode must be selected before vtest context creation");
         RGPUDisplayCancellation *cancel = _cancellation;
-        _buffered = std::make_unique<rgpu::interop::BufferedPresent>(*_host, [cancel] { return bool(cancel.cancelled); });
+        rgpu::interop::require(delay <= 1000, "Diagnostic retirement delay exceeds 1000ms");
+        _buffered = std::make_unique<rgpu::interop::BufferedPresent>(*_host, [cancel] { return bool(cancel.cancelled); }, unsigned(delay));
         return YES;
     } catch (const std::exception& failed) { failure(error, @"Double-buffer setup", failed); return NO; }
 }

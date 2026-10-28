@@ -129,8 +129,9 @@ one-click connection. Default remains A2.1 synchronous. Follow the exact
 including last-frame completion without new packets, live hold, cancellation
 and same-process reconnect. Do not mistake scheduler unit tests or a successful
 IPA build for phone acceptance. A3.1 still uses one slot, pauses all later
-vtest and keeps the 64x64/16-PRESENT diagnostic limits. Double buffering,
-resource budgets, ten-minute stress and throughput tests are not implemented.
+vtest and keeps the 64x64/16-PRESENT diagnostic limits. A3.1 itself has no double
+buffering; the separate A3.2 implementation below is device-pending. Resource
+budgets, ten-minute stress and throughput acceptance remain later work.
 New live-hold observations default to 30 seconds; the producer adds five seconds
 of explicit resource cleanup margin. The app keeps 30/60/90/120... checkpoints.
 Previously accepted 120-second cases remain historical evidence, not shortened
@@ -160,6 +161,23 @@ tests. Begin with a small single-sample RGBA/BGRA 2D target and GL 2.1 / GLSL
 Reject local-only triangles, missing VirGL-resource snapshots, completion that
 needs a later packet, or normal framebuffer readback to Ubuntu. A PASS proves
 remote rendering/presentation, not Minecraft capabilities.
+
+## A3.2 double-slot acceptance (not yet passed)
+
+Use the new Actions-built IPA and choose **测试设置 → 使用 A3.2 双槽异步测试**.
+Require `SCHEDULER=A3.2_ASYNC_DOUBLE_SLOT`, then use a fresh 12-frame Ubuntu
+case and 30-second live hold. Save the changing images and full report before
+and after disconnect. Both slots must allocate once and be reused only after
+Metal completion; final `A32_POOL_CLOSE` must release both slots. Require GET=0,
+strict frame/slot/generation sequence, no source overwrite before snapshot and
+normal final-image retention. A2.1/A3.1 remain selectable regression modes.
+
+Then choose **A3.2 背压诊断（回收延迟 750ms）** for a second fresh session.
+The delay is an explicit timer-driven hold AFTER real Metal completion, not
+artificial GPU work; require high_water=2 and correct bounded recycling.
+Frame/UI durations include this policy, so do not treat them as GPU/FPS data.
+GPU-in-flight cancellation and long-run stability still need separate tests.
+See [full A3.2 ownership/procedure](../docs/a32-double-surface.md).
 
 ## Route B: candidate graphics capability (planned)
 

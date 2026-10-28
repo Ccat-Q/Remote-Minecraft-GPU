@@ -31,6 +31,7 @@ final class ProbeController: UIViewController {
     private let remoteDisplayButton = UIButton(type: .system)
     private let testSettingsButton = UIButton(type: .system)
     private var displayMode: RemoteGPUDisplayMode = .synchronous
+    private var retirementDelayMs: UInt = 0
     private let testProfileStore = RemoteGPUTestProfileStore()
     private let credentialsQueue = DispatchQueue(label: "org.remotegpu.test-credentials", qos: .userInitiated)
     private let frameBadge = UILabel()
@@ -68,6 +69,9 @@ final class ProbeController: UIViewController {
             UIAction(title: "使用 A2.1 同步诊断（默认）") { [weak self] _ in self?.selectDisplayMode(.synchronous) },
             UIAction(title: "使用 A3.1 单槽异步测试") { [weak self] _ in self?.selectDisplayMode(.asyncSingleSlot) },
             UIAction(title: "使用 A3.2 双槽异步测试") { [weak self] _ in self?.selectDisplayMode(.asyncDoubleSlot) },
+            UIAction(title: "A3.2 背压诊断（回收延迟 750ms）") { [weak self] _ in
+                self?.selectDisplayMode(.asyncDoubleSlot, retirementDelayMs: 750)
+            },
             UIAction(title: "配置/更新一键连接") { [weak self] _ in
                 self?.configureQuickConnection()
             },
@@ -281,7 +285,8 @@ final class ProbeController: UIViewController {
         shareControl?.isEnabled = true
         remoteDisplayButton.setTitle("断开测试连接", for: .normal)
         report.text = "\(displayMode.schedulerName) INITIALIZING — previous image is stale, NOT remote evidence."
-        let connection = NativeRemoteDisplayConnection(host: profile.host, port: profile.port, token: profile.token, layer: display.metalLayer, mode: displayMode)
+        let connection = NativeRemoteDisplayConnection(host: profile.host, port: profile.port, token: profile.token, layer: display.metalLayer,
+                                                      mode: displayMode, retirementDelayMs: retirementDelayMs)
         remoteDisplayConnection = connection
         let sessionID = connection.sessionID
         UIApplication.shared.isIdleTimerDisabled = true
@@ -306,10 +311,11 @@ final class ProbeController: UIViewController {
         connection.start()
     }
 
-    private func selectDisplayMode(_ mode: RemoteGPUDisplayMode) {
+    private func selectDisplayMode(_ mode: RemoteGPUDisplayMode, retirementDelayMs: UInt = 0) {
         guard !nativeBusy else { return }
         displayMode = mode
-        report.text = "已选择 \(mode.schedulerName)；点击一键测试连接。A2.1 / A3.1 基本门槛已验收，A3.2 双槽尚待真机验收。仍限 16 个 PRESENT / 64×64，不代表性能验收通过。"
+        self.retirementDelayMs = mode == .asyncDoubleSlot ? retirementDelayMs : 0
+        report.text = "已选择 \(mode.schedulerName)；点击一键测试连接。回收延迟诊断=\(self.retirementDelayMs)ms（不计为 GPU 工作时间）。A2.1 / A3.1 基本门槛已验收，A3.2 双槽尚待真机验收。仍限 16 个 PRESENT / 64×64，不代表性能验收通过。"
     }
 
     @objc private func connectCapability() {

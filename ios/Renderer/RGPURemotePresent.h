@@ -39,7 +39,8 @@ NS_ASSUME_NONNULL_BEGIN
     error:(NSError **)error NS_SWIFT_NAME(beginAsyncPresent(_:layer:));
 // Empty string = pending; full frame report = completed; nil + error = failure.
 - (nullable NSString *)pollAsyncPresentWithError:(NSError **)error NS_SWIFT_NAME(pollAsyncPresent());
-- (BOOL)enableDoubleBufferingWithError:(NSError **)error NS_SWIFT_NAME(enableDoubleBuffering());
+- (BOOL)enableDoubleBufferingWithRetirementDelayMs:(NSUInteger)delay
+    error:(NSError **)error NS_SWIFT_NAME(enableDoubleBuffering(retirementDelayMs:));
 @property(nonatomic, readonly) BOOL bufferedCanAdvance;
 @property(nonatomic, readonly) NSUInteger bufferedPendingFrames;
 @property(nonatomic, readonly) NSString *bufferedStatistics;

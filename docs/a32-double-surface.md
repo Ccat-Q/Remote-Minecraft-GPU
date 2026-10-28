@@ -64,7 +64,23 @@ total GPU/renderer memory. `high_water` records actual occupied slots; normal
 alone does not prove saturated backpressure/overlap on the phone; those need
 an explicitly identified load/delay experiment, not invented FPS evidence.
 
+After the normal case passes, choose **A3.2 背压诊断（回收延迟 750ms）** and
+start another fresh 12-frame case. This opt-in policy observes real Metal
+completion, then holds the slot for an extra 750ms using timer ticks (no sleep
+and no fake GPU work). Expect `retirement_delay_ms=750`, high_water=2, two
+allocated slots, READY/backpressure, ordered completion and safe ping-pong
+reuse. Save the complete report after disconnect. Normal mode uses 0ms.
+`metal_observed_ms` excludes this intentional hold;
+`retirement_observed_ms` includes it. Whole-frame A21_FRAME durations and the
+UI completion badge include retirement policy and can lag actual scanout;
+neither is a measurement of hardware GPU time or current pixels. This exercises
+retirement/backpressure, NOT a slow physical GPU or GPU-in-flight cancellation.
+
 CI preserves A1/A2/A3.1 regressions, adds actual native slot engine tests and
-Swift ownership/order/cancellation tests. Linux software rendering and state
+Swift ownership/order/cancellation tests. A new Linux GPU oracle holds two
+distinct real shared-context snapshots (four-color and magenta), defers a
+simulated consumer, verifies all pixels after source overwrite/UNREF/recreate,
+and checks reuse without allocating a third slot. Its CPU oracle reads are
+strictly test-only and do not enter the phone/display protocol. Linux software rendering and state
 simulations are NOT iPhone double-buffer acceptance. No 720p/30, ten-minute
 stability, crash recovery or Minecraft GL3.2/GLSL150 capability is claimed.

@@ -108,3 +108,7 @@ The native regression workflow explicitly pins that verified run (90-day
 artifact retention), rather than substituting a latest-main dependency build.
 The iOS sysroot is still the verified `40636888480` artifact; no iOS dependency
 rebuild/provider change is involved in A3.1.
+
+Follow-up: [A3.2](a32-double-surface.md) now implements the separate, opt-in
+two-slot experiment. It does not change this accepted single-slot baseline or
+grant the new path device acceptance.

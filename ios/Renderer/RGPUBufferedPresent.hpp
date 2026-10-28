@@ -13,6 +13,8 @@ class BufferedPresent {
         NSMutableString *report = [NSMutableString string];
         Clock::time_point phaseStarted = Clock::now();
         double producerMs = 0, copyMs = 0, readyMs = 0;
+        double metalMs = 0;
+        bool metalCompleted = false;
         double elapsed() const { return std::chrono::duration<double, std::milli>(Clock::now() - phaseStarted).count(); }
     };
     struct Storage {
@@ -27,6 +29,7 @@ class BufferedPresent {
     id<MTLCommandQueue> queue_;
     CAMetalLayer *layer_;
     unsigned allocations_ = 0, reuse_ = 0, retired_ = 0;
+    unsigned retirementDelayMs_;
     bool closed_ = false;
     static uint64_t read(const uint8_t *bytes, size_t count) {
         uint64_t value = 0; for (size_t i = 0; i < count; ++i) value = (value << 8) | bytes[i]; return value;
@@ -39,8 +42,9 @@ class BufferedPresent {
         return result;
     }
 public:
-    BufferedPresent(ANGLEHost& host, std::function<bool()> cancelled)
-        : host_(host), cancelled_(std::move(cancelled)) {
+    BufferedPresent(ANGLEHost& host, std::function<bool()> cancelled, unsigned retirementDelayMs)
+        : host_(host), cancelled_(std::move(cancelled)), retirementDelayMs_(retirementDelayMs) {
+        require(retirementDelayMs <= 1000, "Diagnostic retirement delay must be 0..1000ms");
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
         require(device != nil, "Double-buffer Metal device missing");
         queue_ = [device newCommandQueue];
@@ -49,8 +53,8 @@ public:
     bool canAdvance() const { return !closed_ && state_.canAdvance(); }
     unsigned pending() const { return state_.inUse(); }
     NSString *statistics() const {
-        return [NSString stringWithFormat:@"A32_POOL capacity=2 occupied=%u high_water=%u allocated=%u reused=%u retired=%u source_barrier=%@ iosurface_bytes_estimate=%u (not total renderer GPU memory)",
-            state_.inUse(), state_.highWater(), allocations_, reuse_, retired_, state_.sourceBarrier() ? @"YES" : @"NO", allocations_ * 64 * 64 * 4];
+        return [NSString stringWithFormat:@"A32_POOL capacity=2 occupied=%u high_water=%u allocated=%u reused=%u retired=%u source_barrier=%@ iosurface_bytes_estimate=%u retirement_delay_ms=%u (not total renderer GPU memory; delay is diagnostic, NOT GPU work)",
+            state_.inUse(), state_.highWater(), allocations_, reuse_, retired_, state_.sourceBarrier() ? @"YES" : @"NO", allocations_ * 64 * 64 * 4, retirementDelayMs_];
     }
     RGPUBufferedDisplayEvent *begin(NSData *payload, CAMetalLayer *layer) {
         require(canAdvance() && !cancelled_() && payload.length == 48, "Double-buffer closed/full/source barrier active");
@@ -114,14 +118,21 @@ public:
         }
         for (unsigned index = 0; index < 2; ++index) {
             auto& slot = storage_[index];
-            if (state_.slots()[index].phase != SlotPhase::presenting || !slot.copy->pollDisplay()) continue;
+            if (state_.slots()[index].phase != SlotPhase::presenting) continue;
             auto& w = *slot.work;
+            if (!w.metalCompleted) {
+                if (!slot.copy->pollDisplay()) continue;
+                w.metalCompleted = true; w.metalMs = w.elapsed();
+                [w.report appendFormat:@"A32_METAL_GPU_COMPLETE frame=%llu observed_ms=%.3f; diagnostic_retirement_delay_ms=%u (no CPU wait, NOT GPU workload)\n",
+                    (unsigned long long)w.ticket.frame, w.metalMs, retirementDelayMs_];
+            }
+            if (w.elapsed() - w.metalMs < retirementDelayMs_) continue; // Timer-only diagnostic, never sleep.
             [w.report appendString:@"Metal command status: COMPLETED; IOSurface retained through consumption\n"];
             const auto& counts = host_.session->commandCounts();
             require(counts[4] == 0, "Display TRANSFER_GET forbidden");
-            [w.report appendFormat:@"Counts: SUBMIT_CMD=%llu TRANSFER_PUT=%llu TRANSFER_GET=%llu; Metal displayed frame=%llu\nA32_TIMING frame=%llu producer_observed_ms=%.3f copy_observed_ms=%.3f ready_observed_ms=%.3f metal_observed_ms=%.3f (local polling/setup inclusive; NOT GPU timestamps or RTT)\nA32_COMPLETED frame=%llu slot=%u generation=%llu; Metal complete; slot FREE, storage retained for reuse\n",
+            [w.report appendFormat:@"Counts: SUBMIT_CMD=%llu TRANSFER_PUT=%llu TRANSFER_GET=%llu; Metal displayed frame=%llu\nA32_TIMING frame=%llu producer_observed_ms=%.3f copy_observed_ms=%.3f ready_observed_ms=%.3f metal_observed_ms=%.3f retirement_observed_ms=%.3f (local polling/setup inclusive; NOT GPU timestamps or RTT)\nA32_COMPLETED frame=%llu slot=%u generation=%llu; Metal complete; slot FREE, storage retained for reuse\n",
                 (unsigned long long)counts[6], (unsigned long long)counts[5], (unsigned long long)counts[4], (unsigned long long)w.ticket.frame,
-                (unsigned long long)w.ticket.frame, w.producerMs, w.copyMs, w.readyMs, w.elapsed(),
+                (unsigned long long)w.ticket.frame, w.producerMs, w.copyMs, w.readyMs, w.metalMs, w.elapsed() - w.metalMs,
                 (unsigned long long)w.ticket.frame, index, (unsigned long long)w.ticket.generation];
             [events addObject:event(w, 2, w.report)];
             state_.complete(w.ticket); ++retired_; slot.work.reset();

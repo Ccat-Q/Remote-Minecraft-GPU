@@ -28,6 +28,7 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
     private var holdMilestone: UInt64?
     private var holdCheckpoint = 0
     private let mode: RemoteGPUDisplayMode
+    private let retirementDelayMs: UInt
     private let batchCursor = RemoteGPUDisplayBatchCursor()
     private let completionState = RemoteGPUSingleSlotCompletion()
     private let bufferedOrder = RemoteGPUBufferedDisplayOrder()
@@ -40,9 +41,11 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
     private var processedSequence: UInt64 { mode == .asyncDoubleSlot ? bufferedOrder.processedSequence : order.processedSequence }
     private var displayedFrame: UInt64 { mode == .asyncDoubleSlot ? bufferedOrder.displayedFrame : order.displayedFrame }
 
-    init(host: String, port: UInt16, token: String, layer: CAMetalLayer, mode: RemoteGPUDisplayMode = .synchronous) {
+    init(host: String, port: UInt16, token: String, layer: CAMetalLayer, mode: RemoteGPUDisplayMode = .synchronous,
+         retirementDelayMs: UInt = 0) {
         self.host = host; self.port = port; self.token = token; self.layer = layer
         self.mode = mode
+        self.retirementDelayMs = retirementDelayMs
     }
     func start() {
         rendererQueue.async {
@@ -50,11 +53,14 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
             guard !self.closed && !self.cancellation.isCancelled else { self.finish("Cancelled before start"); return }
             do {
                 self.endpoint = try RGPURemoteDisplayEndpoint.create(cancellation: self.cancellation)
-                if self.mode == .asyncDoubleSlot { try self.endpoint?.enableDoubleBuffering() }
+                if self.mode == .asyncDoubleSlot { try self.endpoint?.enableDoubleBuffering(retirementDelayMs: self.retirementDelayMs) }
                 self.header = self.endpoint?.hostReport ?? ""
                 self.header = self.header.replacingOccurrences(of: RemoteGPUDisplayMode.synchronous.reportTitle, with: self.mode.reportTitle)
                 self.header += "\nA21_SESSION session=\(self.sessionID) clock=local_monotonic\n"
                 self.header += "SCHEDULER=\(self.mode.schedulerName)\n"
+                if self.mode == .asyncDoubleSlot {
+                    self.header += "A32_DIAGNOSTIC retirement_delay_ms=\(self.retirementDelayMs); optional CPU retirement policy, NOT GPU workload or performance evidence\n"
+                }
                 self.header += "HOLD_POLICY default_observation_s=30 checkpoint_interval_s=30; longer cases require actual measured quiet_s\n"
                 let timer = DispatchSource.makeTimerSource(queue: self.rendererQueue)
                 timer.schedule(deadline: .now() + 1, repeating: 1)

@@ -13,8 +13,9 @@ unchanged; no video streaming or phone JVM is introduced.
 | Device-verified (user reports) | A2.0 `98e65d1`: real resource/shared-EGL/GPU snapshot/Metal isolation. A2.1 `3b5e80d`: actual Ubuntu frame over QUIC to iPhone18,3 / iOS 27.0.1, PRESENT 1/2, GPU-only snapshot/display and correct image, TRANSFER_GET=0. |
 | Device-verified multi-frame | [7/12-frame records](evidence/a21-multiframe-2026-10-28/README.md), app `9ed016c` / `acce896`: distinct correct frames, >=120s live hold, GET=0, active disconnect cleanup returned. |
 | Device-verified A3.1 basic gates | [User-confirmed `a87970e`](evidence/a31-single-slot-2026-10-28/README.md): independent timer-driven single-slot path, 13 completed PRESENTs, correct images, 30.761s live hold, GET=0 and idle cleanup; specific same-process sync→async render reconnect without Token re-entry passed. Defaults to sync; no overlap/double buffering. |
+| Implemented, device pending | [A3.2 dual-slot adapter](a32-double-surface.md): bounded persistent IOSurfaces, separate source-copy and Metal-retirement barriers, ordered shared Metal queue, optional explicitly measured retirement-delay diagnostic. Not phone or throughput acceptance. |
 | Known failed prerequisite | GLES 3.1/3.2 requests rejected (EGL 0x3004); GLES 3.0 works. Guest capset GLSL is 130, below 150. Actual Ubuntu GL 3.2 Core creation remains an unaccepted separate test. |
-| Not implemented / accepted | A3 double buffering/overlapping production/memory budgets/ten-minute performance; Minecraft and input/audio/Modpack acceptance. |
+| Not implemented / accepted | A3 sustained overlapping throughput/resource memory budgets/ten-minute performance; Minecraft and input/audio/Modpack acceptance. |
 | Candidate experiments only | MobileGlues + existing ANGLE Metal; MobileGL iOS interfaces; UTM MoltenVK with a suitable GL/Vulkan implementation. None replaces the renderer or has passed the guest gate. |
 
 The completed [feasibility audit](../exa-results/remotegpu-feasibility-2026-10-12/audit.md)
@@ -174,7 +175,8 @@ rebuild. The iOS EGL adapter and capability-only QUIC connection now exist.
 Synchronous PRESENT snapshots now display real remote frames in A2.1;
 opt-in A3.1 now adds single-slot asynchronous GPU/Metal polling, with its basic
 device acceptance recorded above. GPU-in-flight cancellation, overlapped
-scheduling and double buffering remain later work.
+scheduling performance remains later work; double buffering is now implemented
+in the separate A3.2 opt-in mode, still device-pending.
 
 The shared native endpoint passed the actual GL/QUIC gate in
 [run 38204899580](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38204899580)
