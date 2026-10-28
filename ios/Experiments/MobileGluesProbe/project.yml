@@ -31,6 +31,8 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
     dependencies:
+      - sdk: UIKit.framework
+      - sdk: Foundation.framework
       - framework: ../../../_build/mobileglues/MobileGluesProbe.framework
         embed: true
         link: false
