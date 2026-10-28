@@ -69,8 +69,8 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                             try self.batchCursor.admit(batch, complete: complete)
                             self.consumePendingBatch()
                         } catch {
-                            complete()
                             self.finish("BATCH ADMISSION FAILED: \(error)")
+                            complete()
                         }
                     }
                 }

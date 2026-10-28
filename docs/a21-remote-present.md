@@ -191,7 +191,11 @@ Expected RGB is `(40+37*i%180, 50+67*i%170, 60+97*i%160)`; offset is
 frame during silence, absence of overwrites, native producer/copy/Metal logs,
 zero TRANSFER_GET and after-disconnect cleanup. Reconnect using the SAME IPA
 without restarting the app, and save its new session ID plus real frame output.
-Host/port are remembered; pairing credentials are never persisted by the app.
+The manual form does not persist pairing credentials. The later **一键测试连接**
+mode saves the validated profile in device-only, when-unlocked Keychain (never
+the IPA, report or UserDefaults); see [profile/test procedure](a31-async-single-slot.md#device-procedure-all-builds-in-actions).
+The [7/12-frame image/hold/cleanup gates](evidence/a21-multiframe-2026-10-28/README.md)
+are device-accepted; same-process rendering after disconnect remains deferred.
 
 ```sh
 python3 ./a21-tools/a21_device_evidence.py \

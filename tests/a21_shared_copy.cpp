@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <thread>
+#include <cstring>
 
 static void require(bool ok, const char *message) { if (!ok) throw std::runtime_error(message); }
 static void feed(rgpu::VTestSession& session, const std::vector<uint8_t>& bytes) { session.feed(bytes.data(), bytes.size()); }
@@ -20,7 +21,9 @@ static void wait(rgpu::VTestSession& session, uint32_t fence) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
-int main() {
+int main(int argc, char **argv) {
+    const bool asyncPoll = argc == 2 && std::strcmp(argv[1], "--async-poll") == 0;
+    if (argc > 1 && !asyncPoll) return 2;
     std::unique_ptr<rgpu::VTestSession> session;
     virgl_renderer_callbacks callbacks{};
     callbacks.version = 1;
@@ -71,12 +74,23 @@ int main() {
                 glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE, "Copy FBO incomplete");
             glBlitFramebuffer(0, 0, 640, 360, 0, 0, 640, 360, GL_COLOR_BUFFER_BIT, GL_NEAREST);
             GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0); glFlush();
+            if (asyncPoll) require(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT),
+                "Unbind copy between independent ticks failed");
             auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
             GLenum status;
+            unsigned polls = 0;
             do {
-                status = glClientWaitSync(sync, 0, 5'000'000);
+                if (asyncPoll) require(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, copy),
+                    "Restore shared context for zero-wait copy poll failed");
+                status = glClientWaitSync(sync, 0, asyncPoll ? 0 : 5'000'000);
+                ++polls;
                 require(status != GL_WAIT_FAILED && std::chrono::steady_clock::now() < deadline, "Copy fence failed");
+                if (asyncPoll && status == GL_TIMEOUT_EXPIRED) {
+                    require(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT), "Poll unbind failed");
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1)); // CI-only event-loop stand-in, NO packets.
+                }
             } while (status != GL_ALREADY_SIGNALED && status != GL_CONDITION_SATISFIED);
+            if (asyncPoll) std::printf("A3 Linux GPU oracle format=%u zero_wait_polls=%u; no network progress dependency; NOT iPhone evidence\n", format, polls);
             glDeleteSync(sync);
             require(glGetError() == GL_NO_ERROR, "GPU copy GL error");
             require(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, producer), "Restore producer failed");

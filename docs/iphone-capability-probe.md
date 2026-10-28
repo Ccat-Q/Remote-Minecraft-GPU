@@ -154,6 +154,7 @@ readback. Preserve a separate explicit application-readback test.
 Existing counters show bytes/sequences, not FPS/GPU-wait/RTT. Those metrics,
 full performance attribution remain future work. Bounded command admission,
 proxy phase timeouts/cancellation/keepalive and local completion/quiet-hold
-records are implemented for A2.1-Final, not yet multi-frame device acceptance.
+records are implemented for A2.1-Final; the 7/12-frame image/hold/cleanup gates
+are now device-accepted, while same-process render reconnect remains deferred.
 Historical CI/source records remain in
 [architecture.md](architecture.md#retained-ci-and-source-evidence).

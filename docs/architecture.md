@@ -155,8 +155,9 @@ The pinned iOS dependency recipe and iPhoneOS ANGLE/VirGL link gate passed in
 The device interop probe compiled and produced an unsigned iPhoneOS arm64 IPA
 in [run 38188117904](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38188117904).
 These are historical build/link records, not runtime acceptance. Later user
-reports confirm local triangle/native caps only. Remote vtest draw replay and
-guest OpenGL 3.2 Core remain unaccepted on iOS; Minecraft is not started. Use
+reports at that historical point confirmed local triangle/native caps only.
+Subsequent A2.1 evidence above accepts remote draw replay; guest OpenGL 3.2
+Core remains unaccepted on iOS and Minecraft is not started. Use
 the newer external-EGL-fixed sysroot recorded below, not the earlier recipe.
 
 All builds and compilation run in GitHub Actions. The Ubuntu server only runs
@@ -171,7 +172,8 @@ with AddressSanitizer/UBSan. A separate lightweight rendering gate downloads
 the verified Linux bundle and compiles only the endpoint, avoiding a dependency
 rebuild. The iOS EGL adapter and capability-only QUIC connection now exist.
 Synchronous PRESENT snapshots now display real remote frames in A2.1;
-asynchronous GPU/Metal scheduling remains future A3 work.
+opt-in A3.1 now adds single-slot asynchronous GPU/Metal polling, still awaiting
+device acceptance. Overlapped scheduling and double buffering remain later work.
 
 The shared native endpoint passed the actual GL/QUIC gate in
 [run 38204899580](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38204899580)

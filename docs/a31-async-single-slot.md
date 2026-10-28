@@ -84,3 +84,13 @@ source overwrite, resource-lifetime, Core/GLSL 150 and legal application-readbac
 regressions. Linux software rendering and mock scheduling are NOT phone GPU
 acceptance. Device correctness, cancellation/leaks and reconnect remain pending
 until user reports; dual IOSurfaces and ten-minute performance remain later A3.
+
+The original A1 dependency artifact (run `38186021966`) expired. Actions-only
+[refresh 40676968489](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40676968489)
+rebuilds the **same** Mesa `590bf21d918c86908d96d1f4590ecd25b9657171` and
+virglrenderer `32dac0c627fba374709102c114f2896b7c899f46` pins, with existing
+compiler caches. Its GL/PRESENT/readback/lifetime/dynamic-pixel gates passed.
+The native regression workflow explicitly pins that verified run (90-day
+artifact retention), rather than substituting a latest-main dependency build.
+The iOS sysroot is still the verified `40636888480` artifact; no iOS dependency
+rebuild/provider change is involved in A3.1.

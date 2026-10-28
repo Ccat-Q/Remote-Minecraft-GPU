@@ -39,9 +39,10 @@ jobs:
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
-      # Exact retained dependency bundle used by accepted A1; never silently
-      # select a different latest-main build for the A2 fixture/regressions.
-      LINUX_RUN_ID: ${{ inputs.linux_run_id || '38186021966' }}
+      # Accepted A1 dependency commits, rebuilt with the identical pins after
+      # original run 38186021966 expired. Never select latest-main silently.
+      # Refresh run 40676968489 passed all existing GL/PRESENT/readback gates.
+      LINUX_RUN_ID: ${{ inputs.linux_run_id || '40676968489' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -96,6 +97,11 @@ jobs:
           set -o pipefail
           LD_LIBRARY_PATH="$GITHUB_WORKSPACE/_stage/virglrenderer/lib/x86_64-linux-gnu" \
             timeout 45s _stage/bin/native-vtest-lifetime 2>&1 | tee native-vtest-lifetime.log
+      - name: Verify A3.1 zero-wait copy polls and context restoration (Linux oracle only)
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="$GITHUB_WORKSPACE/_stage/virglrenderer/lib/x86_64-linux-gnu" \
+            timeout 45s _stage/bin/a21-shared-copy --async-poll 2>&1 | tee a31-async-copy.log
       - name: Run native decoder with actual GL through QUIC
         run: |
           set -o pipefail
@@ -133,6 +139,7 @@ jobs:
             a1-dynamic-present.log
             a2-virgl-pattern.log
             a21-shared-copy.log
+            a31-async-copy.log
             a21-remote-scanout.log
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4

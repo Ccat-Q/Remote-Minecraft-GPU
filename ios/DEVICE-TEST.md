@@ -8,8 +8,9 @@ GLES 3.0 works, and GLES 3.1/3.2 requests are rejected with EGL 0x3004. Guest
 GLSL is 130 in both capsets, below the planned 150 threshold. These are local
 observations, not remote draw or guest GL 3.2 Core acceptance. Repetition,
 leak/thermal tests remain pending. These are the earlier LOCAL observations;
-the later A2.1 single-frame remote acceptance is recorded below. Multi-frame
-and long-hold/cleanup/reconnect acceptance remain separate pending tests.
+the later A2.1 single-frame and multi-frame evidence is recorded below:
+the 7/12-frame image and live hold/cleanup gates passed,
+while same-process render reconnect remains a separate pending test.
 
 The app build at `816bf85` is retained in
 [run 38245180997](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/38245180997).
@@ -91,7 +92,7 @@ Minecraft, or network configuration is needed for A2.0.
 Source/interface details and CI-only readback boundary:
 [A2.0 implementation](../docs/a2-single-frame-interop.md).
 
-## A2.1 real Remote Display (single frame accepted; multi-frame pending)
+## A2.1 real Remote Display (single and 7/12 frames accepted; reconnect pending)
 
 User-confirmed single-frame baseline `3b5e80d25f04de4b96b3c3ed2381537ba90b57ed`,
 Actions app `39101559555`, iPhone18,3 / iOS 27.0.1 (24A446). Ubuntu frame 0
@@ -169,5 +170,6 @@ Then exercise the candidate through virglrenderer and Ubuntu Mesa. Host-native
 desktop GL is not required if the chain implements the virtual desktop GL
 semantics, but guest Core-context creation and real shaders/draws must pass.
 Never substitute GL_VERSION, GLSL_VERSION or cap-bit overrides for implementation.
-Both routes remain unaccepted until their corresponding reports are supplied.
+Route A's A2.1 multi-frame gates are accepted as recorded above; A3.1 and route
+B remain unaccepted until their corresponding reports are supplied.
 See [the interface investigation/task plan](../docs/next-stage-plan.md).

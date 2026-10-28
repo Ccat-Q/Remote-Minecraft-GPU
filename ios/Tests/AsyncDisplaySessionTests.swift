@@ -1,6 +1,18 @@
 import XCTest
 @testable import RemoteGPUProtocol
 
+// Only touched on the test owner queue. No fake GL result is counted as device
+// evidence: this fixture tests real pulse/state/order/batch integration only.
+private final class CompletionFixture: @unchecked Sendable {
+    let state = RemoteGPUSingleSlotCompletion()
+    let order = RemoteGPUSerialDisplayOrder()
+    let batch = RemoteGPUDisplayBatchCursor()
+    var frame: RemoteGPUPresent?
+    var ticket: RemoteGPUFrameTicket?
+    var releases = 0
+    var done = false
+}
+
 final class AsyncDisplaySessionTests: XCTestCase {
     private func present(_ frame: UInt64 = 1, resource: UInt64 = 42) throws -> RemoteGPUPresent {
         var payload = Data()
@@ -20,6 +32,47 @@ final class AsyncDisplaySessionTests: XCTestCase {
         let driver = RemoteGPUCompletionPulse(queue: DispatchQueue(label: "test.completion")) { fired.fulfill() }
         wait(for: [fired], timeout: 2)
         driver.cancel()
+    }
+    func testFinalFrameDrainsFromActualPulseWithoutFollowingPacket() throws {
+        let queue = DispatchQueue(label: "test.final-frame.owner")
+        let fixture = CompletionFixture()
+        let marker = RemoteGPUEnvelope(type: .present, flags: 0, payload: try presentPayload())
+        try queue.sync {
+            let submit = RemoteGPUVTestChunk(sequence: 1, bytes: Data([1])).envelope
+            try fixture.batch.admit([submit, marker]) { fixture.releases += 1 }
+            try fixture.order.consume(fixture.batch.next()!.payload) { _ in }
+            let frame = try fixture.order.beginPresent(fixture.batch.next()!.payload)
+            fixture.frame = frame
+            fixture.ticket = try fixture.state.begin(frame, at: ProcessInfo.processInfo.systemUptime)
+            XCTAssertEqual(fixture.batch.remaining, 0)
+            XCTAssertEqual(fixture.releases, 0) // No suffix and no next packet, still pinned.
+        }
+        let completed = expectation(description: "final frame retires from independent pulse")
+        let driver = RemoteGPUCompletionPulse(queue: queue) {
+            guard !fixture.done else { return }
+            do {
+                let next = RemoteGPUCompletionStage(rawValue: fixture.state.stage.rawValue + 1)!
+                try fixture.state.observe(fixture.ticket!, stage: next, at: ProcessInfo.processInfo.systemUptime)
+                if next == .complete {
+                    try fixture.order.completePresent(fixture.frame!)
+                    fixture.batch.release()
+                    fixture.done = true
+                    completed.fulfill()
+                }
+            } catch {
+                XCTFail("Scheduler contract failed: \(error)")
+                fixture.done = true
+                completed.fulfill()
+            }
+        }
+        wait(for: [completed], timeout: 2)
+        driver.cancel()
+        queue.sync {
+            XCTAssertEqual(fixture.order.displayedFrame, 1)
+            XCTAssertEqual(fixture.releases, 1)
+            XCTAssertNil(fixture.state.active)
+            XCTAssertFalse(fixture.batch.isActive)
+        }
     }
     func testSingleSlotWaitsForAllThreeStagesAndRejectsOvertake() throws {
         let state = RemoteGPUSingleSlotCompletion()
