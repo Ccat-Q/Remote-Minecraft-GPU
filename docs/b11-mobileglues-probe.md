@@ -130,7 +130,7 @@ Device report from the same model/OS at `59c7001`, run `40785620860`:
   its checked proc-table route; the App's independent mandatory-export check was
   the erroneous additional prerequisite, not evidence of missing desktop GL semantics.
 
-### Shared-resolver correction (Actions/device validation pending)
+### Shared-resolver correction (Actions passed, device retest pending)
 
 The resolver policy is now in `Overlay/Bootstrap.h`, used by the actual candidate
 bootstrap and App acquisition ABI. CI compiles that same policy with ASan/UBSan:
@@ -138,6 +138,22 @@ valid direct export, absent export with valid EGL/GLES proc entry, both missing,
 unresolvable/foreign identity, invalid anchors, and no fallback from a bad export.
 These are policy fixtures, not simulated iPhone execution. The candidate must be
 rebuilt because its ABI changed; ANGLE remains the exact accepted artifact.
+
+- Code `8c5a943e48ffdf6108e59a5d807dba1160f8e075`, branch `experiment/b11-mobileglues-probe`.
+- [iOS Actions 40816036011](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40816036011) **passed**: candidate ARM64 build, new ABI export, provider/link isolation, independent app and IPA packaging, exact unsigned bundle hash checks. All compilation occurred in Actions.
+- [Self-signable IPA artifact 12872507543](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40816036011/artifacts/12872507543).
+- [Diagnostics and LGPL corresponding source 12872512159](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40816036011/artifacts/12872512159), including exact candidate adaptations, toolchain, build/link logs, dependency pins and full provenance.
+- [CI 40816036028](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40816036028) **passed**: shared platform policy ASan/UBSan, existing native vtest and double-slot ownership tests, 8 B1 Python source/isolation tests, 32 Swift tests, Linux proxy/protocol and Mesa patch gates. These do not prove iPhone context or shader behavior.
+- IPA SHA256 `ceb1ddae83c4e57cf254e4d5f36af66c9a9c6ffd1cda161e3ba5aba932eb283e`; downloaded ZIP integrity and embedded source/run verified.
+- New unsigned candidate framework SHA256 `63f17c59ff480b7cd71463f901f28f76611a3a40bba6e9d9dbd37d63d8f1b6c0`. The ABI change intentionally changes the candidate binary; ANGLE EGL/GLESv2 hashes remain the accepted values. The provenance sysroot also lists epoxy/VirGL, but neither is embedded in this App.
+
+Changed files: `Overlay/Bootstrap.{h,cpp}` (shared selection policy/checked ABI),
+`App/Probe.mm` (reuse resolver and report route), the two Actions workflows,
+actual policy test and Python guards. The obsolete App-only policy was removed.
+Docs and device procedure now distinguish both retained failures from pending
+context acceptance. No formal renderer, dependency revision or ADR was changed.
+There is no new performance result: context/sharing/migration and B1.2/guest GL
+remain gated on real device reports.
 
 Update **only the independent B1.1 app**, launch a fresh process and share Full
 Report. Expect `acquire_metal_display_shared_resolver`, a verified

@@ -189,7 +189,7 @@ Frame/UI durations include this policy, so do not treat them as GPU/FPS data.
 GPU-in-flight cancellation and long-run stability still need separate tests.
 See [full A3.2 ownership/procedure](../docs/a32-double-surface.md).
 
-## B1.1 standalone Provider/Context Probe (device partial/blocked, correction pending)
+## B1.1 standalone Provider/Context Probe (device partial, correction ready for retest)
 
 Install the separately signed **RemoteGPU B1.1** IPA, bundle
 `org.remotegpu.experiments.mobileglues`, alongside the accepted RemoteGPU App.
@@ -211,8 +211,9 @@ GLSL150 shader or guest GL3.2 capability verdict follows from this B1.1 report.
 See [implementation and reproducible procedure](../docs/b11-mobileglues-probe.md).
 Device follow-up at `59c7001` / `40785620860` confirmed bootstrap/provider
 checks but stopped at a missing direct `eglGetPlatformDisplayEXT` export.
-The next correction shares bootstrap's validated ANGLE proc-table selection
-with the App. In a fresh Probe process, capture the selected route/provider,
+Correction `8c5a943` / Actions `40816036011` passed CI/build and shares
+bootstrap's validated ANGLE proc-table selection with the App. Use the new
+IPA linked in the implementation procedure. In a fresh Probe process, capture the selected route/provider,
 then actual context, sharing, migration, pixel checks and cleanup. CI policy
 fixtures do not substitute for those device results; do not mark B1.1 passed yet.
 
