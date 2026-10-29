@@ -108,7 +108,7 @@ jobs:
           otool -L "$framework" | tee _build/b11-diagnostics/mobileglues-linkage.txt
           ! otool -L "$framework" | grep -E 'OpenGLES.framework|OpenGL.framework|libEGL|libGLESv2|virglrenderer|epoxy'
           nm -gU "$framework" > _build/b11-diagnostics/mobileglues-exports.txt
-          for name in rgpu_mg_bootstrap eglCreateContext eglMakeCurrent eglGetProcAddress glGetString glBindTexture glFramebufferTexture2D glReadPixels; do
+          for name in rgpu_mg_bootstrap rgpu_mg_acquire_metal_display eglCreateContext eglMakeCurrent eglGetProcAddress glGetString glBindTexture glFramebufferTexture2D glReadPixels; do
             grep -E " _${name}$" _build/b11-diagnostics/mobileglues-exports.txt
           done
           python3 tools/ci/inspect_macho.py "$framework" > _build/b11-diagnostics/macho.txt

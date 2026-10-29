@@ -12,9 +12,11 @@ void *front = nullptr, *eglBase = nullptr, *glesBase = nullptr, *frontBase = nul
 unsigned long resolved = 0;
 std::string failure;
 bool attempted = false;
+bool bootstrapped = false;
+rgpu::b11::PlatformEntry selectedPlatform{};
 void *image(void *p) {
     Dl_info info{};
-    if (!p || !dladdr(p, &info) || !info.dli_fbase)
+    if (!p || !dladdr(p, &info) || !info.dli_fbase || !info.dli_fname)
         throw std::runtime_error("Cannot identify provider image");
     return info.dli_fbase;
 }
@@ -47,26 +49,39 @@ extern "C" void *rgpu_mg_frontend_symbol(const char *name) {
 
 extern "C" void *rgpu_mg_metal_display(void) {
     using Platform = EGLDisplay (*)(EGLenum, void*, const EGLint*);
-    auto platform = reinterpret_cast<Platform>(rgpu_mg_backend_symbol(egl, "eglGetPlatformDisplayEXT"));
-    if (!platform) {
+    selectedPlatform = rgpu::b11::selectPlatform([] {
+        return rgpu_mg_backend_symbol(egl, "eglGetPlatformDisplayEXT");
+    }, []() -> void* {
         auto get = reinterpret_cast<__eglMustCastToProperFunctionPointerType (*)(const char*)>(
             rgpu_mg_backend_symbol(egl, "eglGetProcAddress"));
         if (!get) throw std::runtime_error("ANGLE backend proc resolver unavailable");
-        platform = reinterpret_cast<Platform>(get("eglGetPlatformDisplayEXT"));
-        // ANGLE's EGL_* proc table is implemented in GLESv2; either exact
-        // installed ANGLE image is legitimate, never the frontend/global scope.
-        if (platform) {
-            void *base = image(reinterpret_cast<void*>(platform));
-            if (base != eglBase && base != glesBase)
-                throw std::runtime_error("Wrong ANGLE platform implementation provider");
-        }
-    }
-    if (!platform) throw std::runtime_error("ANGLE Metal platform entry unavailable");
+        return reinterpret_cast<void*>(get("eglGetPlatformDisplayEXT"));
+    }, image, eglBase, glesBase);
+    auto platform = reinterpret_cast<Platform>(selectedPlatform.address);
     const EGLint attrs[] = {0x3203 /* EGL_PLATFORM_ANGLE_TYPE_ANGLE */,
                            0x3489 /* EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE */, EGL_NONE};
     auto display = platform(0x3202 /* EGL_PLATFORM_ANGLE_ANGLE */, nullptr, attrs);
     if (display == EGL_NO_DISPLAY) throw std::runtime_error("ANGLE explicit Metal display failed");
     return display;
+}
+
+extern "C" int rgpu_mg_acquire_metal_display(void **display, void **entry, int *route) {
+    if (display) *display = nullptr;
+    if (entry) *entry = nullptr;
+    if (route) *route = 0;
+    try {
+        if (!display || !entry || !route || !bootstrapped)
+            throw std::runtime_error("Metal display ABI requires successful bootstrap and output arguments");
+        void *value = rgpu_mg_metal_display();
+        *display = value;
+        *entry = selectedPlatform.address;
+        *route = static_cast<int>(selectedPlatform.route);
+        failure.clear();
+        return 0;
+    } catch (const std::exception& e) {
+        failure = e.what();
+        return -1;
+    }
 }
 
 extern "C" int rgpu_mg_bootstrap(void *frontend, void *backendEGL, void *backendGLES) {
@@ -84,6 +99,7 @@ extern "C" int rgpu_mg_bootstrap(void *frontend, void *backendEGL, void *backend
         // proc_init's temporary GLES context is already explicitly released.
         if (!GLES.glGetString || !GLES.glGetError || g_gles_caps.major < 3)
             throw std::runtime_error("MobileGlues bootstrap did not establish GLES 3 backend");
+        bootstrapped = true;
         return 0;
     } catch (const std::exception& e) {
         failure = e.what();

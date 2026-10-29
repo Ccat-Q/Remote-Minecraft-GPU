@@ -1,5 +1,5 @@
 #import "Probe.h"
-#include "ProviderPolicy.hpp"
+#include "../Overlay/Bootstrap.h"
 #import <UIKit/UIKit.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -160,7 +160,8 @@ NSString *RGPURunMobileGluesProbe(void) {
         Frontend f(frontend);
         auto backendString = symbol<decltype(&::glGetString)>(backendGLES, "glGetString", "/GLESv2.framework/");
         auto backendInit = symbol<decltype(&::eglInitialize)>(backendEGL, "eglInitialize", "/EGL.framework/");
-        auto backendProc = symbol<decltype(&::eglGetProcAddress)>(backendEGL, "eglGetProcAddress", "/EGL.framework/");
+        auto acquireDisplay = symbol<decltype(&rgpu_mg_acquire_metal_display)>(frontend,
+            "rgpu_mg_acquire_metal_display", "/MobileGluesProbe.framework/");
         auto backendError = symbol<decltype(&::eglGetError)>(backendEGL, "eglGetError", "/EGL.framework/");
         [report appendFormat:@"Frontend EGL provider: %s\nFrontend GL provider: %s\nBackend EGL provider: %s\nBackend GLES provider: %s\n",
             owner(reinterpret_cast<void*>(f.eglCreateContext)).c_str(), owner(reinterpret_cast<void*>(f.glGetString)).c_str(),
@@ -187,32 +188,30 @@ NSString *RGPURunMobileGluesProbe(void) {
         }
         Session s{f, report};
         try {
-            [report appendString:@"B11_STAGE resolve_platform_export_and_optional_proc\n"];
-            // Pinned libEGL exports wrappers, whereas its proc table (in
-            // libGLESv2/proc_table_egl_autogen.cpp) returns EGL_* implementations
-            // in GLESv2. Validate both deterministic routes, not image-order luck.
-            auto platform = symbol<PFNEGLGETPLATFORMDISPLAYEXTPROC>(backendEGL, "eglGetPlatformDisplayEXT", "/EGL.framework/");
-            [report appendFormat:@"Backend EGL mandatory platform export: address=%p provider=%s VERIFIED\n",
-                reinterpret_cast<void*>(platform), owner(reinterpret_cast<void*>(platform), "exported eglGetPlatformDisplayEXT").c_str()];
+            [report appendString:@"B11_STAGE acquire_metal_display_shared_resolver\n"];
             const auto priorBackendError = backendError();
-            void *platformImplementation = reinterpret_cast<void*>(backendProc("eglGetPlatformDisplayEXT"));
-            const auto procError = backendError();
+            void *display = nullptr, *platformImplementation = nullptr;
+            int route = 0;
+            const int acquired = acquireDisplay(&display, &platformImplementation, &route);
+            const auto displayError = backendError();
+            [report appendFormat:@"Shared Metal display acquisition result=%d error=%s route=%d entry=%p display=%p prior_EGL=0x%x acquire_EGL=0x%x\n",
+                acquired, bootError(), route, platformImplementation, display, priorBackendError, displayError];
+            require(acquired == 0 && display && platformImplementation, "Shared Metal display acquisition failed (see error above)");
+            require(displayError == EGL_SUCCESS, "Shared Metal display acquisition reported EGL error");
             Dl_info implementation{}, eglIdentity{}, glesIdentity{};
-            const int implementationResolved = platformImplementation ? dladdr(platformImplementation, &implementation) : 0;
+            require(dladdr(platformImplementation, &implementation) && implementation.dli_fbase && implementation.dli_fname,
+                "Selected platform entry identity unavailable");
             require(dladdr(reinterpret_cast<void*>(backendInit), &eglIdentity) && eglIdentity.dli_fbase,
                 "backend eglInitialize anchor identity unavailable");
             require(dladdr(reinterpret_cast<void*>(backendString), &glesIdentity) && glesIdentity.dli_fbase,
                 "backend glGetString anchor identity unavailable");
-            [report appendFormat:@"Backend optional eglGetProcAddress(eglGetPlatformDisplayEXT): address=%p dladdr=%d provider=%s prior_EGL=0x%x query_EGL=0x%x\n",
-                platformImplementation, implementationResolved, implementation.dli_fname ?: "UNAVAILABLE", priorBackendError, procError];
-            const auto procRoute = rgpu::b11::validateOptionalPlatform(platformImplementation,
-                implementationResolved && implementation.dli_fname ? implementation.dli_fbase : nullptr,
-                eglIdentity.dli_fbase, glesIdentity.dli_fbase);
-            [report appendFormat:@"Backend optional platform proc route: %s; selected route=verified EGL exported wrapper\n",
-                procRoute == rgpu::b11::OptionalRoute::verified ? "VERIFIED" : "UNAVAILABLE (not a required duplicate route; NOT a passed proc lookup)"];
-            const EGLint metal[] = {0x3203, 0x3489, EGL_NONE};
+            require(route == 1 || route == 2, "Unknown platform route");
+            require(implementation.dli_fbase == eglIdentity.dli_fbase ||
+                (route == 2 && implementation.dli_fbase == glesIdentity.dli_fbase), "Selected platform entry has foreign provider");
+            [report appendFormat:@"Backend selected platform route=%s provider=%s VERIFIED; bootstrap and App share resolver\n",
+                route == 1 ? "EGL_DIRECT_EXPORT" : "ANGLE_PROC_TABLE (direct export absent)", implementation.dli_fname];
             [report appendString:@"B11_STAGE frontend_display_initialize\n"];
-            s.display = platform(0x3202, nullptr, metal);
+            s.display = static_cast<EGLDisplay>(display);
             require(s.display != EGL_NO_DISPLAY, "ANGLE Metal display unavailable");
             f.eglCheck(f.eglInitialize(s.display, nullptr, nullptr), report, "frontend initialize explicit Metal display");
             s.initialized = true;

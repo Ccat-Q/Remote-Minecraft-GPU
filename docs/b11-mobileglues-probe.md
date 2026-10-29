@@ -9,8 +9,9 @@ Build/link/packaging and retained regressions now passed at `ff4fae6`.
 Device execution at `ff4fae6` is **PARTIAL / BLOCKED**: the user confirmed
 successful bootstrap (384 backend resolutions) and seven frontend direct/proc
 ownership checks, then a generic dladdr failure before frontend context creation.
-The corrected diagnostic is pending device retest. No context/sharing PASS or
-desktop GL capability is claimed. See the retained device report below.
+The follow-up device run at `59c7001` identifies the missing direct export:
+`dlsym eglGetPlatformDisplayEXT: symbol not found`. No context/sharing PASS or
+desktop GL capability is claimed. See both retained reports below.
 
 ## Implementation boundary
 
@@ -44,12 +45,15 @@ ANGLE's exported EGL wrappers and its `EGL_*` proc-table implementations can
 live in different installed ANGLE images; both are identified explicitly.
 OS-preloaded GLES images are reported, not confused with the actual selected
 function providers. Their mere presence is not a binding failure.
-The selected exported `eglGetPlatformDisplayEXT` entry is mandatory and strictly
-validated. Its duplicate `eglGetProcAddress` query is an optional diagnostic:
-NULL is recorded as UNAVAILABLE, not a passed lookup or missing GL feature.
-A non-null result still requires a resolvable identity in one of the exact
-installed ANGLE images; unresolved/foreign pointers fail closed. Symbol names,
-NULL versus dladdr errors, addresses, EGL errors and stage markers are retained.
+Bootstrap and App now share one platform resolver. It first checks the direct
+`eglGetPlatformDisplayEXT` export; if absent, it queries the checked backend
+`eglGetProcAddress`. Direct exports must belong to the exact installed EGL image;
+proc entries must belong to the exact installed EGL or GLESv2 image. No frontend,
+global or system-provider fallback exists. Both entries absent, non-null without
+identity, or foreign identity fail closed. A foreign direct export cannot trigger
+fallback. A checked, exception-contained ABI exposes this same Metal display
+acquisition to the App only after successful bootstrap. Reports identify route,
+pointer, provider, display, EGL status and stages; context tests remain mandatory.
 
 ## Build and test
 
@@ -102,14 +106,13 @@ This is a summary of that report, not reconstructed raw device output.
 - Failure: `BLOCKED: dladdr provider identity unavailable`; no frontend display,
   context, sharing, migration or pixel-result line was reached.
 
-The code location is the subsequent platform export/duplicate-proc ownership
-check. Bootstrap already used the validated exported platform entry; requiring
-the additional unused proc-table route was an erroneous extra prerequisite.
-The old generic error does not itself distinguish NULL from a non-null pointer
-whose image could not be resolved. The new report must provide that distinction;
-do not invent a device NULL result or call this a driver/MobileGlues feature failure.
+The old generic error did not distinguish NULL from a non-null pointer whose
+image could not be resolved. The earlier inference that bootstrap used a direct
+export was incorrect: the next device report proves that export is absent.
+Source/header availability is not evidence of a binary export. Neither report
+establishes a driver/MobileGlues feature failure.
 
-### Targeted correction build (device retest pending)
+### First correction build (device failure retained)
 
 - Source `59c7001bb93b6d7c93994e72507034fdfffce73a` on the same experiment branch.
 - [IPA Actions 40785620860](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40785620860), [IPA artifact 12859780300](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40785620860/artifacts/12859780300), [diagnostics/source 12859141498](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40785620860/artifacts/12859141498).
@@ -117,10 +120,27 @@ do not invent a device NULL result or call this a driver/MobileGlues feature fai
 - IPA SHA256 `59dee3113d9a816f6d9a039911b4e25268a66c3f2a8729d5e28f4249db62bfbc`; ZIP integrity and embedded source/run checked.
 - Candidate framework SHA256 remains `47fafd8b923cefd1c8c28e11b580ba01a8f2b716e5877d8c8f2e14d178399f2c`; recipe/overlays, ANGLE and formal route A renderer are unchanged. Only the Probe app and tests changed, with verified dependency caches reused.
 
-Update **only the independent B1.1 app**, launch a fresh process and share the
-full report. Expect `B11_STAGE resolve_platform_export_and_optional_proc`,
-the mandatory exported wrapper identity and optional query address/dladdr/EGL
-status. An absent duplicate route must be explicitly UNAVAILABLE, not a passed
-lookup. A non-null wrong/unresolvable pointer still blocks. Subsequent display,
-context, sharing, migration and cleanup results must actually execute on the
-phone before acceptance; this build is not a device PASS.
+Device report from the same model/OS at `59c7001`, run `40785620860`:
+
+- Bootstrap succeeded with 384 resolved entries and the same seven frontend identities.
+- Stage `resolve_platform_export_and_optional_proc` failed with
+  `dlsym eglGetPlatformDisplayEXT: symbol not found` in bundled EGL.framework.
+- Owner-thread release returned 1 / EGL 0x3000; no frontend contexts were created.
+- This disproves the prior direct-export assumption. Bootstrap has already used
+  its checked proc-table route; the App's independent mandatory-export check was
+  the erroneous additional prerequisite, not evidence of missing desktop GL semantics.
+
+### Shared-resolver correction (Actions/device validation pending)
+
+The resolver policy is now in `Overlay/Bootstrap.h`, used by the actual candidate
+bootstrap and App acquisition ABI. CI compiles that same policy with ASan/UBSan:
+valid direct export, absent export with valid EGL/GLES proc entry, both missing,
+unresolvable/foreign identity, invalid anchors, and no fallback from a bad export.
+These are policy fixtures, not simulated iPhone execution. The candidate must be
+rebuilt because its ABI changed; ANGLE remains the exact accepted artifact.
+
+Update **only the independent B1.1 app**, launch a fresh process and share Full
+Report. Expect `acquire_metal_display_shared_resolver`, a verified
+`ANGLE_PROC_TABLE (direct export absent)` owner, then actual frontend display,
+context/sharing, worker migration, three pixel checks and cleanup results.
+Any later failure stays BLOCKED with its stage; B1.2 and guest GL remain untested.

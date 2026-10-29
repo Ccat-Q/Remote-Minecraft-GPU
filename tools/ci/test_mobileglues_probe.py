@@ -85,12 +85,19 @@ class MobileGluesProbeTests(unittest.TestCase):
         self.assertNotIn('setenv("MESA_GL_VERSION_OVERRIDE"', source)
         self.assertNotIn('setenv("MG_GL_VERSION"', source)
 
-    def test_platform_export_remains_mandatory_duplicate_proc_is_diagnostic(self):
+    def test_bootstrap_and_app_share_checked_platform_resolver(self):
         source = (PROBE / "App/Probe.mm").read_text()
-        self.assertIn('symbol<PFNEGLGETPLATFORMDISPLAYEXTPROC>(backendEGL, "eglGetPlatformDisplayEXT"', source)
-        self.assertIn("validateOptionalPlatform(platformImplementation", source)
-        self.assertNotIn("owner(platformImplementation)", source)
-        self.assertIn("NOT a passed proc lookup", source)
+        overlay = (PROBE / "Overlay/Bootstrap.cpp").read_text()
+        policy = (PROBE / "Overlay/Bootstrap.h").read_text()
+        self.assertIn("acquireDisplay(&display, &platformImplementation, &route)", source)
+        self.assertNotIn('symbol<PFNEGLGETPLATFORMDISPLAYEXTPROC>', source)
+        self.assertIn("ANGLE_PROC_TABLE (direct export absent)", source)
+        self.assertIn("rgpu::b11::selectPlatform", overlay)
+        self.assertIn("void *value = rgpu_mg_metal_display();", overlay)
+        self.assertIn("!bootstrapped", overlay)
+        self.assertIn("if (display) *display = nullptr", overlay)
+        self.assertIn("if (!address) { address = proc();", policy)
+        self.assertIn("Wrong ANGLE platform implementation provider", policy)
         self.assertIn("B11_STAGE create_frontend_contexts", source)
         self.assertIn('"dlsym "', source)
 
