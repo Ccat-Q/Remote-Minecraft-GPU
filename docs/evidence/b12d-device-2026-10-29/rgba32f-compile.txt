@@ -1,0 +1,5 @@
+Actual frontend AND raw ANGLE fragment compile statuses: 0
+Both logs:
+ERROR: 0:2: 'GL_EXT_texture_buffer' : extension is not supported
+ERROR: 0:7: 'samplerBuffer' : Illegal use of reserved word
+ERROR: 0:7: 'samplerBuffer' : syntax error

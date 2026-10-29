@@ -1,5 +1,9 @@
 # B1.2c isolated depth, stencil and blending probe
 
+Later audit caveat: earlier frontend GL0/cleanup GL0 does not prove error absence;
+the pinned getter suppressed errors. Actual pixels, raw shader/FBO and EGL
+results remain evidence. [Strict retest boundary](b12d-blockers-and-retest.md).
+
 Latest verdict: **limited scope device PASSED** at `e989b4d`.
 [Actual report summary, captured shaders and full provenance](evidence/b12c-device-2026-10-29/README.md).
 Four complete outputs checked 1024 actual pixels / 0 mismatches; retained

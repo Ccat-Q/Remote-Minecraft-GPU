@@ -253,7 +253,13 @@ First ready-to-install B1.2a source: `c6c443f`, iOS Actions `40818346056`, CI
 The candidate was recompiled from identical pinned/adapted source and has a new
 binary hash, so keep full provenance and run the included B1.1 regression too.
 
-## B1.2d standalone Buffer / Geometry (device pending)
+## B1.2d standalone Buffer / Geometry (device BLOCKED)
+
+Source `528ab1e` actually failed all three new features; [evidence and
+error-observability caveat](../docs/evidence/b12d-device-2026-10-29/README.md).
+Prior matching output regressions remain valid; reported GL0 does not establish
+error absence because the pinned frontend always returned zero. Historical
+instructions below remain for reproduction, not an acceptance claim.
 
 [Exact scope and steps](../docs/b12d-buffer-geometry.md). Separate **RemoteGPU
 B1.2d** (`.mobileglues.capabilities`); leave accepted Apps installed. Fresh

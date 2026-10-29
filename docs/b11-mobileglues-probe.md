@@ -1,5 +1,10 @@
 # B1.1 isolated MobileGlues provider/context probe
 
+Later B1.2d audit caveat: pinned frontend glGetError always returned zero.
+Earlier GL0/error-absence statements do not prove no errors; actual output,
+raw shader status and EGL results remain scoped evidence. [Details and strict
+retest boundary](b12d-blockers-and-retest.md). Historical artifacts stay intact.
+
 Experimental branch `experiment/b11-mobileglues-probe`, based on accepted
 A3.2 source `6dd8b04` and its later evidence record. No production renderer,
 protocol, DNS, server deployment or ADR is changed. All compilation is Actions-only.

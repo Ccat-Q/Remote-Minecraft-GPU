@@ -1,5 +1,9 @@
 # B1.2a isolated GLSL 150 shader / dynamic-output probe
 
+Later audit caveat: earlier frontend GL0 is not proof of error absence because
+the pinned getter suppressed errors. Actual pixel and raw compile/link evidence
+remains valid. [Strict retest boundary](b12d-blockers-and-retest.md).
+
 Branch `experiment/b12-mobileglues-shader-probe`, after accepted B1.1 source
 `d95d32be3d003f3c2c6c5a84b2f87132e4f6c7b2`.
 Latest device verdict: **B1.2a limited scope PASSED** at `c6c443f`.

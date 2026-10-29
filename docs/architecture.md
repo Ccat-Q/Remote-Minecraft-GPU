@@ -20,7 +20,7 @@ unchanged; no video streaming or phone JVM is introduced.
 | Isolated B1.2a device passed | [Shader target](b12-mobileglues-shaders.md) at `c6c443f`: real GLSL150 VF translation/compile/link and three dynamic outputs passed (768 pixels / 0 mismatches). Remaining features/full B1.2 and guest GL are unaccepted. |
 | Isolated B1.2b device passed | [Features target](b12b-instancing-sync.md) at `f91d683`: representative 4/2/0 instance outputs, actual pending-to-complete same-context Fences and retirement passed. Remaining features/full B1.2, cross-context and guest gates unaccepted. |
 | Isolated B1.2c device passed | [Raster target](b12c-raster-state.md) at `e989b4d`: four actual depth/stencil/blending outputs, 1024 pixels / 0 mismatches, retained regressions and cleanup passed. Not full B1.2 or guest acceptance. |
-| Isolated B1.2d device pending | [Buffer/Geometry target](b12d-buffer-geometry.md): signed/float TBO updates and real Geometry creation/compile/draw, fresh unshared contexts, independent PASS/BLOCKED. Formal renderer/provider recipe unchanged. |
+| Isolated B1.2d device BLOCKED | [Actual Buffer/Geometry failures](b12d-buffer-geometry.md): wrong R8I outputs, float compile failure, Geometry allocation zero. Old GL0 observations are qualified by discovered upstream error suppression. No B1.3/caps promotion. |
 | Later candidates only | MobileGL iOS interfaces and UTM MoltenVK with a suitable GL/Vulkan implementation. Not developed concurrently; none has passed the guest gate. |
 
 The completed [feasibility audit](../exa-results/remotegpu-feasibility-2026-10-12/audit.md)

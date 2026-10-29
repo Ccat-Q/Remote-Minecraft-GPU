@@ -1,6 +1,13 @@
 # B1.2d isolated Buffer Texture / Geometry capability probe
 
-Status: Actions iOS build and CI passed; **device pending**. Not full B1.2,
+Latest actual device verdict: **BLOCKED for all three new features**.
+[Concrete blockers, prepared minimal repair and publication blocker](b12d-blockers-and-retest.md).
+[Actual failures, captured sources and provenance](evidence/b12d-device-2026-10-29/README.md).
+R8I failed initial/update/reattach output; float TBO failed real compilation;
+Geometry allocation returned zero. Prior regressions retained matching pixels.
+Source audit also found frontend glGetError always returned zero: previous GL0
+observations do not establish absence of errors. Historical delivery notes below
+are retained. Not full B1.2,
 VirGL integration, Ubuntu guest GL3.2, Minecraft or performance acceptance.
 Branch `experiment/b12d-mobileglues-core-probe`. Accepted
 [B1.2c `e989b4d`](evidence/b12c-device-2026-10-29/README.md) and B1.1/a/b

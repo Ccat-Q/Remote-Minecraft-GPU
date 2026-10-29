@@ -1,5 +1,9 @@
 # B1.2b instancing and same-context sync probe
 
+Later audit caveat: earlier frontend GL0 is not proof of error absence because
+the pinned getter suppressed errors. Actual pixels, raw shader/Fence observations
+remain scoped evidence. [Strict retest boundary](b12d-blockers-and-retest.md).
+
 Latest device verdict: **limited scope PASSED** at `f91d683`.
 [Real report summary, translated source and full provenance](evidence/b12b-device-2026-10-29/README.md).
 Three instance cases checked 768 pixels / 0 mismatches; three Fences actually
