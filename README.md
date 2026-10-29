@@ -37,7 +37,7 @@ Status as of 2026-10-28:
 | Not implemented / accepted | A3 GPU-in-flight cancellation, sustained overlapping throughput/ten-minute performance; Minecraft/input/audio/Mods. Basic A3.1/A3.2 acceptance does not pass these gates. |
 | Isolated B1.1 device passed | [MobileGlues + accepted ANGLE Probe](docs/b11-mobileglues-probe.md): `d95d32b` verified provider/context, shared GPU content, exclusive thread migration/return and cleanup calls on iPhone. GLSL150/features, guest GL3.2 and leak profiling remain unverified. No formal renderer replacement. |
 | B1.2a device passed, limited scope | [GLSL150/dynamic-output target](docs/b12-mobileglues-shaders.md): `c6c443f` passed actual translation/compile/link and three dynamic VAO/VBO/FBO/texture outputs (768 pixels, zero mismatches). Not the full B1.2 or guest gate. |
-| B1.2b implementation, device pending | [Independent instancing/same-context sync target](docs/b12b-instancing-sync.md): 4/2/0 instance draws and Fence-before-read correctness test; no full feature, cross-context or guest verdict. |
+| B1.2b built, device pending | [Independent instancing/same-context sync target](docs/b12b-instancing-sync.md): `f91d683` passed CI/IPA; 4/2/0 instance draws and Fence-before-read require device execution. No full feature, cross-context or guest verdict. |
 | Later candidate experiments | MobileGL interfaces and UTM MoltenVK with a compatibility implementation; not developed concurrently with the selected B1.1 candidate. |
 
 The current blocker does **not** imply remote GPU is impossible. Two independent

@@ -262,6 +262,10 @@ same-context Fence completion before all pixel reads, and cleanup. No server
 restart/pairing. [Scope and procedure](../docs/b12b-instancing-sync.md).
 No cross-context ordering, slow GPU/cancellation, full B1.2 or guest acceptance
 follows from this one-shot test. Remaining feature gates stay untested.
+Ready-for-device source `f91d683`, iOS Actions `40819548554`, CI `40819548714`
+passed. Use the `.features` B1.2b IPA linked in its procedure. Candidate was
+rebuilt from the same pinned/adapted source with a new binary hash; keep the
+full report/provenance and included B1.1/B1.2a regressions.
 
 ## Route B: subsequent feature and guest capability gates (unaccepted)
 

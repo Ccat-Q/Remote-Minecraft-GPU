@@ -18,6 +18,7 @@ unchanged; no video streaming or phone JVM is introduced.
 | Not implemented / accepted | A3 sustained overlapping throughput/resource memory budgets/ten-minute performance; Minecraft and input/audio/Modpack acceptance. |
 | Isolated B1.1 device passed | [MobileGlues Probe](b11-mobileglues-probe.md): `d95d32b` passed checked providers/context, shared GPU content, exclusive migration/return and cleanup calls. GLSL150/features, guest GL3.2 and driver leak profiling remain unaccepted. No formal renderer replacement. |
 | Isolated B1.2a device passed | [Shader target](b12-mobileglues-shaders.md) at `c6c443f`: real GLSL150 VF translation/compile/link and three dynamic outputs passed (768 pixels / 0 mismatches). Remaining features/full B1.2 and guest GL are unaccepted. |
+| Isolated B1.2b built, device pending | [Features target](b12b-instancing-sync.md) at `f91d683`: representative instancing/same-context Sync implemented, CI/IPA passed. Device, remaining feature, cross-context and guest gates unaccepted. |
 | Later candidates only | MobileGL iOS interfaces and UTM MoltenVK with a suitable GL/Vulkan implementation. Not developed concurrently; none has passed the guest gate. |
 
 The completed [feasibility audit](../exa-results/remotegpu-feasibility-2026-10-12/audit.md)

@@ -35,6 +35,9 @@ bit-identical to earlier artifacts. B1.1 and B1.2a regressions must execute firs
   `glGetSynciv(GL_SYNC_STATUS)` must confirm SIGNALED. Delete and confirm no live
   identity before pixel read. An RAII lease deletes any Fence on failure before
   its context is destroyed.
+  These checks follow the Khronos [wait result definitions](https://raw.githubusercontent.com/KhronosGroup/OpenGL-Refpages/main/gl4/glClientWaitSync.xml),
+  [identity query](https://raw.githubusercontent.com/KhronosGroup/OpenGL-Refpages/main/gl4/glIsSync.xml)
+  and [deletion rules](https://raw.githubusercontent.com/KhronosGroup/OpenGL-Refpages/main/gl4/glDeleteSync.xml).
 - After completion, read/compare all 256 pixels per case with an independent
   CPU oracle, retaining actual images and mismatch counts. Fixed RGB +/-1,
   exact alpha. Together with B1.2a this is six tiny local diagnostic reads, not
@@ -66,3 +69,19 @@ Depth/Stencil, Blending, Texture Buffer and Geometry Shader remain NOT TESTED.
 Full GL3.2, necessary workload limits/semantics, B1.3 VirGL/Ubuntu guest GL3.2,
 Minecraft/NeoForge, performance and driver-leak profiling remain unaccepted.
 No successful result may be inferred from version/profile strings or CI.
+
+## Reproducible delivery (device pending)
+
+- Source `f91d6838b1534a65a8c7e6eecc4830a2e47c572d`, branch `experiment/b12b-mobileglues-features-probe`.
+- Accepted B1.2a device evidence is a separate commit `362f848` on `experiment/b12-mobileglues-shader-probe`, preserving full provenance and actual translated shaders. Earlier failures were not removed.
+- [iOS Actions 40819548554](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40819548554) **passed**: ARM64 candidate build/link/export checks, independent Features App build, exact `.features` bundle/scope and accepted-source chain, unsigned framework hashes and no formal GL/provider hard-link contamination.
+- [Self-signable IPA artifact 12874211415](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40819548554/artifacts/12874211415), file `MobileGluesFeaturesProbe-unsigned.ipa`.
+- [Actual build diagnostics/LGPL corresponding source 12873484748](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40819548554/artifacts/12873484748), with pins, recipes, complete provenance, toolchain, compile/link logs and modified candidate source.
+- [CI 40819548714](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40819548714) **passed**: actual instance oracle/status classifier ASan/UBSan, retained B1.2a oracle, B1.1 policy tests, native vtest/double-slot tests, 12 MobileGlues source/isolation/provenance tests, 32 Swift tests, Linux proxy/protocol and Mesa patch gates. None substitutes for iPhone execution.
+- IPA SHA256 `a7c431d73f030fef1ba84e72c0eface9f11db630101fc3bca45e150135d1ab68`; downloaded checksum, ZIP integrity and embedded source/run/accepted B1.2a SHA verified.
+- Rebuilt unsigned candidate framework SHA256 `6ecf6f14f3a79cfedfe288cce5d61d8d5c1bf563ca160aa4216fb008b0486dce`; source pins and every adapted source hash match the accepted B1.2a recipe, but the binaries are NOT claimed bit-identical. ANGLE EGL/GLESv2 hashes remain exactly the accepted values and were reused without rebuilding.
+- Changed: independent target/UI/scope, common draw runner extended with an isolated instancing/Fence entry, new oracle/status-policy header and tests, CI/packaging selection, concise docs. Formal `ios/Renderer`, `ios/App`, `ios/RemoteGPU` are unchanged from accepted B1.2a.
+
+The user's next actual device report is required for B12B shader compilation,
+4/2/0 pixel results, observed Fence statuses/retirement and cleanup. No B1.2b
+device or GPU performance data is claimed yet; preserve Full Report on failure.
