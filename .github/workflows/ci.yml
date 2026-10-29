@@ -49,6 +49,11 @@ jobs:
           c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
             -Iios/Experiments/MobileGluesProbe/Shader tests/b12b_instances_sync.cpp -o /tmp/b12b-instances-sync
           /tmp/b12b-instances-sync
+      - name: Test B1.2c depth stencil blending CPU oracle (NOT GPU execution)
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+            -Iios/Experiments/MobileGluesProbe/Shader tests/b12c_raster.cpp -o /tmp/b12c-raster
+          /tmp/b12c-raster
 
   ios-build-compatibility:
     name: Pinned iOS build compatibility

@@ -11,3 +11,8 @@ void RGPURunInstancingSyncProbe(NSMutableString *report,
     const std::function<void*(const char*)>& frontend,
     const std::function<void*(const char*)>& backend);
 #endif
+#if RGPU_B12_RASTER_PROBE
+void RGPURunRasterProbe(NSMutableString *report,
+    const std::function<void*(const char*)>& frontend,
+    const std::function<void*(const char*)>& backend);
+#endif

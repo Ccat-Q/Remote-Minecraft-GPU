@@ -253,6 +253,17 @@ First ready-to-install B1.2a source: `c6c443f`, iOS Actions `40818346056`, CI
 The candidate was recompiled from identical pinned/adapted source and has a new
 binary hash, so keep full provenance and run the included B1.1 regression too.
 
+## B1.2c standalone Depth / Stencil / Blend (device pending)
+
+Follow [the isolated raster-state procedure](../docs/b12c-raster-state.md).
+Install **RemoteGPU B1.2c** (`.mobileglues.raster`), preserving accepted Apps.
+Fresh process, **Run Depth / Stencil / Blend Probe**, **Share Full Report**.
+No server restart or deployment change. B1.1/a/b regressions must pass first;
+then actual packed depth/stencil attachment, shader translation/compile/link,
+four complete 16x16 zero-mismatch outputs and all cleanup must succeed.
+This is not full raster conformance, Texture Buffer, Geometry, cross-context
+sync, B1.3/guest GL or performance acceptance. Do not infer device PASS from CI.
+
 ## B1.2b standalone Instancing + Sync (device accepted, limited scope)
 
 Source `f91d683` passed on iPhone: three instance cases, 768 checked pixels /

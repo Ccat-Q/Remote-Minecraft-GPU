@@ -1,6 +1,7 @@
 #include "ShaderProbe.h"
 #include "DrawFixtures.hpp"
 #include "InstanceFixtures.hpp"
+#include "RasterFixtures.hpp"
 #include <GLES3/gl32.h>
 #include <algorithm>
 #include <cstddef>
@@ -10,6 +11,7 @@
 #include <vector>
 #include <chrono>
 #include <thread>
+#include <memory>
 
 namespace {
 void require(bool ok, const char *reason) { if (!ok) throw std::runtime_error(reason); }
@@ -89,6 +91,65 @@ void completeFence(FeatureGL& sync, GL& gl, NSMutableString *report, int test) {
     [report appendFormat:@"B12B_FENCE_RELEASE case=%d live=NO\n",test];
 }
 #endif
+#if RGPU_B12_RASTER_PROBE
+struct RasterGL {
+    const std::function<void*(const char*)>& resolver;
+#define ENTRY(name) decltype(&::name) name = reinterpret_cast<decltype(&::name)>(resolver(#name))
+    ENTRY(glGenRenderbuffers); ENTRY(glBindRenderbuffer); ENTRY(glRenderbufferStorage);
+    ENTRY(glFramebufferRenderbuffer); ENTRY(glDeleteRenderbuffers); ENTRY(glGetRenderbufferParameteriv);
+    ENTRY(glEnable); ENTRY(glDepthFunc); ENTRY(glDepthMask); ENTRY(glClearStencil);
+    ENTRY(glStencilFunc); ENTRY(glStencilOp); ENTRY(glStencilMask); ENTRY(glUniform1f);
+    ENTRY(glBlendFuncSeparate); ENTRY(glBlendEquationSeparate);
+#undef ENTRY
+    using ClearDepth = void (*)(double); // desktop entry, not glClearDepthf substituted by the App
+    ClearDepth glClearDepth = reinterpret_cast<ClearDepth>(resolver("glClearDepth"));
+    explicit RasterGL(const std::function<void*(const char*)>& lookup) : resolver(lookup) {}
+};
+void drawRasterCase(GL& gl,RasterGL& state,NSMutableString *report,int test,
+                    GLint offset,GLint scale,GLint tint,GLint depth) {
+    auto draw = [&](int left,int bottom,int w,int h,float z,std::array<float,4> color) {
+        gl.glUniform2f(offset,float(2*left+w)/16-1,float(2*bottom+h)/16-1);
+        gl.glUniform2f(scale,float(w)/16,float(h)/16);
+        gl.glUniform4fv(tint,1,color.data()); state.glUniform1f(depth,z);
+        gl.glDrawArrays(GL_TRIANGLES,0,6);
+    };
+    gl.glDisable(GL_BLEND); gl.glDisable(GL_DEPTH_TEST); gl.glDisable(GL_STENCIL_TEST);
+    gl.glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    state.glDepthMask(GL_TRUE); state.glStencilMask(0xff);
+    state.glClearDepth(1.0); state.glClearStencil(0);
+    gl.glClearColor(0,0,test == 3 ? 1 : 0,1);
+    gl.glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
+    if (test <= 1) {
+        state.glEnable(GL_DEPTH_TEST); state.glDepthFunc(GL_LESS);
+        draw(2,2,12,12,-0.5f,{1,0,0,1});
+        draw(4,4,8,8,0.5f,{0,0,1,1}); // far layer must not overwrite red
+        state.glDepthMask(test == 0 ? GL_TRUE : GL_FALSE);
+        draw(6,6,4,4,-0.75f,{0,1,0,1});
+        if (test == 1) {
+            state.glDepthMask(GL_TRUE);
+            draw(6,6,4,4,-0.625f,{1,1,0,1}); // wins only if green did NOT write depth
+        }
+    } else if (test == 2) {
+        state.glEnable(GL_STENCIL_TEST); state.glStencilMask(0x0f);
+        state.glStencilFunc(GL_ALWAYS,0xa5,0xff); state.glStencilOp(GL_KEEP,GL_KEEP,GL_REPLACE);
+        gl.glColorMask(GL_FALSE,GL_FALSE,GL_FALSE,GL_FALSE);
+        draw(2,2,6,12,0,{0,0,1,1}); // only low bits 0x05 are stored
+        gl.glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE); state.glStencilMask(0);
+        state.glStencilFunc(GL_EQUAL,5,0xff); state.glStencilOp(GL_KEEP,GL_KEEP,GL_INCR);
+        draw(0,0,16,16,0,{1,0,0,1}); // INCR must NOT modify stencil with mask zero
+        state.glStencilFunc(GL_NOTEQUAL,5,0xff); state.glStencilOp(GL_KEEP,GL_KEEP,GL_KEEP);
+        draw(0,0,16,16,0,{0,1,0,1});
+    } else {
+        require(test == 3,"Unknown raster case");
+        state.glEnable(GL_BLEND); state.glBlendEquationSeparate(GL_FUNC_ADD,GL_FUNC_ADD);
+        state.glBlendFuncSeparate(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA,GL_ONE,GL_ONE_MINUS_SRC_ALPHA);
+        draw(1,1,10,10,0,{1,0,0,0.5f});
+        draw(5,5,10,10,0,{0,1,0,0.25f});
+    }
+    gl.check(report,"actual raster-state draw sequence");
+    [report appendFormat:@"B12C_OPERATIONS case=%d name=%s; compare full output, NOT state-query-only acceptance\n",test,rgpu::b12::rasterNames[test]];
+}
+#endif
 constexpr GLint maxText = 16384;
 template<class Fetch>
 std::string textResult(GLint length, Fetch fetch) {
@@ -104,9 +165,11 @@ struct Resources {
     GLuint vertex = 0, fragment = 0, program = 0, vao = 0, buffer = 0, fbo = 0;
     GLuint textures[2]{};
     bool closed = false;
+    std::function<void()> additionalCleanup;
     bool close() {
         if (closed) return true;
         closed = true;
+        if (additionalCleanup) additionalCleanup();
         // Current root context is retained by the caller until this returns.
         gl.glUseProgram(0); gl.glBindVertexArray(0); gl.glBindBuffer(GL_ARRAY_BUFFER,0);
         gl.glBindFramebuffer(GL_FRAMEBUFFER,0);
@@ -159,16 +222,35 @@ void compile(GL& gl, Backend& backend, NSMutableString *report, GLuint shader, c
 
 static void runDrawProbe(NSMutableString *report,
     const std::function<void*(const char*)>& frontend,
-    const std::function<void*(const char*)>& backendResolver, bool instanced) {
+    const std::function<void*(const char*)>& backendResolver, bool instanced,bool raster = false) {
     using namespace rgpu::b12;
-    [report appendString:instanced ? @"B12B_STAGE INSTANCING_AND_SAME_CONTEXT_FENCE\nNOT full B1.2, cross-context synchronization or guest acceptance.\n" :
+    require(!(instanced && raster),"Conflicting draw probe modes");
+    [report appendString:raster ? @"B12C_STAGE DEPTH_STENCIL_BLEND\nNOT complete raster semantics, full B1.2 or guest acceptance.\n" :
+        instanced ? @"B12B_STAGE INSTANCING_AND_SAME_CONTEXT_FENCE\nNOT full B1.2, cross-context synchronization or guest acceptance.\n" :
         @"B12_STAGE GLSL150_VERTEX_FRAGMENT_DYNAMIC_FBO\nScope: representative shader/VAO/VBO/FBO/texture/uniform/varying checks only. NOT full B1.2 or guest GL acceptance.\n"];
     GL gl(frontend); Backend backend(backendResolver);
+#if RGPU_B12_RASTER_PROBE
+    std::unique_ptr<RasterGL> rasterState;
+    GLuint depthStencil = 0;
+#endif
     Resources resources{gl,report};
     try {
+#if RGPU_B12_RASTER_PROBE
+        if (raster) {
+            rasterState = std::make_unique<RasterGL>(frontend);
+            resources.additionalCleanup = [&] {
+                gl.glDisable(GL_DEPTH_TEST); gl.glDisable(GL_STENCIL_TEST); gl.glDisable(GL_BLEND);
+                gl.glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+                rasterState->glDepthMask(GL_TRUE); rasterState->glStencilMask(0xff);
+                rasterState->glBindRenderbuffer(GL_RENDERBUFFER,0);
+                if (depthStencil) { rasterState->glDeleteRenderbuffers(1,&depthStencil); depthStencil = 0; }
+                [report appendString:@"B12C_CLEANUP depth/stencil renderbuffer release and state restore calls returned; GL status follows\n"];
+            };
+        }
+#endif
         gl.check(report,"shader probe entry (prior errors are not discarded)");
         resources.vertex = gl.glCreateShader(GL_VERTEX_SHADER);
-        compile(gl,backend,report,resources.vertex,instanced ? instanceVertex : vertexSource,"vertex");
+        compile(gl,backend,report,resources.vertex,raster ? rasterVertex : instanced ? instanceVertex : vertexSource,"vertex");
         resources.fragment = gl.glCreateShader(GL_FRAGMENT_SHADER);
         compile(gl,backend,report,resources.fragment,instanced ? instanceFragment : fragmentSource,"fragment");
         resources.program = gl.glCreateProgram();
@@ -197,6 +279,8 @@ static void runDrawProbe(NSMutableString *report,
             [report appendFormat:@"B12_UNIFORM name=%s location=%d\n", name,location];
             require(location >= 0,"Required active uniform missing"); return location; };
         const auto offset = uniform("uOffset"), scale = uniform("uScale"), tint = uniform("uTint"), sampler = uniform("uTex");
+        const GLint depth = raster ? uniform("uDepth") : -1;
+        (void)depth; // used only by the isolated raster target
         if (instanced) gl.glUniform2f(uniform("uStep"),1,1);
         gl.glGenVertexArrays(1,&resources.vao); gl.glBindVertexArray(resources.vao);
         gl.glGenBuffers(1,&resources.buffer); gl.glBindBuffer(GL_ARRAY_BUFFER,resources.buffer);
@@ -213,6 +297,21 @@ static void runDrawProbe(NSMutableString *report,
         gl.glGenFramebuffers(1,&resources.fbo); gl.glBindFramebuffer(GL_FRAMEBUFFER,resources.fbo);
         require(resources.fbo != 0,"Shader FBO allocation failed");
         gl.glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,resources.textures[0],0);
+#if RGPU_B12_RASTER_PROBE
+        if (raster) {
+            rasterState->glGenRenderbuffers(1,&depthStencil);
+            require(depthStencil != 0,"Depth/stencil renderbuffer allocation failed");
+            rasterState->glBindRenderbuffer(GL_RENDERBUFFER,depthStencil);
+            rasterState->glRenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH24_STENCIL8,width,height);
+            rasterState->glFramebufferRenderbuffer(GL_FRAMEBUFFER,GL_DEPTH_STENCIL_ATTACHMENT,GL_RENDERBUFFER,depthStencil);
+            GLint depthBits = 0, stencilBits = 0;
+            rasterState->glGetRenderbufferParameteriv(GL_RENDERBUFFER,GL_RENDERBUFFER_DEPTH_SIZE,&depthBits);
+            rasterState->glGetRenderbufferParameteriv(GL_RENDERBUFFER,GL_RENDERBUFFER_STENCIL_SIZE,&stencilBits);
+            gl.check(report,"allocate actual packed depth/stencil attachment");
+            [report appendFormat:@"B12C_ATTACHMENT format=DEPTH24_STENCIL8 depth_bits=%d stencil_bits=%d\n",depthBits,stencilBits];
+            require(depthBits >= 24 && stencilBits >= 8,"Requested depth/stencil storage unavailable");
+        }
+#endif
         const auto complete = gl.glCheckFramebufferStatus(GL_FRAMEBUFFER);
         [report appendFormat:@"B12_FBO format=RGBA8 size=%dx%d status=0x%x\n",width,height,complete];
         require(complete == GL_FRAMEBUFFER_COMPLETE,"Shader test FBO incomplete");
@@ -220,8 +319,8 @@ static void runDrawProbe(NSMutableString *report,
         gl.glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE); gl.glPixelStorei(GL_PACK_ALIGNMENT,1); gl.glPixelStorei(GL_UNPACK_ALIGNMENT,1);
         gl.glViewport(0,0,width,height); gl.glUniform2f(scale,scaleX,instanced ? scaleX : scaleY);
         gl.check(report,"shader draw resources and state");
-        for (int index = 0; index < (instanced ? instanceCases : cases); ++index) {
-            const auto& input = instanced ? instanceInputs[index] : inputs[index];
+        for (int index = 0; index < (raster ? rasterCases : instanced ? instanceCases : cases); ++index) {
+            const auto& input = raster ? rasterInput : instanced ? instanceInputs[index] : inputs[index];
             gl.glActiveTexture(GL_TEXTURE0 + input.textureUnit); gl.glBindTexture(GL_TEXTURE_2D,resources.textures[1]);
             gl.glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
             gl.glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
@@ -231,7 +330,13 @@ static void runDrawProbe(NSMutableString *report,
             gl.glUniform1i(sampler,input.textureUnit); gl.glUniform2f(offset,input.offsetX,input.offsetY);
             gl.glUniform4fv(tint,1,input.tint.data());
             gl.glClearColor(0,0,0,1); gl.glClear(GL_COLOR_BUFFER_BIT);
-            if (instanced) {
+            if (raster) {
+#if RGPU_B12_RASTER_PROBE
+                drawRasterCase(gl,*rasterState,report,index,offset,scale,tint,depth);
+#else
+                throw std::runtime_error("Raster probe not compiled for this target");
+#endif
+            } else if (instanced) {
 #if RGPU_B12_FEATURE_PROBE
                 FeatureGL features(frontend);
                 features.glDrawArraysInstanced(GL_TRIANGLES,0,6,instanceCounts[index]);
@@ -246,7 +351,7 @@ static void runDrawProbe(NSMutableString *report,
             gl.check(report,"dynamic GLSL150 draw and local diagnostic read");
             int mismatches = 0;
             for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
-                const auto expected = instanced ? expectedInstancePixel(index,x,y) : expectedPixel(input,x,y);
+                const auto expected = raster ? expectedRasterPixel(index,x,y) : instanced ? expectedInstancePixel(index,x,y) : expectedPixel(input,x,y);
                 const auto& pixel = actual[y*width+x];
                 if (!matches(pixel,expected)) {
                     if (mismatches < 8) [report appendFormat:@"B12_MISMATCH case=%d x=%d y=%d actual=%u,%u,%u,%u expected=%u,%u,%u,%u\n",
@@ -256,20 +361,23 @@ static void runDrawProbe(NSMutableString *report,
             }
             // Retain the entire small actual image in the report, bottom row
             // first. A test oracle is not a CPU display/transport implementation.
-            [report appendFormat:@"%s_ACTUAL_RGBA8 case=%d rows_bottom_to_top_BEGIN\n",instanced ? "B12B" : "B12",index];
+            [report appendFormat:@"%s_ACTUAL_RGBA8 case=%d rows_bottom_to_top_BEGIN\n",raster ? "B12C" : instanced ? "B12B" : "B12",index];
             for (int y = 0; y < height; ++y) {
                 for (int x = 0; x < width; ++x) { const auto& p = actual[y*width+x];
                     [report appendFormat:@"%02x%02x%02x%02x ",p[0],p[1],p[2],p[3]]; }
                 [report appendString:@"\n"];
             }
-            if (instanced) [report appendFormat:@"rows_bottom_to_top_END\nB12B_CASE case=%d instance_count=%d checked_pixels=%d mismatches=%d rgb_tolerance=1 alpha_tolerance=0\n",
+            if (raster) [report appendFormat:@"rows_bottom_to_top_END\nB12C_CASE case=%d name=%s checked_pixels=%d mismatches=%d rgb_tolerance=1 alpha_tolerance=0\n",
+                index,rasterNames[index],width*height,mismatches];
+            else if (instanced) [report appendFormat:@"rows_bottom_to_top_END\nB12B_CASE case=%d instance_count=%d checked_pixels=%d mismatches=%d rgb_tolerance=1 alpha_tolerance=0\n",
                 index,instanceCounts[index],width*height,mismatches];
             else [report appendFormat:@"rows_bottom_to_top_END\nB12_CASE case=%d texture_unit=%d rect=%d,%d,6,12 checked_pixels=%d mismatches=%d rgb_tolerance=1 alpha_tolerance=0\n",
                 index,input.textureUnit,input.left,input.bottom,width*height,mismatches];
             require(mismatches == 0,"Dynamic shader output mismatch (actual pixels retained)");
         }
         require(resources.close(),"Shader probe cleanup GL error");
-        if (instanced) [report appendString:@"PASS: B1.2b representative glDrawArraysInstanced/gl_InstanceID/flat varying/texelFetch and same-context producer Fence completion before pixel read ONLY. NOT cross-context ordering, slow-GPU cancellation or sustained performance. Depth/Stencil/Blending/TextureBuffer/Geometry and guest NOT TESTED.\n"];
+        if (raster) [report appendString:@"PASS: B1.2c representative depth LESS/occlusion/write-mask, stencil compare/ops/write-mask and separate RGB/Alpha blending ONLY. NOT all raster semantics, TextureBuffer, Geometry, full B1.2 or guest acceptance.\n"];
+        else if (instanced) [report appendString:@"PASS: B1.2b representative glDrawArraysInstanced/gl_InstanceID/flat varying/texelFetch and same-context producer Fence completion before pixel read ONLY. NOT cross-context ordering, slow-GPU cancellation or sustained performance. Depth/Stencil/Blending/TextureBuffer/Geometry and guest NOT TESTED.\n"];
         else [report appendString:@"PASS: B1.2a GLSL150 vertex/fragment translation, actual compile/link, VAO/VBO/FBO, sampled texture, uniforms and varying over three dynamic inputs ONLY.\nB1.2 remaining Instancing/Depth/Stencil/Blending/TextureBuffer/Sync/Geometry NOT TESTED; guest/VirGL/Minecraft NOT TESTED.\n"];
     } catch (...) { resources.close(); throw; }
 }
@@ -277,6 +385,12 @@ void RGPURunShaderDrawProbe(NSMutableString *report,const std::function<void*(co
                           const std::function<void*(const char*)>& backend) {
     runDrawProbe(report,frontend,backend,false);
 }
+#if RGPU_B12_RASTER_PROBE
+void RGPURunRasterProbe(NSMutableString *report,const std::function<void*(const char*)>& frontend,
+                       const std::function<void*(const char*)>& backend) {
+    runDrawProbe(report,frontend,backend,false,true);
+}
+#endif
 #if RGPU_B12_FEATURE_PROBE
 void RGPURunInstancingSyncProbe(NSMutableString *report,const std::function<void*(const char*)>& frontend,
                               const std::function<void*(const char*)>& backend) {

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from prepare_mobileglues_probe import HASHES, MOBILEGLUES, diagnostic_apple_errors, replace_once
-from mobileglues_provenance import verify_bundle, experiment_scope, ACCEPTED_B11, ACCEPTED_B12A
+from mobileglues_provenance import verify_bundle, experiment_scope, ACCEPTED_B11, ACCEPTED_B12A, ACCEPTED_B12B
 
 ROOT = Path(__file__).resolve().parents[2]
 PROBE = ROOT / "ios/Experiments/MobileGluesProbe"
@@ -157,6 +157,39 @@ class MobileGluesProbeTests(unittest.TestCase):
         self.assertIn("expectedInstancePixel(index,x,y)", source)
         self.assertNotIn("glFinish(", source)
         self.assertIn("NOT cross-context ordering", source)
+
+
+    def test_raster_scope_retains_regressions_and_accepted_sources(self):
+        scope = experiment_scope("b12c")
+        self.assertEqual(scope["accepted_b12b_device_sha"], ACCEPTED_B12B)
+        self.assertEqual(scope["accepted_b12a_device_sha"], ACCEPTED_B12A)
+        self.assertIn("DEVICE_PENDING", scope["capability_status"])
+        project = (PROBE / "project.yml").read_text()
+        self.assertIn("org.remotegpu.experiments.mobileglues.raster", project)
+        self.assertIn("RGPU_B12_RASTER_PROBE=1", project)
+        app = (PROBE / "App/Probe.mm").read_text()
+        self.assertLess(app.index("RGPURunInstancingSyncProbe(report"), app.index("RGPURunRasterProbe(report"))
+        self.assertIn("TextureBuffer/Geometry, full B1.2", app)
+        workflow = (ROOT / ".github/workflows/build-ios-compatibility-probe.yml").read_text()
+        self.assertIn("experiment/b12c-mobileglues-raster-probe", workflow)
+        self.assertIn("MobileGluesRasterProbe", workflow)
+        self.assertIn(".accepted_b12b_device_sha", workflow)
+
+    def test_raster_draws_use_real_attachment_state_and_full_pixel_oracle(self):
+        source = (PROBE / "Shader/ShaderProbe.mm").read_text()
+        for operation in ("GL_DEPTH24_STENCIL8", "GL_DEPTH_STENCIL_ATTACHMENT",
+                          "state.glDepthFunc(GL_LESS)", "test == 0 ? GL_TRUE : GL_FALSE",
+                          "state.glStencilMask(0x0f)", "state.glStencilMask(0)",
+                          "state.glStencilFunc(GL_EQUAL,5,0xff)", "GL_INCR",
+                          "state.glBlendFuncSeparate(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA,GL_ONE,GL_ONE_MINUS_SRC_ALPHA)",
+                          'resolver("glClearDepth")', "glDeleteRenderbuffers(1,&depthStencil)",
+                          "expectedRasterPixel(index,x,y)", "B12C_CASE case=%d"):
+            self.assertIn(operation, source)
+        self.assertNotIn("glFinish(", source)
+        fixture = (PROBE / "Shader/RasterFixtures.hpp").read_text()
+        self.assertIn("#version 150", fixture)
+        self.assertNotIn("#version 300", fixture)
+        self.assertIn("rasterCases = 4", fixture)
 
 
 if __name__ == "__main__":

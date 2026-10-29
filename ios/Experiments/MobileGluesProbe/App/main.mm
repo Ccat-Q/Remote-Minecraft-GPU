@@ -10,7 +10,10 @@
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.systemBackgroundColor;
     self.run = [UIButton buttonWithType:UIButtonTypeSystem];
-#if RGPU_B12_FEATURE_PROBE
+#if RGPU_B12_RASTER_PROBE
+    self.title = @"B1.2c Depth / Stencil / Blend";
+    [self.run setTitle:@"Run Depth / Stencil / Blend Probe" forState:UIControlStateNormal];
+#elif RGPU_B12_FEATURE_PROBE
     self.title = @"B1.2b Instancing + Sync";
     [self.run setTitle:@"Run Instancing + Sync Probe" forState:UIControlStateNormal];
 #elif RGPU_B12_SHADER_PROBE
@@ -26,7 +29,9 @@
     [share addTarget:self action:@selector(shareReport) forControlEvents:UIControlEventTouchUpInside];
     self.report = [[UITextView alloc] init]; self.report.editable = NO;
     self.report.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightRegular];
-#if RGPU_B12_FEATURE_PROBE
+#if RGPU_B12_RASTER_PROBE
+    self.report.text = @"Separate B1.2c bundle. B1.1/B1.2a/B1.2b regressions run first, then four actual depth, stencil and separate RGB/Alpha blending outputs.\nNot full raster conformance, GL3.2, Texture Buffer, Geometry, cross-context sync or performance acceptance. Run once and Share Full Report.";
+#elif RGPU_B12_FEATURE_PROBE
     self.report.text = @"Separate B1.2b bundle. B1.1/B1.2a regressions run first, then 4/2/0 instance draws and same-context Fence completion before pixel checks.\nNo full GL3.2, cross-context ordering, slow-GPU cancellation or performance verdict. Run once per process and Share Full Report.";
 #elif RGPU_B12_SHADER_PROBE
     self.report.text = @"Independent B1.2a bundle. Keeps accepted B1.1 and RemoteGPU installed.\nRuns context regression then actual GLSL150 vertex/fragment translation, compile/link and three dynamic FBO outputs.\nRemaining feature gates and guest GL3.2 are NOT tested. Run once and share Full Report. Relaunch to repeat.";
@@ -55,7 +60,9 @@
 }
 - (void)shareReport {
     NSURL *url = [[NSURL fileURLWithPath:NSTemporaryDirectory()]
-#if RGPU_B12_FEATURE_PROBE
+#if RGPU_B12_RASTER_PROBE
+        URLByAppendingPathComponent:@"RemoteGPU-B12c-report.txt"];
+#elif RGPU_B12_FEATURE_PROBE
         URLByAppendingPathComponent:@"RemoteGPU-B12b-report.txt"];
 #elif RGPU_B12_SHADER_PROBE
         URLByAppendingPathComponent:@"RemoteGPU-B12a-report.txt"];
