@@ -1,6 +1,9 @@
 #import "Probe.h"
 #include "../Overlay/Bootstrap.h"
 #include "ContextMetadata.hpp"
+#if RGPU_B12_SHADER_PROBE
+#include "../Shader/ShaderProbe.h"
+#endif
 #import <UIKit/UIKit.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -138,8 +141,13 @@ void verifyPixels(Frontend& f, GLuint texture, NSMutableString *report, const ch
 
 NSString *RGPURunMobileGluesProbe(void) {
     NSMutableString *report = [NSMutableString stringWithString:
+#if RGPU_B12_SHADER_PROBE
+        @"B1.2a ISOLATED GLSL150 VERTEX/FRAGMENT DYNAMIC OUTPUT PROBE\n"
+         "Device acceptance pending. NOT full B1.2, VirGL, guest GL3.2 or Minecraft acceptance. B1.1 context regression runs first.\n"];
+#else
         @"B1.1 ISOLATED MobileGlues + ANGLE Metal Provider/Context Probe\n"
          "NOT VirGL integration, guest GL 3.2 acceptance, remote display or B1.2 shader acceptance.\n"];
+#endif
     if (ran.exchange(true)) return @"One initialization attempt per process. Relaunch this standalone Probe to repeat; production RemoteGPU is unaffected.";
     struct utsname device{}; uname(&device);
     [report appendFormat:@"Device: %s; %@\n", device.machine, NSProcessInfo.processInfo.operatingSystemVersionString];
@@ -294,15 +302,40 @@ NSString *RGPURunMobileGluesProbe(void) {
             require(workerFailure.empty(), workerFailure.c_str());
             f.eglCheck(f.eglMakeCurrent(s.display, s.surface, s.surface, s.root), report, "return root to original owner");
             verifyPixels(f, s.texture, report, "returned-context GPU content");
+#if RGPU_B12_SHADER_PROBE
+            auto checkedEntry = [&](void *library, const char *name, const char *path, void *anchor) {
+                void *entry = symbol<void*>(library,name,path);
+                Dl_info actual{}, expected{};
+                require(dladdr(entry,&actual) && dladdr(anchor,&expected) && actual.dli_fbase &&
+                    actual.dli_fbase == expected.dli_fbase,"B12 function has wrong exact provider image");
+                [report appendFormat:@"B12_ENTRY name=%s provider=%s\n",name,actual.dli_fname];
+                return entry;
+            };
+            RGPURunShaderDrawProbe(report,[&](const char *name) {
+                void *entry = checkedEntry(frontend,name,"/MobileGluesProbe.framework/",reinterpret_cast<void*>(f.glGetString));
+                require(entry == reinterpret_cast<void*>(f.eglGetProcAddress(name)),"B12 frontend direct/proc ownership mismatch");
+                return entry;
+            },[&](const char *name) {
+                return checkedEntry(backendGLES,name,"/GLESv2.framework/",reinterpret_cast<void*>(backendString));
+            });
+#endif
             require(s.close(), "Frontend cleanup reported errors");
         } catch (...) { s.close(); throw; }
+#if RGPU_B12_SHADER_PROBE
+        [report appendString:@"PASS: B1.2a representative shader/dynamic-output checks plus B1.1 context regression and cleanup calls ONLY. Full B1.2 and B1.3/guest GL NOT ACCEPTED.\n"];
+#else
         [report appendString:@"PASS: B1.1 provider/context/content-sharing checks ONLY.\nB1.2 GLSL 150 shaders/features NOT TESTED. B1.3 VirGL/Ubuntu guest GL 3.2 NOT TESTED.\n"];
+#endif
     } catch (const std::exception& e) {
         [report appendFormat:@"BLOCKED: %s\nNo backend substitution, version/capability override or production renderer modification applied.\n", e.what()];
     }
     NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/MobileGluesProbe/latest.log"];
     NSString *log = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
     if (log) [report appendFormat:@"\nMobileGlues runtime log (bounded tail):\n%@\n", [log substringFromIndex:log.length > 32768 ? log.length - 32768 : 0]];
+#if RGPU_B12_SHADER_PROBE
+    [report appendString:@"B1.1 regression: up to three 1x1 reads. B1.2a oracle: up to three 16x16 offscreen reads. Local diagnostics ONLY; no remote display or frame streaming. Library images retained until process exit; driver leak profiling NOT TESTED.\n"];
+#else
     [report appendString:@"Up to three 1x1 offscreen diagnostic CPU reads; no remote display, no frame streaming. Library images retained until process exit; context/texture cleanup above is separate from driver leak profiling.\n"];
+#endif
     return report;
 }

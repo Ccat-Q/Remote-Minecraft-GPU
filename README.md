@@ -36,6 +36,7 @@ Status as of 2026-10-28:
 | Known failed prerequisite | GLES 3.1/3.2 requests rejected; guest GLSL capset 130, below 150. Actual Ubuntu guest GL 3.2 Core acceptance remains pending. |
 | Not implemented / accepted | A3 GPU-in-flight cancellation, sustained overlapping throughput/ten-minute performance; Minecraft/input/audio/Mods. Basic A3.1/A3.2 acceptance does not pass these gates. |
 | Isolated B1.1 device passed | [MobileGlues + accepted ANGLE Probe](docs/b11-mobileglues-probe.md): `d95d32b` verified provider/context, shared GPU content, exclusive thread migration/return and cleanup calls on iPhone. GLSL150/features, guest GL3.2 and leak profiling remain unverified. No formal renderer replacement. |
+| B1.2a implementation, device pending | [Separate GLSL150/dynamic-output target](docs/b12-mobileglues-shaders.md): representative vertex/fragment, VAO/VBO/FBO, texture/uniform/varying test; not the full B1.2 or guest gate. |
 | Later candidate experiments | MobileGL interfaces and UTM MoltenVK with a compatibility implementation; not developed concurrently with the selected B1.1 candidate. |
 
 The current blocker does **not** imply remote GPU is impossible. Two independent

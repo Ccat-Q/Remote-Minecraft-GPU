@@ -7,7 +7,7 @@ on:
         required: true
         default: "40636888480"
   push:
-    branches: [experiment/b11-mobileglues-probe]
+    branches: [experiment/b11-mobileglues-probe, experiment/b12-mobileglues-shader-probe]
     paths:
       - ios/Experiments/MobileGluesProbe/**
       - tools/ci/*mobileglues*
@@ -16,7 +16,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: b11-${{ github.ref }}
+  group: compat-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   probe:
@@ -27,6 +27,8 @@ jobs:
       RENDERER_RUN_ID: ${{ inputs.renderer_run_id || '40636888480' }}
       MG_SHA: 97558a69157b033b890958b1e49258c5b51a80c6
       CCACHE_DIR: ${{ github.workspace }}/.cache/b11-ccache
+      PROBE_SCOPE: ${{ github.ref_name == 'experiment/b12-mobileglues-shader-probe' && 'b12a' || 'b11' }}
+      PROBE_APP: ${{ github.ref_name == 'experiment/b12-mobileglues-shader-probe' && 'MobileGluesShaderProbe' || 'MobileGluesCompatibilityProbe' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -133,7 +135,7 @@ jobs:
             -H 'Accept: application/vnd.github.raw+json' > ios/Experiments/MobileGluesProbe/Generated/Licenses/ANGLE-LICENSE.txt
       - name: Record exact bundled framework and source provenance
         run: |
-          python3 tools/ci/mobileglues_provenance.py --angle _build/b11-diagnostics/ANGLEProvenance.json \
+          python3 tools/ci/mobileglues_provenance.py --scope "$PROBE_SCOPE" --angle _build/b11-diagnostics/ANGLEProvenance.json \
             --recipe _build/b11-diagnostics/MobileGluesRecipe.json --candidate _build/mobileglues/MobileGluesProbe.framework/MobileGluesProbe \
             --output ios/Experiments/MobileGluesProbe/Generated/B11Provenance.json
           cp ios/Experiments/MobileGluesProbe/Generated/B11Provenance.json _build/b11-diagnostics/
@@ -142,28 +144,34 @@ jobs:
           set -o pipefail
           xcodegen generate --spec ios/Experiments/MobileGluesProbe/project.yml --project ios/Experiments/MobileGluesProbe
           xcodebuild -project ios/Experiments/MobileGluesProbe/MobileGluesCompatibilityProbe.xcodeproj \
-            -scheme MobileGluesCompatibilityProbe -sdk iphoneos -configuration Release \
+            -scheme "$PROBE_APP" -sdk iphoneos -configuration Release \
             -derivedDataPath _build/b11-app CODE_SIGNING_ALLOWED=NO build 2>&1 | tee _build/b11-diagnostics/app-build.log
       - name: Package self-signable IPA and verify isolation
         run: |
-          app=_build/b11-app/Build/Products/Release-iphoneos/MobileGluesCompatibilityProbe.app
+          app="_build/b11-app/Build/Products/Release-iphoneos/$PROBE_APP.app"
           test -f "$app/B11Provenance.json"
           test -f "$app/Frameworks/MobileGluesProbe.framework/MobileGluesProbe"
           test ! -e "$app/Frameworks/virglrenderer.1.framework"
           test ! -e "$app/Frameworks/epoxy.0.framework"
+          if [ "$PROBE_SCOPE" = b12a ]; then
+            test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")" = org.remotegpu.experiments.mobileglues.shader
+            jq -e '.accepted_b11_device_sha == "d95d32be3d003f3c2c6c5a84b2f87132e4f6c7b2" and (.experiment | startswith("B1.2a"))' "$app/B11Provenance.json"
+          else
+            test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")" = org.remotegpu.experiments.mobileglues
+          fi
           python3 tools/ci/mobileglues_provenance.py --verify-app "$app" | tee _build/b11-diagnostics/bundled-framework-hashes.json
-          otool -L "$app/MobileGluesCompatibilityProbe" | tee _build/b11-diagnostics/app-linkage.txt
-          ! otool -L "$app/MobileGluesCompatibilityProbe" | grep -E 'OpenGLES.framework|OpenGL.framework|virglrenderer|epoxy|EGL.framework|GLESv2.framework|MobileGluesProbe.framework'
+          otool -L "$app/$PROBE_APP" | tee _build/b11-diagnostics/app-linkage.txt
+          ! otool -L "$app/$PROBE_APP" | grep -E 'OpenGLES.framework|OpenGL.framework|virglrenderer|epoxy|EGL.framework|GLESv2.framework|MobileGluesProbe.framework'
           mkdir -p _stage/b11/Payload
           cp -R "$app" _stage/b11/Payload/
           cd _stage/b11
-          zip -r MobileGluesCompatibilityProbe-unsigned.ipa Payload
-          shasum -a 256 MobileGluesCompatibilityProbe-unsigned.ipa > SHA256SUMS
+          zip -r "$PROBE_APP-unsigned.ipa" Payload
+          shasum -a 256 "$PROBE_APP-unsigned.ipa" > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: b11-mobileglues-probe-${{ github.sha }}
+          name: ${{ env.PROBE_SCOPE }}-mobileglues-probe-${{ github.sha }}
           path: |
-            _stage/b11/MobileGluesCompatibilityProbe-unsigned.ipa
+            _stage/b11/*-unsigned.ipa
             _stage/b11/SHA256SUMS
           retention-days: 90
           if-no-files-found: error
@@ -180,7 +188,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: b11-diagnostics-and-corresponding-source-${{ github.run_id }}
+          name: ${{ env.PROBE_SCOPE }}-diagnostics-and-corresponding-source-${{ github.run_id }}
           path: _build/b11-diagnostics/
           retention-days: 90
           if-no-files-found: warn

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from prepare_mobileglues_probe import HASHES, MOBILEGLUES, diagnostic_apple_errors, replace_once
-from mobileglues_provenance import verify_bundle
+from mobileglues_provenance import verify_bundle, experiment_scope, ACCEPTED_B11
 
 ROOT = Path(__file__).resolve().parents[2]
 PROBE = ROOT / "ios/Experiments/MobileGluesProbe"
@@ -113,6 +113,34 @@ class MobileGluesProbeTests(unittest.TestCase):
         self.assertIn("NOT capability proof", source)
         self.assertIn("granted request bookkeeping", source)
         self.assertIn("B11_STAGE shared_gpu_content_and_migration", source)
+
+    def test_shader_stage_scope_and_independent_target(self):
+        self.assertNotIn("accepted_b11_device_sha", experiment_scope("b11"))
+        self.assertEqual(experiment_scope("b12a")["accepted_b11_device_sha"], ACCEPTED_B11)
+        self.assertIn("DEVICE_PENDING", experiment_scope("b12a")["capability_status"])
+        with self.assertRaises(ValueError):
+            experiment_scope("unknown")
+        project = (PROBE / "project.yml").read_text()
+        self.assertIn("org.remotegpu.experiments.mobileglues.shader", project)
+        self.assertIn("RGPU_B12_SHADER_PROBE=1", project)
+        self.assertIn("dependencies: *probeProviders", project)
+        workflow = (ROOT / ".github/workflows/build-ios-compatibility-probe.yml").read_text()
+        self.assertIn("experiment/b12-mobileglues-shader-probe", workflow)
+        self.assertIn('--scope "$PROBE_SCOPE"', workflow)
+        self.assertIn('-scheme "$PROBE_APP"', workflow)
+
+    def test_shader_probe_has_real_backend_status_source_and_pixel_oracle(self):
+        source = (PROBE / "Shader/ShaderProbe.mm").read_text()
+        fixture = (PROBE / "Shader/DrawFixtures.hpp").read_text()
+        self.assertEqual(fixture.count("#version 150"), 2)
+        self.assertNotIn("#version 300", fixture)
+        for entry in ("backend.glGetShaderSource", "backend.glGetShaderiv(shader,GL_COMPILE_STATUS",
+                      "backend.glGetProgramiv(resources.program,GL_LINK_STATUS", "gl.glDrawArrays",
+                      "gl.glReadPixels", "expectedPixel(input,x,y)", "mismatches == 0"):
+            self.assertIn(entry, source)
+        self.assertIn("resources.close(); throw;", source)
+        self.assertIn("NOT full B1.2 or guest GL acceptance", source)
+        self.assertIn("Instancing/Depth/Stencil/Blending/TextureBuffer/Sync/Geometry NOT TESTED", source)
 
 
 if __name__ == "__main__":

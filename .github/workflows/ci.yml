@@ -39,6 +39,11 @@ jobs:
           c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
             -Iios/Experiments/MobileGluesProbe/App tests/b11_context_metadata.cpp -o /tmp/b11-context-metadata
           /tmp/b11-context-metadata
+      - name: Test B1.2a actual CPU pixel oracle (NOT device shaders) with sanitizers
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+            -Iios/Experiments/MobileGluesProbe/Shader tests/b12_draw_oracle.cpp -o /tmp/b12-draw-oracle
+          /tmp/b12-draw-oracle
 
   ios-build-compatibility:
     name: Pinned iOS build compatibility

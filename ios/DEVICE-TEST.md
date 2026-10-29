@@ -233,7 +233,18 @@ Ready-for-retest build: code `d95d32b`, Actions `40816895275`, with CI `40816895
 passed. Use the latest retest IPA link at the top of the B1 implementation page,
 not the retained earlier failure builds. Candidate/ANGLE hashes are unchanged.
 
-## Route B: subsequent shader and guest capability gates (unaccepted)
+## B1.2a standalone GLSL150 / dynamic output (device pending)
+
+Keep accepted B1.1 installed. The separate **RemoteGPU B1.2a** bundle ends in
+`.mobileglues.shader`. Run **GLSL150 + Dynamic Output Probe** once per fresh
+process, then share Full Report. This runs B1.1 context regression first, then
+actual vertex/fragment translation/compile/link and three 16x16 dynamic outputs.
+Actual backend source, frontend/backend logs and all actual pixels are retained.
+No server restart/pairing. [Exact scope and steps](../docs/b12-mobileglues-shaders.md).
+CI oracle fixtures are not iPhone shader results. Remaining feature tests,
+full B1.2, guest GL3.2 and Minecraft are unaccepted.
+
+## Route B: subsequent feature and guest capability gates (unaccepted)
 
 Investigate MobileGlues + ANGLE Metal first, then MobileGL iOS interfaces, then
 UTM MoltenVK with a suitable GL/Vulkan compatibility implementation. Build one

@@ -9,16 +9,25 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.systemBackgroundColor;
-    self.title = @"B1.1 MobileGlues (isolated)";
     self.run = [UIButton buttonWithType:UIButtonTypeSystem];
+#if RGPU_B12_SHADER_PROBE
+    self.title = @"B1.2a GLSL150 (isolated)";
+    [self.run setTitle:@"Run GLSL150 + Dynamic Output Probe" forState:UIControlStateNormal];
+#else
+    self.title = @"B1.1 MobileGlues (isolated)";
     [self.run setTitle:@"Run Provider + Context Probe" forState:UIControlStateNormal];
+#endif
     [self.run addTarget:self action:@selector(runProbe) forControlEvents:UIControlEventTouchUpInside];
     UIButton *share = [UIButton buttonWithType:UIButtonTypeSystem];
     [share setTitle:@"Share Full Report" forState:UIControlStateNormal];
     [share addTarget:self action:@selector(shareReport) forControlEvents:UIControlEventTouchUpInside];
     self.report = [[UITextView alloc] init]; self.report.editable = NO;
     self.report.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightRegular];
+#if RGPU_B12_SHADER_PROBE
+    self.report.text = @"Independent B1.2a bundle. Keeps accepted B1.1 and RemoteGPU installed.\nRuns context regression then actual GLSL150 vertex/fragment translation, compile/link and three dynamic FBO outputs.\nRemaining feature gates and guest GL3.2 are NOT tested. Run once and share Full Report. Relaunch to repeat.";
+#else
     self.report.text = @"Independent process. Does not connect to Ubuntu or replace RemoteGPU.\nRun once, then share the full report. Relaunch this Probe to repeat.\nB1.1 does not verify GLSL 150 or guest OpenGL 3.2.";
+#endif
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[self.run, share, self.report]];
     stack.axis = UILayoutConstraintAxisVertical; stack.spacing = 12;
     stack.translatesAutoresizingMaskIntoConstraints = NO; [self.view addSubview:stack];
@@ -41,7 +50,11 @@
 }
 - (void)shareReport {
     NSURL *url = [[NSURL fileURLWithPath:NSTemporaryDirectory()]
+#if RGPU_B12_SHADER_PROBE
+        URLByAppendingPathComponent:@"RemoteGPU-B12a-report.txt"];
+#else
         URLByAppendingPathComponent:@"RemoteGPU-B11-report.txt"];
+#endif
     NSError *error = nil;
     if (![self.report.text writeToURL:url atomically:YES encoding:NSUTF8StringEncoding error:&error]) return;
     UIActivityViewController *share = [[UIActivityViewController alloc] initWithActivityItems:@[url] applicationActivities:nil];
