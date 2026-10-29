@@ -6,12 +6,12 @@ protocol, DNS, server deployment or ADR is changed. All compilation is Actions-o
 
 Build/link/packaging and retained regressions now passed at `ff4fae6`.
 [Exact Actions/IPA/source evidence](evidence/b11-build-2026-10-28/README.md).
-Device execution at `ff4fae6` is **PARTIAL / BLOCKED**: the user confirmed
-successful bootstrap (384 backend resolutions) and seven frontend direct/proc
-ownership checks, then a generic dladdr failure before frontend context creation.
-The follow-up device run at `59c7001` identifies the missing direct export:
-`dlsym eglGetPlatformDisplayEXT: symbol not found`. No context/sharing PASS or
-desktop GL capability is claimed. See both retained reports below.
+Latest device execution at `8c5a943` is **PARTIAL / BLOCKED**: checked ANGLE
+proc-table selection, frontend display, root/shared context creation and root
+make-current succeeded. The Probe then incorrectly queried a context creation
+attribute through `eglQueryContext` and stopped with EGL_BAD_ATTRIBUTE. Shared
+content and worker migration have not executed; desktop GL is not accepted.
+All previous failures are retained below.
 
 ## Implementation boundary
 
@@ -130,7 +130,7 @@ Device report from the same model/OS at `59c7001`, run `40785620860`:
   its checked proc-table route; the App's independent mandatory-export check was
   the erroneous additional prerequisite, not evidence of missing desktop GL semantics.
 
-### Shared-resolver correction (Actions passed, device retest pending)
+### Shared-resolver correction (Actions passed, device progressed to metadata error)
 
 The resolver policy is now in `Overlay/Bootstrap.h`, used by the actual candidate
 bootstrap and App acquisition ABI. CI compiles that same policy with ASan/UBSan:
@@ -152,11 +152,59 @@ Changed files: `Overlay/Bootstrap.{h,cpp}` (shared selection policy/checked ABI)
 actual policy test and Python guards. The obsolete App-only policy was removed.
 Docs and device procedure now distinguish both retained failures from pending
 context acceptance. No formal renderer, dependency revision or ADR was changed.
-There is no new performance result: context/sharing/migration and B1.2/guest GL
-remain gated on real device reports.
+There is no new performance result. The subsequent device report below confirms
+context creation, not shared-content/migration or B1.2/guest GL acceptance.
 
 Update **only the independent B1.1 app**, launch a fresh process and share Full
 Report. Expect `acquire_metal_display_shared_resolver`, a verified
 `ANGLE_PROC_TABLE (direct export absent)` owner, then actual frontend display,
 context/sharing, worker migration, three pixel checks and cleanup results.
 Any later failure stays BLOCKED with its stage; B1.2 and guest GL remain untested.
+
+### Device report at 8c5a943 (metadata query failure retained)
+
+Summary of the user's actual iPhone18,3 / iOS 27.0.1 (24A446) report, not a
+reconstructed raw log. Source/run/candidate hashes match the shared-resolver
+delivery above; accepted ANGLE artifact is unchanged.
+
+- Bootstrap 0 / 384 entries, seven frontend direct/proc identities matched.
+- Shared display acquisition succeeded, route 2, pointer owned by the bundled
+  **GLESv2** image, not system GLES. Both acquisition EGL statuses were 0x3000.
+- Frontend initialize, bind virtual desktop API, choose config, pbuffer,
+  root/shared context creation and root make-current succeeded (EGL 0x3000).
+- Frontend reported `4.0.0 MobileGlues 2.0.0` / `4.00 MobileGlues with glslang and SPIRV-Cross`.
+  Backend still reports actual GLES 3.0 / GLSL ES 3.00 / ANGLE Metal A19.
+  These strings do not prove GL 4.0, GL 3.2 or any shader semantics.
+- EGL major query succeeded; minor query returned 0 / 0x3004 (EGL_BAD_ATTRIBUTE).
+  Execution stopped before profile, GPU content or thread migration tests.
+- Unbind, destroy shared/root/pbuffer, terminate and release owner thread all
+  returned 1 / EGL 0x3000. No resource-sharing or leak-profile PASS is inferred.
+
+Root cause is in the Probe, not evidence of missing context creation:
+[EGL QueryContext](https://raw.githubusercontent.com/KhronosGroup/EGL-Registry/main/sdk/docs/man/eglQueryContext.xml)
+accepts client type/config attributes, not the minor/profile creation attributes.
+[KHR_create_context](https://raw.githubusercontent.com/KhronosGroup/EGL-Registry/main/extensions/KHR/EGL_KHR_create_context.txt)
+directs version/profile queries to `glGetIntegerv`. The pinned frontend
+`egl/egl.cpp:821` first forwards the query to ANGLE; rejecting the invalid EGL
+query is not a reason to fabricate a supported attribute in the compatibility layer.
+
+### Context metadata API correction (Actions/device retest pending)
+
+App-only `ContextMetadata.hpp` issues EGL client-type/config-ID queries and GL
+major/minor/profile queries after make-current. Every actual result/error is
+logged, query failures still block, and no returned version/profile value is
+used as a desktop capability gate. The pinned candidate's `gl/getter.cpp`
+returns granted-request bookkeeping for desktop major/minor and a fixed Core
+profile bit. The report explicitly labels these as metadata, not tested semantics.
+No candidate, ANGLE, recipe, version string or cap changes are needed.
+
+CI compiles the actual App query plan with ASan/UBSan: exact API/token sequence,
+unmodified returned values and error propagation at each query. A Python source
+guard prevents reintroduction of the invalid EGL queries; this remains policy
+testing, not device execution. Existing GPU clear, three shared/migrated content
+reads, exclusive owner-thread handoff and cleanup remain required and unchanged.
+
+For the next fresh-process report, expect `context_metadata_correct_api` followed
+by `shared_gpu_content_and_migration`. Context creation is now evidenced, but
+content sharing/migration and B1.1 overall remain pending. No B1.2/guest GL or
+performance claim follows from the metadata correction.

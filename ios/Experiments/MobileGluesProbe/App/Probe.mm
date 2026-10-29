@@ -1,5 +1,6 @@
 #import "Probe.h"
 #include "../Overlay/Bootstrap.h"
+#include "ContextMetadata.hpp"
 #import <UIKit/UIKit.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -237,11 +238,26 @@ NSString *RGPURunMobileGluesProbe(void) {
             [report appendFormat:@"Frontend GL_VERSION (unverified metadata): %s\nFrontend GLSL_VERSION (unverified metadata): %s\nFrontend Renderer: %s\nBackend actual GL: %s\nBackend actual GLSL: %s\nBackend actual Renderer: %s\n",
                 f.glGetString(GL_VERSION), f.glGetString(GL_SHADING_LANGUAGE_VERSION), f.glGetString(GL_RENDERER),
                 backendString(GL_VERSION), backendString(GL_SHADING_LANGUAGE_VERSION), backendString(GL_RENDERER)];
-            EGLint major = 0, minor = 0, profile = 0;
-            f.eglCheck(f.eglQueryContext(s.display, s.root, EGL_CONTEXT_MAJOR_VERSION_KHR, &major), report, "query frontend context major");
-            f.eglCheck(f.eglQueryContext(s.display, s.root, EGL_CONTEXT_MINOR_VERSION_KHR, &minor), report, "query frontend context minor");
-            f.eglCheck(f.eglQueryContext(s.display, s.root, EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR, &profile), report, "query frontend profile");
-            [report appendFormat:@"Frontend context metadata: %d.%d profile=0x%x; NOT GL semantic conformance evidence\n", major, minor, profile];
+            [report appendString:@"B11_STAGE context_metadata_correct_api\n"];
+            static_assert(rgpu::b11::eglContextClientType == EGL_CONTEXT_CLIENT_TYPE && rgpu::b11::eglConfigId == EGL_CONFIG_ID);
+            static_assert(rgpu::b11::glMajorVersion == GL_MAJOR_VERSION && rgpu::b11::glMinorVersion == GL_MINOR_VERSION);
+            const auto metadata = rgpu::b11::queryContextMetadata([&](int attribute) {
+                EGLint value = 0;
+                const auto ok = f.eglQueryContext(s.display, s.root, attribute, &value);
+                [report appendFormat:@"Frontend EGL context query attribute=0x%x result=%u value=%d\n", attribute, ok, value];
+                f.eglCheck(ok, report, "query frontend EGL context metadata");
+                return value;
+            }, [&](unsigned token) {
+                GLint value = 0;
+                f.glGetIntegerv(token, &value);
+                [report appendFormat:@"Frontend GL context query token=0x%x value=%d\n", token, value];
+                f.glCheck(report, "query frontend GL context metadata");
+                return value;
+            });
+            require(metadata.clientType == EGL_OPENGL_API, "Frontend context client type mismatch");
+            [report appendFormat:@"Frontend context metadata via GL: %d.%d profile=0x%x EGL_client_type=0x%x config_id=%d; NOT GL semantic conformance evidence\n",
+                metadata.major, metadata.minor, metadata.profile, metadata.clientType, metadata.configId];
+            [report appendString:@"Metadata source caveat: pinned MobileGlues GL major/minor use granted request bookkeeping; profile getter returns a fixed Core bit. NOT capability proof. GPU content/sharing/migration checks still required.\n"];
             [report appendString:@"B11_STAGE shared_gpu_content_and_migration\n"];
             f.glGenTextures(1, &s.texture); f.glBindTexture(GL_TEXTURE_2D, s.texture);
             f.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);

@@ -34,6 +34,11 @@ jobs:
           c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
             -Iios/Experiments/MobileGluesProbe/Overlay tests/b11_provider_policy.cpp -o /tmp/b11-provider-policy
           /tmp/b11-provider-policy
+      - name: Test actual isolated B1.1 context metadata API plan with sanitizers
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+            -Iios/Experiments/MobileGluesProbe/App tests/b11_context_metadata.cpp -o /tmp/b11-context-metadata
+          /tmp/b11-context-metadata
 
   ios-build-compatibility:
     name: Pinned iOS build compatibility

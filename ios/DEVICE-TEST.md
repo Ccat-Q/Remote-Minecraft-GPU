@@ -216,6 +216,13 @@ bootstrap's validated ANGLE proc-table selection with the App. Use the new
 IPA linked in the implementation procedure. In a fresh Probe process, capture the selected route/provider,
 then actual context, sharing, migration, pixel checks and cleanup. CI policy
 fixtures do not substitute for those device results; do not mark B1.1 passed yet.
+Device report at `8c5a943` now confirms the proc-table provider/display and both
+context creations/root binding. It stopped at the Probe's invalid EGL minor
+query (0x3004), before content/migration. The next App-only correction uses EGL
+client/config and GL version/profile queries; those returned versions remain
+metadata, especially because the candidate profile getter is a fixed Core bit.
+Capture `context_metadata_correct_api`, all actual GPU content/migration results
+and cleanup. No server restart or candidate backend replacement is involved.
 
 ## Route B: subsequent shader and guest capability gates (unaccepted)
 

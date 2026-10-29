@@ -101,6 +101,19 @@ class MobileGluesProbeTests(unittest.TestCase):
         self.assertIn("B11_STAGE create_frontend_contexts", source)
         self.assertIn('"dlsym "', source)
 
+    def test_context_metadata_uses_correct_api_without_capability_gate(self):
+        source = (PROBE / "App/Probe.mm").read_text()
+        plan = (PROBE / "App/ContextMetadata.hpp").read_text()
+        self.assertIn("rgpu::b11::queryContextMetadata", source)
+        self.assertIn("f.eglQueryContext(s.display, s.root, attribute, &value)", source)
+        self.assertIn("f.glGetIntegerv(token, &value)", source)
+        self.assertNotRegex(source, r"eglQueryContext\([^\n]*EGL_CONTEXT_(?:MAJOR|MINOR|OPENGL_PROFILE)")
+        self.assertIn("egl(eglContextClientType), egl(eglConfigId)", plan)
+        self.assertIn("gl(glMajorVersion), gl(glMinorVersion), gl(glContextProfileMask)", plan)
+        self.assertIn("NOT capability proof", source)
+        self.assertIn("granted request bookkeeping", source)
+        self.assertIn("B11_STAGE shared_gpu_content_and_migration", source)
+
 
 if __name__ == "__main__":
     unittest.main()
