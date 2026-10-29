@@ -253,6 +253,16 @@ First ready-to-install B1.2a source: `c6c443f`, iOS Actions `40818346056`, CI
 The candidate was recompiled from identical pinned/adapted source and has a new
 binary hash, so keep full provenance and run the included B1.1 regression too.
 
+## B1.2d standalone Buffer / Geometry (device pending)
+
+[Exact scope and steps](../docs/b12d-buffer-geometry.md). Separate **RemoteGPU
+B1.2d** (`.mobileglues.capabilities`); leave accepted Apps installed. Fresh
+process, **Run Buffer / Geometry Probe**, **Share Full Report** including failures.
+No server restart. B1.1/a/b/c run first; signed/float Texture Buffer live updates
+and Geometry are independent fresh-context tests with explicit PASS/BLOCKED.
+An explicit reattach success cannot waive failed updates. Geometry creation or
+translation failure leaves later stages NOT RUN. No full B1.2/guest acceptance.
+
 ## B1.2c standalone Depth / Stencil / Blend (device accepted, limited scope)
 
 Source `e989b4d` passed actual iPhone execution: four cases / 1024 pixels / zero

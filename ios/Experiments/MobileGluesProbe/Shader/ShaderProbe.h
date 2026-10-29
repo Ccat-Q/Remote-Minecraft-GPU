@@ -11,6 +11,14 @@ void RGPURunInstancingSyncProbe(NSMutableString *report,
     const std::function<void*(const char*)>& frontend,
     const std::function<void*(const char*)>& backend);
 #endif
+#if RGPU_B12_CORE_PROBE
+#include "CapabilityFixtures.hpp"
+// One invocation per fresh, unshared context; failures throw after local cleanup.
+void RGPURunCapabilityProbe(NSMutableString *report,
+    const std::function<void*(const char*)>& frontend,
+    const std::function<void*(const char*)>& backend,
+    rgpu::b12::Capability kind);
+#endif
 #if RGPU_B12_RASTER_PROBE
 void RGPURunRasterProbe(NSMutableString *report,
     const std::function<void*(const char*)>& frontend,

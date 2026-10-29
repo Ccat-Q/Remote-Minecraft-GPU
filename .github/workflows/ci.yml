@@ -54,6 +54,11 @@ jobs:
           c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
             -Iios/Experiments/MobileGluesProbe/Shader tests/b12c_raster.cpp -o /tmp/b12c-raster
           /tmp/b12c-raster
+      - name: Test B1.2d Buffer Texture and Geometry CPU oracles (NOT GPU execution)
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+            -Iios/Experiments/MobileGluesProbe/Shader tests/b12d_capabilities.cpp -o /tmp/b12d-capabilities
+          /tmp/b12d-capabilities
 
   ios-build-compatibility:
     name: Pinned iOS build compatibility

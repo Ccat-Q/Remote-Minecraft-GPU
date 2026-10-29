@@ -7,7 +7,7 @@ on:
         required: true
         default: "40636888480"
   push:
-    branches: [experiment/b11-mobileglues-probe, experiment/b12-mobileglues-shader-probe, experiment/b12b-mobileglues-features-probe, experiment/b12c-mobileglues-raster-probe]
+    branches: [experiment/b11-mobileglues-probe, experiment/b12-mobileglues-shader-probe, experiment/b12b-mobileglues-features-probe, experiment/b12c-mobileglues-raster-probe, experiment/b12d-mobileglues-core-probe]
     paths:
       - ios/Experiments/MobileGluesProbe/**
       - tools/ci/*mobileglues*
@@ -27,8 +27,8 @@ jobs:
       RENDERER_RUN_ID: ${{ inputs.renderer_run_id || '40636888480' }}
       MG_SHA: 97558a69157b033b890958b1e49258c5b51a80c6
       CCACHE_DIR: ${{ github.workspace }}/.cache/b11-ccache
-      PROBE_SCOPE: ${{ github.ref_name == 'experiment/b12c-mobileglues-raster-probe' && 'b12c' || github.ref_name == 'experiment/b12b-mobileglues-features-probe' && 'b12b' || github.ref_name == 'experiment/b12-mobileglues-shader-probe' && 'b12a' || 'b11' }}
-      PROBE_APP: ${{ github.ref_name == 'experiment/b12c-mobileglues-raster-probe' && 'MobileGluesRasterProbe' || github.ref_name == 'experiment/b12b-mobileglues-features-probe' && 'MobileGluesFeaturesProbe' || github.ref_name == 'experiment/b12-mobileglues-shader-probe' && 'MobileGluesShaderProbe' || 'MobileGluesCompatibilityProbe' }}
+      PROBE_SCOPE: ${{ github.ref_name == 'experiment/b12d-mobileglues-core-probe' && 'b12d' || github.ref_name == 'experiment/b12c-mobileglues-raster-probe' && 'b12c' || github.ref_name == 'experiment/b12b-mobileglues-features-probe' && 'b12b' || github.ref_name == 'experiment/b12-mobileglues-shader-probe' && 'b12a' || 'b11' }}
+      PROBE_APP: ${{ github.ref_name == 'experiment/b12d-mobileglues-core-probe' && 'MobileGluesCoreProbe' || github.ref_name == 'experiment/b12c-mobileglues-raster-probe' && 'MobileGluesRasterProbe' || github.ref_name == 'experiment/b12b-mobileglues-features-probe' && 'MobileGluesFeaturesProbe' || github.ref_name == 'experiment/b12-mobileglues-shader-probe' && 'MobileGluesShaderProbe' || 'MobileGluesCompatibilityProbe' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -153,7 +153,10 @@ jobs:
           test -f "$app/Frameworks/MobileGluesProbe.framework/MobileGluesProbe"
           test ! -e "$app/Frameworks/virglrenderer.1.framework"
           test ! -e "$app/Frameworks/epoxy.0.framework"
-          if [ "$PROBE_SCOPE" = b12c ]; then
+          if [ "$PROBE_SCOPE" = b12d ]; then
+            test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")" = org.remotegpu.experiments.mobileglues.capabilities
+            jq -e '.accepted_b12c_device_sha == "e989b4d86d70d1fa15fbbde119bcdac9287ac6ba" and (.experiment | startswith("B1.2d"))' "$app/B11Provenance.json"
+          elif [ "$PROBE_SCOPE" = b12c ]; then
             test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")" = org.remotegpu.experiments.mobileglues.raster
             jq -e '.accepted_b12b_device_sha == "f91d6838b1534a65a8c7e6eecc4830a2e47c572d" and (.experiment | startswith("B1.2c"))' "$app/B11Provenance.json"
           elif [ "$PROBE_SCOPE" = b12b ]; then

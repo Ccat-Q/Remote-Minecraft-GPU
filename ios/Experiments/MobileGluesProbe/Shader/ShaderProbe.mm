@@ -218,6 +218,30 @@ void compile(GL& gl, Backend& backend, NSMutableString *report, GLuint shader, c
     gl.check(report,"actual shader compilation");
     require(frontStatus == GL_TRUE && backStatus == GL_TRUE, "Real shader compilation failed (see logs)");
 }
+void linkProgram(GL& gl,Backend& backend,NSMutableString *report,Resources& resources,GLuint geometry = 0) {
+    resources.program = gl.glCreateProgram();
+    require(resources.program != 0,"Cannot allocate program");
+    gl.glAttachShader(resources.program,resources.vertex); gl.glAttachShader(resources.program,resources.fragment);
+    if (geometry) gl.glAttachShader(resources.program,geometry);
+    gl.glBindAttribLocation(resources.program,0,"aPosition"); gl.glBindAttribLocation(resources.program,1,"aUV");
+    gl.glBindFragDataLocation(resources.program,0,"outColor0");
+    gl.glLinkProgram(resources.program);
+    GLint status = 0, rawStatus = 0, length = 0;
+    gl.glGetProgramiv(resources.program,GL_LINK_STATUS,&status);
+    backend.glGetProgramiv(resources.program,GL_LINK_STATUS,&rawStatus);
+    gl.glGetProgramiv(resources.program,GL_INFO_LOG_LENGTH,&length);
+    const auto frontLog = textResult(length,[&](GLsizei n,GLsizei *used,GLchar *text) {
+        gl.glGetProgramInfoLog(resources.program,n,used,text);
+    });
+    backend.glGetProgramiv(resources.program,GL_INFO_LOG_LENGTH,&length);
+    const auto rawLog = textResult(length,[&](GLsizei n,GLsizei *used,GLchar *text) {
+        backend.glGetProgramInfoLog(resources.program,n,used,text);
+    });
+    [report appendFormat:@"B12_LINK frontend=%d backend=%d frontend_log_BEGIN\n%s\nfrontend_log_END backend_log_BEGIN\n%s\nbackend_log_END\n",
+        status,rawStatus,frontLog.c_str(),rawLog.c_str()];
+    gl.check(report,"actual program link");
+    require(status == GL_TRUE && rawStatus == GL_TRUE,"Real program link failed (see logs)");
+}
 }
 
 static void runDrawProbe(NSMutableString *report,
@@ -253,27 +277,7 @@ static void runDrawProbe(NSMutableString *report,
         compile(gl,backend,report,resources.vertex,raster ? rasterVertex : instanced ? instanceVertex : vertexSource,"vertex");
         resources.fragment = gl.glCreateShader(GL_FRAGMENT_SHADER);
         compile(gl,backend,report,resources.fragment,instanced ? instanceFragment : fragmentSource,"fragment");
-        resources.program = gl.glCreateProgram();
-        require(resources.program != 0,"Cannot allocate program");
-        gl.glAttachShader(resources.program,resources.vertex); gl.glAttachShader(resources.program,resources.fragment);
-        gl.glBindAttribLocation(resources.program,0,"aPosition"); gl.glBindAttribLocation(resources.program,1,"aUV");
-        gl.glBindFragDataLocation(resources.program,0,"outColor0");
-        gl.glLinkProgram(resources.program);
-        GLint status = 0, rawStatus = 0, length = 0;
-        gl.glGetProgramiv(resources.program,GL_LINK_STATUS,&status);
-        backend.glGetProgramiv(resources.program,GL_LINK_STATUS,&rawStatus);
-        gl.glGetProgramiv(resources.program,GL_INFO_LOG_LENGTH,&length);
-        const auto frontLog = textResult(length,[&](GLsizei n,GLsizei *used,GLchar *text) {
-            gl.glGetProgramInfoLog(resources.program,n,used,text);
-        });
-        backend.glGetProgramiv(resources.program,GL_INFO_LOG_LENGTH,&length);
-        const auto rawLog = textResult(length,[&](GLsizei n,GLsizei *used,GLchar *text) {
-            backend.glGetProgramInfoLog(resources.program,n,used,text);
-        });
-        [report appendFormat:@"B12_LINK frontend=%d backend=%d frontend_log_BEGIN\n%s\nfrontend_log_END backend_log_BEGIN\n%s\nbackend_log_END\n",
-            status,rawStatus,frontLog.c_str(),rawLog.c_str()];
-        gl.check(report,"actual program link");
-        require(status == GL_TRUE && rawStatus == GL_TRUE,"Real program link failed (see logs)");
+        linkProgram(gl,backend,report,resources);
         gl.glUseProgram(resources.program);
         auto uniform = [&](const char *name) { GLint location = gl.glGetUniformLocation(resources.program,name);
             [report appendFormat:@"B12_UNIFORM name=%s location=%d\n", name,location];
@@ -395,5 +399,150 @@ void RGPURunRasterProbe(NSMutableString *report,const std::function<void*(const 
 void RGPURunInstancingSyncProbe(NSMutableString *report,const std::function<void*(const char*)>& frontend,
                               const std::function<void*(const char*)>& backend) {
     runDrawProbe(report,frontend,backend,true);
+}
+#endif
+
+#if RGPU_B12_CORE_PROBE
+namespace {
+template<class Oracle>
+int capabilityPixels(GL& gl,NSMutableString *report,const char *feature,int test,const char *operation,Oracle oracle) {
+    using namespace rgpu::b12;
+    std::array<Pixel,width*height> pixels{};
+    gl.glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+    gl.check(report,"B1.2d local diagnostic output read");
+    int mismatches = 0;
+    [report appendFormat:@"B12D_ACTUAL_RGBA8 feature=%s case=%d operation=%s rows_bottom_to_top_BEGIN\n",feature,test,operation];
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const auto& p = pixels[y*width+x];
+            [report appendFormat:@"%02x%02x%02x%02x ",p[0],p[1],p[2],p[3]];
+        }
+        [report appendString:@"\n"];
+    }
+    [report appendString:@"rows_bottom_to_top_END\n"];
+    for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
+        const auto& p = pixels[y*width+x]; const auto expected = oracle(x,y);
+        if (!matches(p,expected)) {
+            if (mismatches < 8) [report appendFormat:@"B12D_MISMATCH feature=%s case=%d x=%d y=%d actual=%u,%u,%u,%u expected=%u,%u,%u,%u\n",
+                feature,test,x,y,p[0],p[1],p[2],p[3],expected[0],expected[1],expected[2],expected[3]];
+            ++mismatches;
+        }
+    }
+    [report appendFormat:@"B12D_CASE feature=%s case=%d operation=%s checked_pixels=%d mismatches=%d rgb_tolerance=1 alpha_tolerance=0\n",
+        feature,test,operation,width*height,mismatches];
+    return mismatches;
+}
+}
+void RGPURunCapabilityProbe(NSMutableString *report,const std::function<void*(const char*)>& frontend,
+    const std::function<void*(const char*)>& backendResolver,rgpu::b12::Capability kind) {
+    using namespace rgpu::b12;
+    const bool geometry = kind == Capability::Geometry;
+    const char *feature = capabilityNames[static_cast<size_t>(kind)];
+    [report appendFormat:@"B12D_STAGE feature=%s; fresh unshared context; NOT full capability conformance\n",feature];
+    GL gl(frontend); Backend backend(backendResolver);
+    GLuint geometryShader = 0, dataBuffer = 0; bool bufferTextureBound = false;
+    Resources resources{gl,report};
+    resources.additionalCleanup = [&] {
+        gl.glActiveTexture(GL_TEXTURE0);
+        if (bufferTextureBound) gl.glBindTexture(GL_TEXTURE_BUFFER,0);
+        if (dataBuffer) { gl.glDeleteBuffers(1,&dataBuffer); dataBuffer = 0; }
+        if (geometryShader) { gl.glDeleteShader(geometryShader); geometryShader = 0; }
+        [report appendFormat:@"B12D_CLEANUP feature=%s extra buffer/geometry shader release calls returned; GL status follows\n",feature];
+    };
+    try {
+        gl.check(report,"B1.2d feature entry (prior errors not discarded)");
+        if (geometry) {
+            [report appendFormat:@"B12D_GEOMETRY original_desktop_source_BEGIN\n%soriginal_desktop_source_END\n",geometrySource];
+            geometryShader = gl.glCreateShader(GL_GEOMETRY_SHADER);
+            const auto frontError = gl.glGetError(), rawError = backend.glGetError();
+            [report appendFormat:@"B12D_CREATE_GEOMETRY object=%u frontend_GL=0x%x backend_GL=0x%x\n",geometryShader,frontError,rawError];
+            require(geometryShader && frontError == GL_NO_ERROR && rawError == GL_NO_ERROR,
+                "Geometry shader creation rejected; compilation/link/draw NOT RUN (see actual creation errors)");
+            compile(gl,backend,report,geometryShader,geometrySource,"geometry");
+        }
+        resources.vertex = gl.glCreateShader(GL_VERTEX_SHADER);
+        compile(gl,backend,report,resources.vertex,capabilityVertex,"vertex");
+        resources.fragment = gl.glCreateShader(GL_FRAGMENT_SHADER);
+        compile(gl,backend,report,resources.fragment,geometry ? geometryFragment :
+            kind == Capability::SignedBuffer ? signedBufferFragment : floatBufferFragment,"fragment");
+        linkProgram(gl,backend,report,resources,geometryShader);
+        gl.glUseProgram(resources.program);
+        auto uniform = [&](const char *name) {
+            const auto location = gl.glGetUniformLocation(resources.program,name);
+            [report appendFormat:@"B12D_UNIFORM feature=%s name=%s location=%d\n",feature,name,location];
+            require(location >= 0,"Required B1.2d uniform missing"); return location;
+        };
+        gl.glGenVertexArrays(1,&resources.vao); gl.glBindVertexArray(resources.vao);
+        gl.glGenBuffers(1,&resources.buffer); gl.glBindBuffer(GL_ARRAY_BUFFER,resources.buffer);
+        require(resources.vao && resources.buffer,"B1.2d VAO/VBO allocation failed");
+        gl.glBufferData(GL_ARRAY_BUFFER,sizeof(vertices),vertices.data(),GL_STATIC_DRAW);
+        gl.glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,sizeof(Vertex),reinterpret_cast<void*>(offsetof(Vertex,x)));
+        gl.glEnableVertexAttribArray(0);
+        gl.glGenTextures(2,resources.textures);
+        require(resources.textures[0] && resources.textures[1],"B1.2d texture allocation failed");
+        gl.glActiveTexture(GL_TEXTURE0); gl.glBindTexture(GL_TEXTURE_2D,resources.textures[0]);
+        gl.glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,width,height,0,GL_RGBA,GL_UNSIGNED_BYTE,nullptr);
+        gl.glGenFramebuffers(1,&resources.fbo); gl.glBindFramebuffer(GL_FRAMEBUFFER,resources.fbo);
+        require(resources.fbo != 0,"B1.2d FBO allocation failed");
+        gl.glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,resources.textures[0],0);
+        const auto complete = gl.glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        [report appendFormat:@"B12D_FBO feature=%s format=RGBA8 size=16x16 status=0x%x\n",feature,complete];
+        require(complete == GL_FRAMEBUFFER_COMPLETE,"B1.2d FBO incomplete");
+        for (const auto cap : {GL_BLEND,GL_DEPTH_TEST,GL_STENCIL_TEST,GL_SCISSOR_TEST,GL_CULL_FACE,GL_DITHER}) gl.glDisable(cap);
+        gl.glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+        gl.glPixelStorei(GL_PACK_ALIGNMENT,1); gl.glPixelStorei(GL_UNPACK_ALIGNMENT,1);
+        gl.glViewport(0,0,width,height);
+        gl.check(report,"B1.2d actual draw resources/state");
+        int mismatches = 0;
+        if (geometry) {
+            const auto scale = uniform("uScale"), offset = uniform("uOffset"), color = uniform("uColor");
+            gl.glUniform2f(scale,0.375f,0.75f);
+            for (int test = 0; test < geometryCases; ++test) {
+                gl.glUniform2f(offset,test == 0 ? -0.5f : 0.5f,0);
+                const std::array<float,4> tint = test == 0 ? std::array<float,4>{1,0.25f,0,1} : std::array<float,4>{0,0.5f,1,1};
+                gl.glUniform4fv(color,1,tint.data());
+                gl.glClearColor(0,0,0,1); gl.glClear(GL_COLOR_BUFFER_BIT);
+                gl.glDrawArrays(GL_TRIANGLES,0,6);
+                gl.check(report,"actual geometry shader draw");
+                mismatches += capabilityPixels(gl,report,feature,test,"GEOMETRY_DYNAMIC_DRAW",
+                    [&](int x,int y) { return expectedGeometryPixel(test,x,y); });
+            }
+        } else {
+            const auto texBuffer = reinterpret_cast<decltype(&::glTexBuffer)>(frontend("glTexBuffer"));
+            const auto subData = reinterpret_cast<decltype(&::glBufferSubData)>(frontend("glBufferSubData"));
+            gl.glUniform1i(uniform("uBuffer"),0); const auto bias = uniform("uBias");
+            gl.glGenBuffers(1,&dataBuffer); require(dataBuffer != 0,"Texture buffer allocation failed");
+            // Generic ARRAY_BUFFER storage is legal desktop GL. The additional
+            // TEXTURE_BUFFER buffer-binding target itself is not accepted here.
+            gl.glBindBuffer(GL_ARRAY_BUFFER,dataBuffer);
+            if (kind == Capability::SignedBuffer) gl.glBufferData(GL_ARRAY_BUFFER,sizeof(signedInitial),signedInitial.data(),GL_DYNAMIC_DRAW);
+            else gl.glBufferData(GL_ARRAY_BUFFER,sizeof(floatInitial),floatInitial.data(),GL_DYNAMIC_DRAW);
+            gl.glBindTexture(GL_TEXTURE_BUFFER,resources.textures[1]); bufferTextureBound = true;
+            const GLenum format = kind == Capability::SignedBuffer ? GL_R8I : GL_RGBA32F;
+            texBuffer(GL_TEXTURE_BUFFER,format,dataBuffer);
+            gl.check(report,"actual desktop Texture Buffer attachment");
+            for (int test = 0; test < bufferCases; ++test) {
+                if (test == 1) {
+                    if (kind == Capability::SignedBuffer) subData(GL_ARRAY_BUFFER,0,sizeof(signedUpdated),signedUpdated.data());
+                    else subData(GL_ARRAY_BUFFER,0,sizeof(floatUpdated),floatUpdated.data());
+                    // Intentionally NO reattachment: live buffer storage changes
+                    // must become visible to the already attached texture.
+                } else if (test == 2) {
+                    // Separate diagnostic, NEVER counted as fixing case 1.
+                    texBuffer(GL_TEXTURE_BUFFER,format,dataBuffer);
+                }
+                gl.glUniform1i(bias,test == 0 ? 0 : 1);
+                const char *operation = test == 0 ? "INITIAL_ATTACH" : test == 1 ? "SUBDATA_WITHOUT_REATTACH" : "EXPLICIT_REATTACH_DIAGNOSTIC";
+                [report appendFormat:@"B12D_OPERATIONS feature=%s case=%d operation=%s\n",feature,test,operation];
+                gl.glClearColor(0,0,0,1); gl.glClear(GL_COLOR_BUFFER_BIT);
+                gl.glDrawArrays(GL_TRIANGLES,0,6);
+                gl.check(report,"actual Texture Buffer shader draw/update");
+                mismatches += capabilityPixels(gl,report,feature,test,operation,
+                    [&](int x,int y) { return expectedBufferPixel(kind,test,x,y); });
+            }
+        }
+        require(resources.close(),"B1.2d feature cleanup GL error");
+        require(mismatches == 0,"B1.2d actual output mismatch; all attempted cases/images retained, reattach cannot waive failed update semantics");
+    } catch (...) { resources.close(); throw; }
 }
 #endif

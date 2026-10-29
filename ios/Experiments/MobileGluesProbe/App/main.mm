@@ -10,7 +10,10 @@
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.systemBackgroundColor;
     self.run = [UIButton buttonWithType:UIButtonTypeSystem];
-#if RGPU_B12_RASTER_PROBE
+#if RGPU_B12_CORE_PROBE
+    self.title = @"B1.2d Buffer / Geometry";
+    [self.run setTitle:@"Run Buffer / Geometry Probe" forState:UIControlStateNormal];
+#elif RGPU_B12_RASTER_PROBE
     self.title = @"B1.2c Depth / Stencil / Blend";
     [self.run setTitle:@"Run Depth / Stencil / Blend Probe" forState:UIControlStateNormal];
 #elif RGPU_B12_FEATURE_PROBE
@@ -29,7 +32,9 @@
     [share addTarget:self action:@selector(shareReport) forControlEvents:UIControlEventTouchUpInside];
     self.report = [[UITextView alloc] init]; self.report.editable = NO;
     self.report.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightRegular];
-#if RGPU_B12_RASTER_PROBE
+#if RGPU_B12_CORE_PROBE
+    self.report.text = @"Separate B1.2d bundle. B1.1/a/b/c regressions run first. Signed and float Buffer Textures test initial data and live updates without reattach; explicit reattach is a separate diagnostic. Geometry creation/compile/link/draw tested independently.\nEach new feature has a fresh unshared context and PASS/BLOCKED result. No full GL3.2, guest or performance verdict. Share Full Report, including failures.";
+#elif RGPU_B12_RASTER_PROBE
     self.report.text = @"Separate B1.2c bundle. B1.1/B1.2a/B1.2b regressions run first, then four actual depth, stencil and separate RGB/Alpha blending outputs.\nNot full raster conformance, GL3.2, Texture Buffer, Geometry, cross-context sync or performance acceptance. Run once and Share Full Report.";
 #elif RGPU_B12_FEATURE_PROBE
     self.report.text = @"Separate B1.2b bundle. B1.1/B1.2a regressions run first, then 4/2/0 instance draws and same-context Fence completion before pixel checks.\nNo full GL3.2, cross-context ordering, slow-GPU cancellation or performance verdict. Run once per process and Share Full Report.";
@@ -60,7 +65,9 @@
 }
 - (void)shareReport {
     NSURL *url = [[NSURL fileURLWithPath:NSTemporaryDirectory()]
-#if RGPU_B12_RASTER_PROBE
+#if RGPU_B12_CORE_PROBE
+        URLByAppendingPathComponent:@"RemoteGPU-B12d-report.txt"];
+#elif RGPU_B12_RASTER_PROBE
         URLByAppendingPathComponent:@"RemoteGPU-B12c-report.txt"];
 #elif RGPU_B12_FEATURE_PROBE
         URLByAppendingPathComponent:@"RemoteGPU-B12b-report.txt"];

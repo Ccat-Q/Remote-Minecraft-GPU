@@ -141,7 +141,10 @@ void verifyPixels(Frontend& f, GLuint texture, NSMutableString *report, const ch
 
 NSString *RGPURunMobileGluesProbe(void) {
     NSMutableString *report = [NSMutableString stringWithString:
-#if RGPU_B12_RASTER_PROBE
+#if RGPU_B12_CORE_PROBE
+        @"B1.2d ISOLATED TEXTURE BUFFER / GEOMETRY CAPABILITY PROBE\n"
+         "Device acceptance pending. B1.1/B1.2a/B1.2b/B1.2c regressions run first. Each new feature uses a fresh unshared context. NOT full B1.2, VirGL or guest acceptance.\n"];
+#elif RGPU_B12_RASTER_PROBE
         @"B1.2c ISOLATED DEPTH / STENCIL / BLENDING PROBE\n"
          "Device acceptance pending. B1.1/B1.2a/B1.2b regressions run first. NOT full B1.2, cross-context sync, VirGL or guest GL acceptance.\n"];
 #elif RGPU_B12_FEATURE_PROBE
@@ -160,6 +163,9 @@ NSString *RGPURunMobileGluesProbe(void) {
     NSString *manifest = [NSString stringWithContentsOfURL:[NSBundle.mainBundle URLForResource:@"B11Provenance" withExtension:@"json"]
         encoding:NSUTF8StringEncoding error:nil];
     [report appendFormat:@"Build provenance: %@\n", manifest ?: @"MISSING"];
+#if RGPU_B12_CORE_PROBE
+    std::array<rgpu::b12::Verdict,3> capabilityVerdicts{};
+#endif
     try {
         require(manifest != nil, "Build provenance missing");
         NSString *directory = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/MobileGluesProbe"];
@@ -332,10 +338,54 @@ NSString *RGPURunMobileGluesProbe(void) {
 #if RGPU_B12_RASTER_PROBE
             RGPURunRasterProbe(report,frontendEntry,backendEntry);
 #endif
+#if RGPU_B12_CORE_PROBE
+            for (size_t index = 0; index < rgpu::b12::capabilityKinds.size(); ++index) {
+                EGLContext isolated = EGL_NO_CONTEXT;
+                const char *name = rgpu::b12::capabilityNames[index];
+                try {
+                    isolated = f.eglCreateContext(s.display,config,EGL_NO_CONTEXT,core);
+                    f.eglCheck(isolated != EGL_NO_CONTEXT,report,"create fresh unshared B1.2d context");
+                    f.eglCheck(f.eglMakeCurrent(s.display,s.surface,s.surface,isolated),report,"make B1.2d context current");
+                    require(f.eglGetCurrentContext() == isolated,"B1.2d current context mismatch");
+                    RGPURunCapabilityProbe(report,frontendEntry,backendEntry,rgpu::b12::capabilityKinds[index]);
+                    capabilityVerdicts[index] = rgpu::b12::Verdict::Passed;
+                    [report appendFormat:@"B12D_FEATURE feature=%s result=PASS representative_cases_only\n",name];
+                } catch (const std::exception& e) {
+                    capabilityVerdicts[index] = rgpu::b12::Verdict::Blocked;
+                    [report appendFormat:@"B12D_FEATURE feature=%s result=BLOCKED error=%s; later unexecuted steps NOT RUN\n",name,e.what()];
+                }
+                // Always restore the accepted root. A feature failure is retained,
+                // never cleared into a PASS, and cannot suppress the next fresh
+                // context. Failed EGL recovery instead stops the suite safely.
+                const auto unbound = f.eglMakeCurrent(s.display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);
+                const auto unbindError = f.eglGetError();
+                const auto restored = f.eglMakeCurrent(s.display,s.surface,s.surface,s.root);
+                const auto restoreError = f.eglGetError();
+                EGLBoolean destroyed = EGL_TRUE; EGLint destroyError = EGL_SUCCESS;
+                if (isolated != EGL_NO_CONTEXT && restored) {
+                    destroyed = f.eglDestroyContext(s.display,isolated); destroyError = f.eglGetError();
+                } else if (isolated != EGL_NO_CONTEXT) {
+                    destroyed = EGL_FALSE; // retained until process exit; never freed while binding is uncertain
+                }
+                [report appendFormat:@"B12D_CONTEXT_CLEANUP feature=%s allocated=%s unbind=%u/0x%x restore_root=%u/0x%x destroy=%u/0x%x (destroy skipped if not allocated; retained if restore fails)\n",
+                    name,isolated != EGL_NO_CONTEXT ? "YES" : "NO",unbound,unbindError,restored,restoreError,destroyed,destroyError];
+                require(unbound && unbindError == EGL_SUCCESS && restored && restoreError == EGL_SUCCESS &&
+                    destroyed && destroyError == EGL_SUCCESS && f.eglGetCurrentContext() == s.root,
+                    "B1.2d context recovery/cleanup failed; suite stopped, not device acceptance");
+            }
+#endif
 #endif
             require(s.close(), "Frontend cleanup reported errors");
         } catch (...) { s.close(); throw; }
-#if RGPU_B12_RASTER_PROBE
+#if RGPU_B12_CORE_PROBE
+        for (size_t index = 0; index < capabilityVerdicts.size(); ++index)
+            [report appendFormat:@"B12D_SUMMARY feature=%s result=%s\n",rgpu::b12::capabilityNames[index],
+                capabilityVerdicts[index] == rgpu::b12::Verdict::Passed ? "PASS" :
+                capabilityVerdicts[index] == rgpu::b12::Verdict::Blocked ? "BLOCKED" : "NOT_RUN"];
+        [report appendString:rgpu::b12::allCapabilitiesPassed(capabilityVerdicts) ?
+            @"PASS: B1.2d representative signed/float Texture Buffer initial/update/reattach and Geometry outputs plus B1.1/a/b/c regressions and cleanup ONLY. NOT full B1.2, cross-context sync, limits, VirGL/guest GL, Minecraft, performance or leak acceptance.\n" :
+            @"BLOCKED: B1.2d one or more required capability tests failed; individual results above are retained. Prior B1.1/a/b/c regression success is NOT full B1.2 or guest acceptance. No capability override or backend substitution applied.\n"];
+#elif RGPU_B12_RASTER_PROBE
         [report appendString:@"PASS: B1.2c representative Depth/Stencil/Blending plus B1.1/B1.2a/B1.2b regressions and cleanup calls ONLY. TextureBuffer/Geometry, full B1.2, cross-context synchronization and guest GL NOT ACCEPTED.\n"];
 #elif RGPU_B12_FEATURE_PROBE
         [report appendString:@"PASS: B1.2b representative instancing/same-context sync plus B1.1/B1.2a regressions and cleanup calls ONLY. Full B1.2, cross-context synchronization and guest GL NOT ACCEPTED.\n"];
@@ -350,7 +400,9 @@ NSString *RGPURunMobileGluesProbe(void) {
     NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/MobileGluesProbe/latest.log"];
     NSString *log = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
     if (log) [report appendFormat:@"\nMobileGlues runtime log (bounded tail):\n%@\n", [log substringFromIndex:log.length > 32768 ? log.length - 32768 : 0]];
-#if RGPU_B12_RASTER_PROBE
+#if RGPU_B12_CORE_PROBE
+    [report appendString:@"Local diagnostics ONLY: B1.1 up to three 1x1 reads; B1.2a/b/c ten 16x16 reads; B1.2d at most eight 16x16 reads. Explicit reattach is diagnostic, never waives failed live updates. No remote display/streaming, performance or driver-leak verdict.\n"];
+#elif RGPU_B12_RASTER_PROBE
     [report appendString:@"Local diagnostics ONLY: B1.1 up to three 1x1 reads; B1.2a/b each up to three and B1.2c up to four 16x16 reads. No remote display/streaming, performance or driver-leak verdict.\n"];
 #elif RGPU_B12_FEATURE_PROBE
     [report appendString:@"Local diagnostics ONLY: B1.1 up to three 1x1 reads; B1.2a and B1.2b each up to three 16x16 reads. No remote display/streaming, performance or driver-leak verdict.\n"];

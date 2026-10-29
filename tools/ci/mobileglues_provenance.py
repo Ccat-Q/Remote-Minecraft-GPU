@@ -12,12 +12,18 @@ from prepare_mobileglues_probe import MOBILEGLUES
 ACCEPTED_B11 = "d95d32be3d003f3c2c6c5a84b2f87132e4f6c7b2"
 ACCEPTED_B12A = "c6c443facf52929f6caaa760f8bad675e4f4bde5"
 ACCEPTED_B12B = "f91d6838b1534a65a8c7e6eecc4830a2e47c572d"
+ACCEPTED_B12C = "e989b4d86d70d1fa15fbbde119bcdac9287ac6ba"
 
 
 def experiment_scope(scope):
     if scope == "b11":
         return {"experiment": "B1.1 isolated frontend/backend provider and context test",
                 "capability_status": "UNVERIFIED: no guest/VirGL, GLSL 150 or complete GL 3.2 acceptance"}
+    if scope == "b12d":
+        return {"experiment": "B1.2d isolated signed/float Texture Buffer and Geometry capability tests; not full B1.2 or guest acceptance",
+                "accepted_b11_device_sha": ACCEPTED_B11, "accepted_b12a_device_sha": ACCEPTED_B12A,
+                "accepted_b12b_device_sha": ACCEPTED_B12B, "accepted_b12c_device_sha": ACCEPTED_B12C,
+                "capability_status": "DEVICE_PENDING: per-feature PASS/BLOCKED required; no full B1.2, cross-context sync, VirGL/guest or Minecraft acceptance"}
     if scope == "b12c":
         return {"experiment": "B1.2c isolated depth/stencil/blending; not full B1.2 or guest acceptance",
                 "accepted_b11_device_sha": ACCEPTED_B11, "accepted_b12a_device_sha": ACCEPTED_B12A,
@@ -52,7 +58,7 @@ def verify_bundle(app):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify-app", type=Path)
-    parser.add_argument("--scope", choices=("b11", "b12a", "b12b", "b12c"), default="b11")
+    parser.add_argument("--scope", choices=("b11", "b12a", "b12b", "b12c", "b12d"), default="b11")
     for name in ("angle", "recipe", "candidate", "output"):
         parser.add_argument("--" + name, type=Path)
     args = parser.parse_args()
@@ -67,12 +73,14 @@ def main():
     if source != os.environ["GITHUB_SHA"] or recipe["mobileglues_sha"] != MOBILEGLUES:
         raise ValueError("Checkout/candidate provenance mismatch")
     subprocess.run(["git", "merge-base", "--is-ancestor", "6dd8b04c049da999b9dbd91e4c341f4a8b6d5e31", source], check=True)
-    if args.scope in ("b12a", "b12b", "b12c"):
+    if args.scope in ("b12a", "b12b", "b12c", "b12d"):
         subprocess.run(["git", "merge-base", "--is-ancestor", ACCEPTED_B11, source], check=True)
-    if args.scope in ("b12b", "b12c"):
+    if args.scope in ("b12b", "b12c", "b12d"):
         subprocess.run(["git", "merge-base", "--is-ancestor", ACCEPTED_B12A, source], check=True)
-    if args.scope == "b12c":
+    if args.scope in ("b12c", "b12d"):
         subprocess.run(["git", "merge-base", "--is-ancestor", ACCEPTED_B12B, source], check=True)
+    if args.scope == "b12d":
+        subprocess.run(["git", "merge-base", "--is-ancestor", ACCEPTED_B12C, source], check=True)
     result = {
         **experiment_scope(args.scope),
         "source_sha": source, "actions_run": os.environ["GITHUB_RUN_ID"],

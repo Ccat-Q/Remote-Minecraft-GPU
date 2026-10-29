@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from prepare_mobileglues_probe import HASHES, MOBILEGLUES, diagnostic_apple_errors, replace_once
-from mobileglues_provenance import verify_bundle, experiment_scope, ACCEPTED_B11, ACCEPTED_B12A, ACCEPTED_B12B
+from mobileglues_provenance import verify_bundle, experiment_scope, ACCEPTED_B11, ACCEPTED_B12A, ACCEPTED_B12B, ACCEPTED_B12C
 
 ROOT = Path(__file__).resolve().parents[2]
 PROBE = ROOT / "ios/Experiments/MobileGluesProbe"
@@ -190,6 +190,52 @@ class MobileGluesProbeTests(unittest.TestCase):
         self.assertIn("#version 150", fixture)
         self.assertNotIn("#version 300", fixture)
         self.assertIn("rasterCases = 4", fixture)
+
+
+    def test_buffer_geometry_scope_target_and_full_accepted_chain(self):
+        scope = experiment_scope("b12d")
+        self.assertEqual(scope["accepted_b12c_device_sha"], ACCEPTED_B12C)
+        self.assertEqual(scope["accepted_b12b_device_sha"], ACCEPTED_B12B)
+        self.assertIn("DEVICE_PENDING", scope["capability_status"])
+        project = (PROBE / "project.yml").read_text()
+        self.assertIn("org.remotegpu.experiments.mobileglues.capabilities", project)
+        self.assertIn("RGPU_B12_CORE_PROBE=1", project)
+        workflow = (ROOT / ".github/workflows/build-ios-compatibility-probe.yml").read_text()
+        self.assertIn("experiment/b12d-mobileglues-core-probe", workflow)
+        self.assertIn("MobileGluesCoreProbe", workflow)
+        self.assertIn(".accepted_b12c_device_sha", workflow)
+
+    def test_buffer_live_update_is_not_waived_by_diagnostic_reattach(self):
+        source = (PROBE / "Shader/ShaderProbe.mm").read_text()
+        loop = source.split("for (int test = 0; test < bufferCases; ++test) {",1)[1]
+        update = loop.split("} else if (test == 2)",1)[0]
+        self.assertIn("subData(GL_ARRAY_BUFFER,0,sizeof(signedUpdated)", update)
+        self.assertIn("subData(GL_ARRAY_BUFFER,0,sizeof(floatUpdated)", update)
+        self.assertNotIn("texBuffer(", update)
+        self.assertIn("EXPLICIT_REATTACH_DIAGNOSTIC", loop)
+        self.assertIn("mismatches += capabilityPixels", loop)
+        self.assertIn("require(mismatches == 0", source)
+        fixture = (PROBE / "Shader/CapabilityFixtures.hpp").read_text()
+        self.assertIn("isamplerBuffer uBuffer", fixture)
+        self.assertIn("samplerBuffer uBuffer", fixture)
+        self.assertEqual(fixture.count("#version 150"), 5)
+        self.assertNotIn("#version 300", fixture)
+        self.assertNotIn("glFinish(", source)
+
+    def test_geometry_is_actual_stage_and_failures_are_independent_contexts(self):
+        source = (PROBE / "Shader/ShaderProbe.mm").read_text()
+        self.assertIn("gl.glCreateShader(GL_GEOMETRY_SHADER)", source)
+        self.assertIn("gl.glAttachShader(resources.program,geometry)", source)
+        self.assertIn('compile(gl,backend,report,geometryShader,geometrySource,"geometry")', source)
+        self.assertIn("expectedGeometryPixel(test,x,y)", source)
+        self.assertIn("Geometry shader creation rejected; compilation/link/draw NOT RUN", source)
+        app = (PROBE / "App/Probe.mm").read_text()
+        self.assertIn("f.eglCreateContext(s.display,config,EGL_NO_CONTEXT,core)", app)
+        self.assertLess(app.index("RGPURunRasterProbe(report"),app.index("RGPURunCapabilityProbe(report"))
+        self.assertIn("f.eglDestroyContext(s.display,isolated)", app)
+        self.assertIn("capabilityVerdicts[index] = rgpu::b12::Verdict::Blocked", app)
+        self.assertIn("rgpu::b12::allCapabilitiesPassed(capabilityVerdicts)", app)
+        self.assertIn("B12D_CONTEXT_CLEANUP", app)
 
 
 if __name__ == "__main__":
