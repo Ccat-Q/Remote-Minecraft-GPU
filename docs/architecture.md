@@ -17,7 +17,7 @@ unchanged; no video streaming or phone JVM is introduced.
 | Known failed prerequisite | GLES 3.1/3.2 requests rejected (EGL 0x3004); GLES 3.0 works. Guest capset GLSL is 130, below 150. Actual Ubuntu GL 3.2 Core creation remains an unaccepted separate test. |
 | Not implemented / accepted | A3 sustained overlapping throughput/resource memory budgets/ten-minute performance; Minecraft and input/audio/Modpack acceptance. |
 | Isolated B1.1 device passed | [MobileGlues Probe](b11-mobileglues-probe.md): `d95d32b` passed checked providers/context, shared GPU content, exclusive migration/return and cleanup calls. GLSL150/features, guest GL3.2 and driver leak profiling remain unaccepted. No formal renderer replacement. |
-| Isolated B1.2a built, device pending | [Independent shader target](b12-mobileglues-shaders.md) at `c6c443f`: same pinned provider chain, separate bundle, actual GLSL150 VF/dynamic FBO test implemented. CI/IPA passed; device shader execution, remaining features and guest GL are unaccepted. |
+| Isolated B1.2a device passed | [Shader target](b12-mobileglues-shaders.md) at `c6c443f`: real GLSL150 VF translation/compile/link and three dynamic outputs passed (768 pixels / 0 mismatches). Remaining features/full B1.2 and guest GL are unaccepted. |
 | Later candidates only | MobileGL iOS interfaces and UTM MoltenVK with a suitable GL/Vulkan implementation. Not developed concurrently; none has passed the guest gate. |
 
 The completed [feasibility audit](../exa-results/remotegpu-feasibility-2026-10-12/audit.md)

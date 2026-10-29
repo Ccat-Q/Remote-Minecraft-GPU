@@ -233,7 +233,12 @@ Ready-for-retest build: code `d95d32b`, Actions `40816895275`, with CI `40816895
 passed. Use the latest retest IPA link at the top of the B1 implementation page,
 not the retained earlier failure builds. Candidate/ANGLE hashes are unchanged.
 
-## B1.2a standalone GLSL150 / dynamic output (device pending)
+## B1.2a standalone GLSL150 / dynamic output (device accepted, limited scope)
+
+Source `c6c443f` passed the actual iPhone test: both shader stages and link,
+three dynamic images (768 checked pixels / zero mismatches), B1.1 regression and
+cleanup calls. [Evidence/provenance](../docs/evidence/b12a-device-2026-10-29/README.md).
+Earlier pending build notes below are historical; remaining features are still untested.
 
 Keep accepted B1.1 installed. The separate **RemoteGPU B1.2a** bundle ends in
 `.mobileglues.shader`. Run **GLSL150 + Dynamic Output Probe** once per fresh

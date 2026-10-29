@@ -2,6 +2,10 @@
 
 Branch `experiment/b12-mobileglues-shader-probe`, after accepted B1.1 source
 `d95d32be3d003f3c2c6c5a84b2f87132e4f6c7b2`.
+Latest device verdict: **B1.2a limited scope PASSED** at `c6c443f`.
+[Real device evidence, translated shaders and full provenance](evidence/b12a-device-2026-10-29/README.md).
+Both stages and link passed against raw ANGLE status; three dynamic images had
+768 checked pixels / zero mismatches. Remaining feature/full guest gates are not accepted.
 [Actual B1.1 device evidence/provenance](evidence/b11-device-2026-10-29/README.md)
 is retained. No formal renderer, VirGL/libepoxy dispatch, caps, ADR, DNS or
 server deployment is changed. This is B1.2's first small batch, not the full gate.
@@ -85,7 +89,7 @@ Even a real B1.2a pass would not satisfy full B1.2, authorize formal VirGL
 replacement, or pass Ubuntu guest GL3.2/GLSL150. B1.3 remains gated on necessary
 local feature tests. No Minecraft, NeoForge or sustained-performance acceptance.
 
-## First reproducible delivery (device pending)
+## First reproducible delivery (subsequently passed limited device scope)
 
 - Source `c6c443facf52929f6caaa760f8bad675e4f4bde5`, branch `experiment/b12-mobileglues-shader-probe`.
 - Accepted B1.1 evidence is committed separately at `29c5759` on `experiment/b11-mobileglues-probe`; no earlier device failure record was removed.
