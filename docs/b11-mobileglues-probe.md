@@ -12,6 +12,7 @@ make-current succeeded. The Probe then incorrectly queried a context creation
 attribute through `eglQueryContext` and stopped with EGL_BAD_ATTRIBUTE. Shared
 content and worker migration have not executed; desktop GL is not accepted.
 All previous failures are retained below.
+Current retest IPA: [context-metadata correction at d95d32b](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40816895275/artifacts/12872158793).
 
 ## Implementation boundary
 
@@ -188,7 +189,7 @@ directs version/profile queries to `glGetIntegerv`. The pinned frontend
 `egl/egl.cpp:821` first forwards the query to ANGLE; rejecting the invalid EGL
 query is not a reason to fabricate a supported attribute in the compatibility layer.
 
-### Context metadata API correction (Actions/device retest pending)
+### Context metadata API correction (Actions passed, device retest pending)
 
 App-only `ContextMetadata.hpp` issues EGL client-type/config-ID queries and GL
 major/minor/profile queries after make-current. Every actual result/error is
@@ -208,3 +209,18 @@ For the next fresh-process report, expect `context_metadata_correct_api` followe
 by `shared_gpu_content_and_migration`. Context creation is now evidenced, but
 content sharing/migration and B1.1 overall remain pending. No B1.2/guest GL or
 performance claim follows from the metadata correction.
+
+Reproducible correction delivery:
+
+- Branch `experiment/b11-mobileglues-probe`, code `d95d32be3d003f3c2c6c5a84b2f87132e4f6c7b2`.
+- [iOS Actions 40816895275](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40816895275) **passed**. The exact candidate framework cache was reused, then architecture/export/link checks, independent App compilation and IPA bundle-isolation/hash checks passed. All compilation was in Actions; no server build or deployment change.
+- [Self-signable IPA 12872158793](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40816895275/artifacts/12872158793), [diagnostics/LGPL corresponding source 12872457982](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40816895275/artifacts/12872457982).
+- [CI 40816895381](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40816895381) **passed**: actual query-plan and provider-policy C++ ASan/UBSan tests, 9 B1 source/isolation tests, 32 Swift tests, existing native vtest/two-slot ownership, Linux proxy and Mesa patch gates. No device metadata values or GPU results are inferred from fixtures.
+- IPA SHA256 `953fae77ece0a7c88378b0cc80c7f8ea9cba230b303a6685cce19e7d34096d8f`; downloaded ZIP integrity, published checksum and embedded source/run verified.
+- Candidate framework still `63f17c59ff480b7cd71463f901f28f76611a3a40bba6e9d9dbd37d63d8f1b6c0`, same as the device report at `8c5a943`. ANGLE EGL/GLESv2 hashes and all dependency pins/recipes are unchanged.
+- Changed: `App/Probe.mm`, new `App/ContextMetadata.hpp`, actual query-plan C++ test, Python guard and CI wiring; concise docs/device evidence synced. No candidate or formal renderer implementation changes.
+
+Update only standalone **RemoteGPU B1.1**, force-close/relaunch, run once, then
+share Full Report including any later BLOCKED result. No server restart/pairing
+is needed. Overall B1.1 acceptance awaits actual shared-content/migration results;
+B1.2 shader semantics and B1.3/guest GL remain untested. No new performance data.

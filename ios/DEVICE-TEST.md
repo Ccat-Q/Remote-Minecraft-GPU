@@ -223,6 +223,9 @@ client/config and GL version/profile queries; those returned versions remain
 metadata, especially because the candidate profile getter is a fixed Core bit.
 Capture `context_metadata_correct_api`, all actual GPU content/migration results
 and cleanup. No server restart or candidate backend replacement is involved.
+Ready-for-retest build: code `d95d32b`, Actions `40816895275`, with CI `40816895381`
+passed. Use the latest retest IPA link at the top of the B1 implementation page,
+not the retained earlier failure builds. Candidate/ANGLE hashes are unchanged.
 
 ## Route B: subsequent shader and guest capability gates (unaccepted)
 
