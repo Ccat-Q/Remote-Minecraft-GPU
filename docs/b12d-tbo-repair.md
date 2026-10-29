@@ -6,6 +6,33 @@ not a new milestone. [Previous actual strict retest](evidence/b12d1-device-2026-
 proved initial R8I/draw preparation fixed and SubData propagation still stale.
 All three required capability verdicts remain BLOCKED until actual new results.
 
+## Reproducible repair-candidate delivery
+
+- Code `b234149c917661e499c156b3107c7cd90370181e`.
+  [CI 40907010085](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40907010085)
+  and [iOS build 40907010084](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40907010084)
+  passed. Existing 17 source/provider guards, six strict guards, three new TBO
+  guards, actual helper/upload-state sanitizer tests and generated GLSL syntax
+  validation passed; none is GPU capability acceptance.
+- [Self-signable IPA artifact 12912825757](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40907010084/artifacts/12912825757):
+  `MobileGluesRetestProbe-unsigned.ipa`, SHA256
+  `7da59e9b273e77fec99dba311ec2a0a9852cdc272f2207a8e953d46dbb57183c`.
+  Downloaded checksum and ZIP integrity passed; only MobileGluesProbe/EGL/GLESv2
+  frameworks are embedded. Candidate hash
+  `4fe62e6542354ff4106a359b705d891312f5e4bc469b82f409747b4910ff7ff4`;
+  actual EGL/GLESv2 hashes remain identical to accepted ANGLE run `40636888480`.
+  Hashes describe unsigned bytes before external signing.
+- [Diagnostics and complete LGPL corresponding source 12912825770](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40907010084/artifacts/12912825770)
+  include all modified candidate/dependency sources, three adaptation recipes,
+  compiler/linkage/export diagnostics and complete provenance. Local source
+  archive integrity and all six TBO adapted-file hashes match the recipe;
+  embedded and archived provenance are byte-identical. Repair recipe SHA256
+  `b29a360d9dc93b370dd4e4be03a5ed212f5097e393f6ce929cf72aee632e62c5`.
+  Upstream candidate warnings remain; this is not a warning-free-source claim.
+- **Device retest pending.** The previous `18400ad` actual report is preserved;
+  no accepted B1.2d field is introduced. Geometry still runs as a real gate and
+  may keep the aggregate BLOCKED even if both TBO features pass.
+
 ## Judgment and implementation scope
 
 Per-draw full reupload would hide the missing dependency model and add permanent
