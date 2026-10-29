@@ -35,7 +35,7 @@ Status as of 2026-10-28:
 | Device-verified A3.2 basic gates | `6dd8b04`: normal and separate 750ms retirement/backpressure cases, 13 correct PRESENTs each, >30s live hold, GET=0, two allocations / eleven reuses, both slots released; diagnostic high_water=2. [Evidence/closure and performance limits](docs/evidence/a32-double-slot-2026-10-28/README.md). |
 | Known failed prerequisite | GLES 3.1/3.2 requests rejected; guest GLSL capset 130, below 150. Actual Ubuntu guest GL 3.2 Core acceptance remains pending. |
 | Not implemented / accepted | A3 GPU-in-flight cancellation, sustained overlapping throughput/ten-minute performance; Minecraft/input/audio/Mods. Basic A3.1/A3.2 acceptance does not pass these gates. |
-| Isolated B1.1 device partial, retest pending | [MobileGlues + accepted ANGLE Probe](docs/b11-mobileglues-probe.md): `8c5a943` device verified proc routing, display, root/shared creation and root binding; a Probe-only invalid EGL metadata query blocked content/migration testing. Correction uses proper EGL/GL queries; sharing, shaders and guest GL 3.2 remain unverified. No formal renderer replacement. |
+| Isolated B1.1 device passed | [MobileGlues + accepted ANGLE Probe](docs/b11-mobileglues-probe.md): `d95d32b` verified provider/context, shared GPU content, exclusive thread migration/return and cleanup calls on iPhone. GLSL150/features, guest GL3.2 and leak profiling remain unverified. No formal renderer replacement. |
 | Later candidate experiments | MobileGL interfaces and UTM MoltenVK with a compatibility implementation; not developed concurrently with the selected B1.1 candidate. |
 
 The current blocker does **not** imply remote GPU is impossible. Two independent

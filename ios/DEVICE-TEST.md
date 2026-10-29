@@ -189,13 +189,19 @@ Frame/UI durations include this policy, so do not treat them as GPU/FPS data.
 GPU-in-flight cancellation and long-run stability still need separate tests.
 See [full A3.2 ownership/procedure](../docs/a32-double-surface.md).
 
-## B1.1 standalone Provider/Context Probe (device partial, correction ready for retest)
+## B1.1 standalone Provider/Context Probe (device accepted, limited scope)
 
 Install the separately signed **RemoteGPU B1.1** IPA, bundle
 `org.remotegpu.experiments.mobileglues`, alongside the accepted RemoteGPU App.
 [Build/IPA/source evidence](../docs/evidence/b11-build-2026-10-28/README.md)
 at source `ff4fae6`, Actions `40783974009`. No Ubuntu connection, service
 restart, pairing Token or Remote Display test mode is needed.
+
+Latest accepted B1.1 source is `d95d32b`, Actions `40816895275`, on iPhone18,3
+/ iOS27.0.1. [Device evidence/provenance](../docs/evidence/b11-device-2026-10-29/README.md)
+records real shared-content/migration/return and cleanup success. Earlier builds
+below retain their failures for reproducibility; do not use their pending status
+as the latest verdict. B1.2 shader/features and guest GL remain untested.
 
 Tap **Run Provider + Context Probe**, wait for PASS/BLOCKED, then
 **Share Full Report**. Run once per process; relaunch only this independent

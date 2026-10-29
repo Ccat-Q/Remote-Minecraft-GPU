@@ -6,13 +6,12 @@ protocol, DNS, server deployment or ADR is changed. All compilation is Actions-o
 
 Build/link/packaging and retained regressions now passed at `ff4fae6`.
 [Exact Actions/IPA/source evidence](evidence/b11-build-2026-10-28/README.md).
-Latest device execution at `8c5a943` is **PARTIAL / BLOCKED**: checked ANGLE
-proc-table selection, frontend display, root/shared context creation and root
-make-current succeeded. The Probe then incorrectly queried a context creation
-attribute through `eglQueryContext` and stopped with EGL_BAD_ATTRIBUTE. Shared
-content and worker migration have not executed; desktop GL is not accepted.
-All previous failures are retained below.
-Current retest IPA: [context-metadata correction at d95d32b](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40816895275/artifacts/12872158793).
+Latest device execution at `d95d32b` **PASSED B1.1 ONLY**: checked Provider chain,
+context creation, shared GPU-clear content, exclusive worker migration/return
+and cleanup calls. [Device evidence and full provenance](evidence/b11-device-2026-10-29/README.md).
+Desktop GL/GLSL semantics, VirGL and guest GL are not accepted. All previous
+failures and their correction builds are retained below.
+Accepted B1.1 IPA: [context-metadata correction at d95d32b](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40816895275/artifacts/12872158793).
 
 ## Implementation boundary
 
