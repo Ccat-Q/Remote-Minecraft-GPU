@@ -253,7 +253,13 @@ First ready-to-install B1.2a source: `c6c443f`, iOS Actions `40818346056`, CI
 The candidate was recompiled from identical pinned/adapted source and has a new
 binary hash, so keep full provenance and run the included B1.1 regression too.
 
-## B1.2b standalone Instancing + Sync (device pending)
+## B1.2b standalone Instancing + Sync (device accepted, limited scope)
+
+Source `f91d683` passed on iPhone: three instance cases, 768 checked pixels /
+zero mismatches; all Fences actually transitioned pending-to-complete and were
+deleted before reads; B1.1/B1.2a regressions and cleanup passed. [Evidence and
+full provenance](../docs/evidence/b12b-device-2026-10-29/README.md). Earlier
+ready-for-test notes below are historical. No full feature/guest verdict follows.
 
 Install separate **RemoteGPU B1.2b** (`.mobileglues.features`), leaving accepted
 B1.1/B1.2a installed. In a fresh process run **Instancing + Sync Probe**, then

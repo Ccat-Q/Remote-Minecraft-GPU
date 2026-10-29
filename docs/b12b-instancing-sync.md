@@ -1,5 +1,10 @@
 # B1.2b instancing and same-context sync probe
 
+Latest device verdict: **limited scope PASSED** at `f91d683`.
+[Real report summary, translated source and full provenance](evidence/b12b-device-2026-10-29/README.md).
+Three instance cases checked 768 pixels / 0 mismatches; three Fences actually
+transitioned pending-to-complete and retired. No remaining/full guest gate follows.
+
 Independent branch `experiment/b12b-mobileglues-features-probe`, following
 accepted [B1.2a device evidence](evidence/b12a-device-2026-10-29/README.md) at
 `c6c443facf52929f6caaa760f8bad675e4f4bde5`. No formal renderer, provider recipe,
@@ -13,7 +18,7 @@ records both accepted B1.1 and B1.2a SHAs, exact dependencies and binary hashes.
 Same source/recipe may be rebuilt on the new branch; it is not assumed to be
 bit-identical to earlier artifacts. B1.1 and B1.2a regressions must execute first.
 
-## Implemented device tests (pending acceptance)
+## Implemented device tests (subsequently passed limited scope)
 
 - Original GLSL150 VS uses `gl_InstanceID` to compute a 2x2 grid; flat integer
   varying carries the instance cell to the FS. `texelFetch` selects its palette
@@ -70,7 +75,7 @@ Full GL3.2, necessary workload limits/semantics, B1.3 VirGL/Ubuntu guest GL3.2,
 Minecraft/NeoForge, performance and driver-leak profiling remain unaccepted.
 No successful result may be inferred from version/profile strings or CI.
 
-## Reproducible delivery (device pending)
+## Reproducible delivery (subsequently passed limited device scope)
 
 - Source `f91d6838b1534a65a8c7e6eecc4830a2e47c572d`, branch `experiment/b12b-mobileglues-features-probe`.
 - Accepted B1.2a device evidence is a separate commit `362f848` on `experiment/b12-mobileglues-shader-probe`, preserving full provenance and actual translated shaders. Earlier failures were not removed.
@@ -82,6 +87,6 @@ No successful result may be inferred from version/profile strings or CI.
 - Rebuilt unsigned candidate framework SHA256 `6ecf6f14f3a79cfedfe288cce5d61d8d5c1bf563ca160aa4216fb008b0486dce`; source pins and every adapted source hash match the accepted B1.2a recipe, but the binaries are NOT claimed bit-identical. ANGLE EGL/GLESv2 hashes remain exactly the accepted values and were reused without rebuilding.
 - Changed: independent target/UI/scope, common draw runner extended with an isolated instancing/Fence entry, new oracle/status-policy header and tests, CI/packaging selection, concise docs. Formal `ios/Renderer`, `ios/App`, `ios/RemoteGPU` are unchanged from accepted B1.2a.
 
-The user's next actual device report is required for B12B shader compilation,
-4/2/0 pixel results, observed Fence statuses/retirement and cleanup. No B1.2b
-device or GPU performance data is claimed yet; preserve Full Report on failure.
+The user's subsequent actual report supplied shader compilation, 4/2/0 pixel
+results, pending/completed Fence states, retirement and cleanup success. See
+the evidence above. The observed polling durations are not GPU/performance data.

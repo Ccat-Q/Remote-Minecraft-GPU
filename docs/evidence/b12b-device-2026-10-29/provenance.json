@@ -1,0 +1,72 @@
+{
+  "accepted_a32_sha": "6dd8b04c049da999b9dbd91e4c341f4a8b6d5e31",
+  "accepted_b11_device_sha": "d95d32be3d003f3c2c6c5a84b2f87132e4f6c7b2",
+  "accepted_b12a_device_sha": "c6c443facf52929f6caaa760f8bad675e4f4bde5",
+  "actions_run": "40819548554",
+  "angle_artifact": {
+    "accepted_a1_sha": "f7413ff245b06c27aa1fbb9b3dcbd527ba32be42",
+    "accepted_a20_sha": "98e65d1878ea132dbf4cb169e521facdc62f04a6",
+    "accepted_a21_seven_frame_sha": "9ed016c0f42c1c6abbf126ac7b5b67be324b789b",
+    "accepted_a21_single_frame_sha": "3b5e80d25f04de4b96b3c3ed2381537ba90b57ed",
+    "accepted_a21_twelve_frame_sha": "acce89631e7312bd93c6b8d1fcf51b5224fac599",
+    "accepted_a31_basic_device_sha": "a87970e66cea636ce9db6e3834d85c9f19157102",
+    "app_actions_run": "40819548554",
+    "app_source_sha": "f91d6838b1534a65a8c7e6eecc4830a2e47c572d",
+    "compat_recipe_sha256": "ac13a6cf81f3c4273d6e1a34ee62d9c38c0e9e09103c31895761cd0019cd23fe",
+    "dependency_source_sha": {
+      "epoxy": "bf98587477fe68d07b93319ece7b40a7d0e2eabe",
+      "virglrenderer": "482f9d8b8c2d2288efa10a027116216909d2c226",
+      "webkit": "ed78ab6e1a37f4f11583a0bd038f22ec91f3ff10"
+    },
+    "framework_hash_scope": "unsigned sysroot before external IPA signing",
+    "framework_sha256": {
+      "EGL": "02bebdf880327ba344c3ffc46705865b47406db263f8c5c14f35104dc1514756",
+      "GLESv2": "699a87ecf2b9ae19c2b027a2d13cd5ae2bf79e124f7bd42c45ced71e8d6be2be",
+      "epoxy.0": "28e91d1c07806d553a4832b51a2c80f68d28ed905d767da81a1bfff6e86d8a19",
+      "virglrenderer.1": "2cfd027ed1b993b5001f3b67c1dd4b889721f7321d4e742969a9f439c5e0a37b"
+    },
+    "renderer_actions_run": "40636888480",
+    "sysroot_recipe_source_sha": "61abde5f505165ff7200b2600a6cbaf7ea2f426c",
+    "utm_sha": "9d00a54833184628c696bcbfafbf344cea566e59"
+  },
+  "candidate_framework_sha256": "6ecf6f14f3a79cfedfe288cce5d61d8d5c1bf563ca160aa4216fb008b0486dce",
+  "capability_status": "DEVICE_PENDING: representative instancing and same-context sync only; cross-context, remaining features and guest NOT ACCEPTED",
+  "experiment": "B1.2b isolated instancing and same-context sync; not full B1.2 or guest acceptance",
+  "framework_hash_scope": "unsigned before external signing; iOS resigning may change bytes",
+  "mobileglues_recipe": {
+    "adapted_sha256": {
+      "CMakeLists.txt": "2f5e928edcff6d3603384d7a499a0bcd5848766b2e4902f0cd709e20db6047d6",
+      "config/settings.cpp": "11c5253bb0e78ce5bb52b902d11db0d7847dcbf0dfbeb09f0835d813c3415967",
+      "egl/loader.cpp": "71004563fefa5f3c2fca16792af2782ace2fc46350537c2f5dfdbc564de5f737",
+      "egl/trace.h": "5c077ca47006c6d12a53c8aed13372476fad09426d1c1c96b717e88173cab3e2",
+      "gl/framebuffer.cpp": "4f419cfc351b5af5786b4d6c1132eec8ddbaa1ac97f3bf49c8fa6ae44832b3be",
+      "gles/loader.cpp": "3455ea7ad0a1c0ab245bd75cc0fc89ecc10afc861cbe914832a0c8932d486166",
+      "glx/lookup.cpp": "2a130f1e115f9afac74ba044446025689851cb044400e5d6d5d47bbab7f1372a",
+      "init.cpp": "184d0e06600975e1ed8efbee21716f737fce9513c022e2df45730c45236d95ad",
+      "main.cpp": "57740fcfebf531b6f23c28849773ef1f29463f772205b13d803c689932807974",
+      "rgpu_probe_loader.h": "fa27c97845fcb250501c10827479fe32891568915a4b67aca2033140de7da462"
+    },
+    "mobileglues_sha": "97558a69157b033b890958b1e49258c5b51a80c6",
+    "recipe_sha256": "7925015b0c9b636a7ff36c5d2c77c64b3fe260bcc5f568c838cf9f63d1aae3e1",
+    "scope": "B1.1 isolated provider/context experiment; not VirGL or guest GL acceptance",
+    "submodules": {
+      "MobileGlues-cpp/3rdparty/SPIRV-Cross": "a0fba56c34a6700f1724bf9b751da5b488a3775c",
+      "MobileGlues-cpp/3rdparty/glslang": "f5f664dee8146676b04a332a7233959fc3ce9681",
+      "MobileGlues-cpp/3rdparty/xxhash": "c2866db364b6ea3a11933e62235ddc166ba18565",
+      "MobileGlues-cpp/include/ska": "21c1cec95abee1beef827e4a7c95f692875d9594"
+    },
+    "upstream_sha256": {
+      "CMakeLists.txt": "28b786899c3cbe144d5b367c84047c48aabf55b5ec0453163957958c0a4c9043",
+      "config/settings.cpp": "e677009b0390de2fc9fac11907c7cc859415e9780c1c5940d182f7b78c74c262",
+      "egl/loader.cpp": "99c6fa02cf611f36c6d2082b83d047f234302bf8b5c6b9095697e33b0d69fdeb",
+      "egl/trace.h": "0db2d93b36253ff895b9fb3fc7e0b17624976fd1a94131bfe21f4db0521fac24",
+      "gl/framebuffer.cpp": "e21359abeeabd2cae8a3f1da3ea71b38824a402351d847d87e5fa045915e7713",
+      "gles/loader.cpp": "a3d2a2cf44e41822711fc8b2df857905c777a7ea952ad064cf1d33f44aed6828",
+      "glx/lookup.cpp": "894fb518435e7de0b4233301851282e42a7bf078f9ed8097aa9ef9d3fb345715",
+      "init.cpp": "ba4dad2c5d19e8ef411b4425f8b6fed9421eb4c377d23cc5555205b57815bd1c",
+      "main.cpp": "b92ba23e07a5c109f75e9e360c2a35d201a6263daab719a4f04d3fe051170ef9"
+    }
+  },
+  "provider_policy": "RTLD_FIRST explicit handles + per-entry dladdr validation; no RTLD_DEFAULT lookup",
+  "source_sha": "f91d6838b1534a65a8c7e6eecc4830a2e47c572d"
+}
