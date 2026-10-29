@@ -44,6 +44,11 @@ jobs:
           c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
             -Iios/Experiments/MobileGluesProbe/Shader tests/b12_draw_oracle.cpp -o /tmp/b12-draw-oracle
           /tmp/b12-draw-oracle
+      - name: Test B1.2b instancing oracle and Fence status policy (NOT GPU execution)
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+            -Iios/Experiments/MobileGluesProbe/Shader tests/b12b_instances_sync.cpp -o /tmp/b12b-instances-sync
+          /tmp/b12b-instances-sync
 
   ios-build-compatibility:
     name: Pinned iOS build compatibility

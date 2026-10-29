@@ -141,7 +141,10 @@ void verifyPixels(Frontend& f, GLuint texture, NSMutableString *report, const ch
 
 NSString *RGPURunMobileGluesProbe(void) {
     NSMutableString *report = [NSMutableString stringWithString:
-#if RGPU_B12_SHADER_PROBE
+#if RGPU_B12_FEATURE_PROBE
+        @"B1.2b ISOLATED INSTANCING AND SAME-CONTEXT SYNC PROBE\n"
+         "Device acceptance pending. B1.1/B1.2a regressions run first. NOT full B1.2, cross-context sync, VirGL or guest GL acceptance.\n"];
+#elif RGPU_B12_SHADER_PROBE
         @"B1.2a ISOLATED GLSL150 VERTEX/FRAGMENT DYNAMIC OUTPUT PROBE\n"
          "Device acceptance pending. NOT full B1.2, VirGL, guest GL3.2 or Minecraft acceptance. B1.1 context regression runs first.\n"];
 #else
@@ -311,17 +314,24 @@ NSString *RGPURunMobileGluesProbe(void) {
                 [report appendFormat:@"B12_ENTRY name=%s provider=%s\n",name,actual.dli_fname];
                 return entry;
             };
-            RGPURunShaderDrawProbe(report,[&](const char *name) {
+            auto frontendEntry = [&](const char *name) {
                 void *entry = checkedEntry(frontend,name,"/MobileGluesProbe.framework/",reinterpret_cast<void*>(f.glGetString));
                 require(entry == reinterpret_cast<void*>(f.eglGetProcAddress(name)),"B12 frontend direct/proc ownership mismatch");
                 return entry;
-            },[&](const char *name) {
+            };
+            auto backendEntry = [&](const char *name) {
                 return checkedEntry(backendGLES,name,"/GLESv2.framework/",reinterpret_cast<void*>(backendString));
-            });
+            };
+            RGPURunShaderDrawProbe(report,frontendEntry,backendEntry);
+#if RGPU_B12_FEATURE_PROBE
+            RGPURunInstancingSyncProbe(report,frontendEntry,backendEntry);
+#endif
 #endif
             require(s.close(), "Frontend cleanup reported errors");
         } catch (...) { s.close(); throw; }
-#if RGPU_B12_SHADER_PROBE
+#if RGPU_B12_FEATURE_PROBE
+        [report appendString:@"PASS: B1.2b representative instancing/same-context sync plus B1.1/B1.2a regressions and cleanup calls ONLY. Full B1.2, cross-context synchronization and guest GL NOT ACCEPTED.\n"];
+#elif RGPU_B12_SHADER_PROBE
         [report appendString:@"PASS: B1.2a representative shader/dynamic-output checks plus B1.1 context regression and cleanup calls ONLY. Full B1.2 and B1.3/guest GL NOT ACCEPTED.\n"];
 #else
         [report appendString:@"PASS: B1.1 provider/context/content-sharing checks ONLY.\nB1.2 GLSL 150 shaders/features NOT TESTED. B1.3 VirGL/Ubuntu guest GL 3.2 NOT TESTED.\n"];
@@ -332,7 +342,9 @@ NSString *RGPURunMobileGluesProbe(void) {
     NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/MobileGluesProbe/latest.log"];
     NSString *log = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
     if (log) [report appendFormat:@"\nMobileGlues runtime log (bounded tail):\n%@\n", [log substringFromIndex:log.length > 32768 ? log.length - 32768 : 0]];
-#if RGPU_B12_SHADER_PROBE
+#if RGPU_B12_FEATURE_PROBE
+    [report appendString:@"Local diagnostics ONLY: B1.1 up to three 1x1 reads; B1.2a and B1.2b each up to three 16x16 reads. No remote display/streaming, performance or driver-leak verdict.\n"];
+#elif RGPU_B12_SHADER_PROBE
     [report appendString:@"B1.1 regression: up to three 1x1 reads. B1.2a oracle: up to three 16x16 offscreen reads. Local diagnostics ONLY; no remote display or frame streaming. Library images retained until process exit; driver leak profiling NOT TESTED.\n"];
 #else
     [report appendString:@"Up to three 1x1 offscreen diagnostic CPU reads; no remote display, no frame streaming. Library images retained until process exit; context/texture cleanup above is separate from driver leak profiling.\n"];

@@ -28,7 +28,7 @@ are used where branch-scoped Actions caches permit, otherwise the same pinned
 candidate is built only in Actions. Accepted ANGLE sysroot run `40636888480` is
 downloaded/verified, never rebuilt. All LGPL corresponding source is retained.
 
-## Actual device test implemented (not yet accepted)
+## Actual device test (subsequently passed the limited scope)
 
 The accepted context/content-sharing/worker-migration checks run first on the
 exclusive owner thread. On return to the root context, B1.2a then executes:
@@ -101,7 +101,7 @@ local feature tests. No Minecraft, NeoForge or sustained-performance acceptance.
 - This branch rebuilt the same candidate recipe/source because its binary cache was unavailable. Its **new unsigned binary hash** is `6b3f2c2f280a715b8c40257e687e5d32f9ce9c920a5fff38ba9f57c5e711a07b`, not the accepted B1.1 artifact's `63f17c...`. All adapted source hashes and dependency pins match B1.1; do not claim the binaries are bit-identical or infer device acceptance from that match. The B1.1 regression must run in this new App too.
 - ANGLE EGL/GLESv2 hashes remain exactly the accepted values; the sysroot was reused without rebuilding. No candidate feature, capability, version override or formal renderer change was made.
 
-Runtime shader compile/link, translated sources, actual draw pixels, cleanup
-and every B12_CASE still require the user's device report. No B1.2a device or
-GPU-performance data is available yet. On failure retain Full Report/crash logs
-and fix the concrete error before expanding the feature Gate.
+The subsequent user report supplied actual compile/link, translated sources,
+all three actual images and zero-mismatch case results, plus cleanup. B1.2a's
+limited scope is now accepted; see the evidence link above. No GPU-performance
+data or remaining-feature/guest verdict is inferred from it.

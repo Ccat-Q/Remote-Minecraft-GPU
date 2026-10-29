@@ -253,6 +253,16 @@ First ready-to-install B1.2a source: `c6c443f`, iOS Actions `40818346056`, CI
 The candidate was recompiled from identical pinned/adapted source and has a new
 binary hash, so keep full provenance and run the included B1.1 regression too.
 
+## B1.2b standalone Instancing + Sync (device pending)
+
+Install separate **RemoteGPU B1.2b** (`.mobileglues.features`), leaving accepted
+B1.1/B1.2a installed. In a fresh process run **Instancing + Sync Probe**, then
+share Full Report. B1.1/B1.2a run first, followed by 4/2/0 actual instance draws,
+same-context Fence completion before all pixel reads, and cleanup. No server
+restart/pairing. [Scope and procedure](../docs/b12b-instancing-sync.md).
+No cross-context ordering, slow GPU/cancellation, full B1.2 or guest acceptance
+follows from this one-shot test. Remaining feature gates stay untested.
+
 ## Route B: subsequent feature and guest capability gates (unaccepted)
 
 Investigate MobileGlues + ANGLE Metal first, then MobileGL iOS interfaces, then

@@ -1,5 +1,6 @@
 #include "ShaderProbe.h"
 #include "DrawFixtures.hpp"
+#include "InstanceFixtures.hpp"
 #include <GLES3/gl32.h>
 #include <algorithm>
 #include <cstddef>
@@ -7,6 +8,8 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <thread>
 
 namespace {
 void require(bool ok, const char *reason) { if (!ok) throw std::runtime_error(reason); }
@@ -43,6 +46,49 @@ struct Backend {
 #undef ENTRY
     explicit Backend(const std::function<void*(const char*)>& lookup) : resolver(lookup) {}
 };
+#if RGPU_B12_FEATURE_PROBE
+struct FeatureGL {
+    const std::function<void*(const char*)>& resolver;
+#define ENTRY(name) decltype(&::name) name = reinterpret_cast<decltype(&::name)>(resolver(#name))
+    ENTRY(glDrawArraysInstanced); ENTRY(glFenceSync); ENTRY(glClientWaitSync);
+    ENTRY(glDeleteSync); ENTRY(glIsSync); ENTRY(glGetSynciv); ENTRY(glFlush);
+#undef ENTRY
+    explicit FeatureGL(const std::function<void*(const char*)>& lookup) : resolver(lookup) {}
+};
+void completeFence(FeatureGL& sync, GL& gl, NSMutableString *report, int test) {
+    static_assert(GL_ALREADY_SIGNALED == 0x911a && GL_CONDITION_SATISFIED == 0x911c && GL_TIMEOUT_EXPIRED == 0x911b);
+    struct Lease {
+        FeatureGL& api;
+        GLsync object;
+        ~Lease() { if (object) api.glDeleteSync(object); }
+    } lease{sync,sync.glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE,0)};
+    gl.check(report,"create same-context producer fence after instanced draw");
+    require(lease.object && sync.glIsSync(lease.object) == GL_TRUE,"Fence allocation/identity failed");
+    sync.glFlush();
+    const auto started = std::chrono::steady_clock::now();
+    unsigned polls = 0; GLenum result = GL_TIMEOUT_EXPIRED;
+    do {
+        result = sync.glClientWaitSync(lease.object,0,0); ++polls; // nonblocking GL query
+        const auto error = gl.glGetError();
+        if (polls <= 8 || polls%100 == 0 || result != GL_TIMEOUT_EXPIRED || error != GL_NO_ERROR)
+            [report appendFormat:@"B12B_FENCE_POLL case=%d observation=%u result=0x%x GL=0x%x\n",test,polls,result,error];
+        require(error == GL_NO_ERROR,"Fence observation GL error");
+        if (rgpu::b12::fenceComplete(result)) break;
+        require(std::chrono::steady_clock::now()-started < std::chrono::seconds(5),"Fence diagnostic deadline exceeded");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1)); // Probe owner only, not render scheduling
+    } while (true);
+    GLint status = 0; GLsizei returned = 0;
+    sync.glGetSynciv(lease.object,GL_SYNC_STATUS,1,&returned,&status);
+    gl.check(report,"query observed fence status");
+    require(returned == 1 && status == GL_SIGNALED,"Fence query did not confirm completion");
+    const double observed = std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+    [report appendFormat:@"B12B_FENCE case=%d polls=%u wait_result=0x%x sync_status=0x%x observed_ms=%.3f clock=local_monotonic NOT_GPU_TIMESTAMP_NOT_NETWORK_LATENCY\n",test,polls,result,status,observed];
+    GLsync retired = lease.object; sync.glDeleteSync(retired); lease.object = nullptr;
+    require(sync.glIsSync(retired) == GL_FALSE,"Retired fence still has live identity");
+    gl.check(report,"delete completed fence before pixel read");
+    [report appendFormat:@"B12B_FENCE_RELEASE case=%d live=NO\n",test];
+}
+#endif
 constexpr GLint maxText = 16384;
 template<class Fetch>
 std::string textResult(GLint length, Fetch fetch) {
@@ -111,19 +157,20 @@ void compile(GL& gl, Backend& backend, NSMutableString *report, GLuint shader, c
 }
 }
 
-void RGPURunShaderDrawProbe(NSMutableString *report,
+static void runDrawProbe(NSMutableString *report,
     const std::function<void*(const char*)>& frontend,
-    const std::function<void*(const char*)>& backendResolver) {
+    const std::function<void*(const char*)>& backendResolver, bool instanced) {
     using namespace rgpu::b12;
-    [report appendString:@"B12_STAGE GLSL150_VERTEX_FRAGMENT_DYNAMIC_FBO\nScope: representative shader/VAO/VBO/FBO/texture/uniform/varying checks only. NOT full B1.2 or guest GL acceptance.\n"];
+    [report appendString:instanced ? @"B12B_STAGE INSTANCING_AND_SAME_CONTEXT_FENCE\nNOT full B1.2, cross-context synchronization or guest acceptance.\n" :
+        @"B12_STAGE GLSL150_VERTEX_FRAGMENT_DYNAMIC_FBO\nScope: representative shader/VAO/VBO/FBO/texture/uniform/varying checks only. NOT full B1.2 or guest GL acceptance.\n"];
     GL gl(frontend); Backend backend(backendResolver);
     Resources resources{gl,report};
     try {
         gl.check(report,"shader probe entry (prior errors are not discarded)");
         resources.vertex = gl.glCreateShader(GL_VERTEX_SHADER);
-        compile(gl,backend,report,resources.vertex,vertexSource,"vertex");
+        compile(gl,backend,report,resources.vertex,instanced ? instanceVertex : vertexSource,"vertex");
         resources.fragment = gl.glCreateShader(GL_FRAGMENT_SHADER);
-        compile(gl,backend,report,resources.fragment,fragmentSource,"fragment");
+        compile(gl,backend,report,resources.fragment,instanced ? instanceFragment : fragmentSource,"fragment");
         resources.program = gl.glCreateProgram();
         require(resources.program != 0,"Cannot allocate program");
         gl.glAttachShader(resources.program,resources.vertex); gl.glAttachShader(resources.program,resources.fragment);
@@ -150,6 +197,7 @@ void RGPURunShaderDrawProbe(NSMutableString *report,
             [report appendFormat:@"B12_UNIFORM name=%s location=%d\n", name,location];
             require(location >= 0,"Required active uniform missing"); return location; };
         const auto offset = uniform("uOffset"), scale = uniform("uScale"), tint = uniform("uTint"), sampler = uniform("uTex");
+        if (instanced) gl.glUniform2f(uniform("uStep"),1,1);
         gl.glGenVertexArrays(1,&resources.vao); gl.glBindVertexArray(resources.vao);
         gl.glGenBuffers(1,&resources.buffer); gl.glBindBuffer(GL_ARRAY_BUFFER,resources.buffer);
         require(resources.vao && resources.buffer,"VAO/VBO allocation failed");
@@ -170,10 +218,10 @@ void RGPURunShaderDrawProbe(NSMutableString *report,
         require(complete == GL_FRAMEBUFFER_COMPLETE,"Shader test FBO incomplete");
         for (const auto cap : {GL_BLEND,GL_DEPTH_TEST,GL_STENCIL_TEST,GL_SCISSOR_TEST,GL_CULL_FACE,GL_DITHER}) gl.glDisable(cap);
         gl.glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE); gl.glPixelStorei(GL_PACK_ALIGNMENT,1); gl.glPixelStorei(GL_UNPACK_ALIGNMENT,1);
-        gl.glViewport(0,0,width,height); gl.glUniform2f(scale,scaleX,scaleY);
+        gl.glViewport(0,0,width,height); gl.glUniform2f(scale,scaleX,instanced ? scaleX : scaleY);
         gl.check(report,"shader draw resources and state");
-        for (int index = 0; index < cases; ++index) {
-            const auto& input = inputs[index];
+        for (int index = 0; index < (instanced ? instanceCases : cases); ++index) {
+            const auto& input = instanced ? instanceInputs[index] : inputs[index];
             gl.glActiveTexture(GL_TEXTURE0 + input.textureUnit); gl.glBindTexture(GL_TEXTURE_2D,resources.textures[1]);
             gl.glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
             gl.glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
@@ -182,13 +230,23 @@ void RGPURunShaderDrawProbe(NSMutableString *report,
             gl.glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,2,2,0,GL_RGBA,GL_UNSIGNED_BYTE,input.texture.data());
             gl.glUniform1i(sampler,input.textureUnit); gl.glUniform2f(offset,input.offsetX,input.offsetY);
             gl.glUniform4fv(tint,1,input.tint.data());
-            gl.glClearColor(0,0,0,1); gl.glClear(GL_COLOR_BUFFER_BIT); gl.glDrawArrays(GL_TRIANGLES,0,6);
+            gl.glClearColor(0,0,0,1); gl.glClear(GL_COLOR_BUFFER_BIT);
+            if (instanced) {
+#if RGPU_B12_FEATURE_PROBE
+                FeatureGL features(frontend);
+                features.glDrawArraysInstanced(GL_TRIANGLES,0,6,instanceCounts[index]);
+                gl.check(report,"actual instanced draw submission");
+                completeFence(features,gl,report,index);
+#else
+                throw std::runtime_error("Instancing probe was not compiled for this target");
+#endif
+            } else { gl.glDrawArrays(GL_TRIANGLES,0,6); }
             std::array<Pixel,width*height> actual{};
             gl.glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,actual.data());
             gl.check(report,"dynamic GLSL150 draw and local diagnostic read");
             int mismatches = 0;
             for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
-                const auto expected = expectedPixel(input,x,y);
+                const auto expected = instanced ? expectedInstancePixel(index,x,y) : expectedPixel(input,x,y);
                 const auto& pixel = actual[y*width+x];
                 if (!matches(pixel,expected)) {
                     if (mismatches < 8) [report appendFormat:@"B12_MISMATCH case=%d x=%d y=%d actual=%u,%u,%u,%u expected=%u,%u,%u,%u\n",
@@ -198,17 +256,30 @@ void RGPURunShaderDrawProbe(NSMutableString *report,
             }
             // Retain the entire small actual image in the report, bottom row
             // first. A test oracle is not a CPU display/transport implementation.
-            [report appendFormat:@"B12_ACTUAL_RGBA8 case=%d rows_bottom_to_top_BEGIN\n",index];
+            [report appendFormat:@"%s_ACTUAL_RGBA8 case=%d rows_bottom_to_top_BEGIN\n",instanced ? "B12B" : "B12",index];
             for (int y = 0; y < height; ++y) {
                 for (int x = 0; x < width; ++x) { const auto& p = actual[y*width+x];
                     [report appendFormat:@"%02x%02x%02x%02x ",p[0],p[1],p[2],p[3]]; }
                 [report appendString:@"\n"];
             }
-            [report appendFormat:@"rows_bottom_to_top_END\nB12_CASE case=%d texture_unit=%d rect=%d,%d,6,12 checked_pixels=%d mismatches=%d rgb_tolerance=1 alpha_tolerance=0\n",
+            if (instanced) [report appendFormat:@"rows_bottom_to_top_END\nB12B_CASE case=%d instance_count=%d checked_pixels=%d mismatches=%d rgb_tolerance=1 alpha_tolerance=0\n",
+                index,instanceCounts[index],width*height,mismatches];
+            else [report appendFormat:@"rows_bottom_to_top_END\nB12_CASE case=%d texture_unit=%d rect=%d,%d,6,12 checked_pixels=%d mismatches=%d rgb_tolerance=1 alpha_tolerance=0\n",
                 index,input.textureUnit,input.left,input.bottom,width*height,mismatches];
             require(mismatches == 0,"Dynamic shader output mismatch (actual pixels retained)");
         }
         require(resources.close(),"Shader probe cleanup GL error");
-        [report appendString:@"PASS: B1.2a GLSL150 vertex/fragment translation, actual compile/link, VAO/VBO/FBO, sampled texture, uniforms and varying over three dynamic inputs ONLY.\nB1.2 remaining Instancing/Depth/Stencil/Blending/TextureBuffer/Sync/Geometry NOT TESTED; guest/VirGL/Minecraft NOT TESTED.\n"];
+        if (instanced) [report appendString:@"PASS: B1.2b representative glDrawArraysInstanced/gl_InstanceID/flat varying/texelFetch and same-context producer Fence completion before pixel read ONLY. NOT cross-context ordering, slow-GPU cancellation or sustained performance. Depth/Stencil/Blending/TextureBuffer/Geometry and guest NOT TESTED.\n"];
+        else [report appendString:@"PASS: B1.2a GLSL150 vertex/fragment translation, actual compile/link, VAO/VBO/FBO, sampled texture, uniforms and varying over three dynamic inputs ONLY.\nB1.2 remaining Instancing/Depth/Stencil/Blending/TextureBuffer/Sync/Geometry NOT TESTED; guest/VirGL/Minecraft NOT TESTED.\n"];
     } catch (...) { resources.close(); throw; }
 }
+void RGPURunShaderDrawProbe(NSMutableString *report,const std::function<void*(const char*)>& frontend,
+                          const std::function<void*(const char*)>& backend) {
+    runDrawProbe(report,frontend,backend,false);
+}
+#if RGPU_B12_FEATURE_PROBE
+void RGPURunInstancingSyncProbe(NSMutableString *report,const std::function<void*(const char*)>& frontend,
+                              const std::function<void*(const char*)>& backend) {
+    runDrawProbe(report,frontend,backend,true);
+}
+#endif

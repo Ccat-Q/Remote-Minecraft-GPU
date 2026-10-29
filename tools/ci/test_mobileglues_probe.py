@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from prepare_mobileglues_probe import HASHES, MOBILEGLUES, diagnostic_apple_errors, replace_once
-from mobileglues_provenance import verify_bundle, experiment_scope, ACCEPTED_B11
+from mobileglues_provenance import verify_bundle, experiment_scope, ACCEPTED_B11, ACCEPTED_B12A
 
 ROOT = Path(__file__).resolve().parents[2]
 PROBE = ROOT / "ios/Experiments/MobileGluesProbe"
@@ -141,6 +141,22 @@ class MobileGluesProbeTests(unittest.TestCase):
         self.assertIn("resources.close(); throw;", source)
         self.assertIn("NOT full B1.2 or guest GL acceptance", source)
         self.assertIn("Instancing/Depth/Stencil/Blending/TextureBuffer/Sync/Geometry NOT TESTED", source)
+
+    def test_instancing_sync_is_separate_bounded_device_pending_scope(self):
+        self.assertEqual(experiment_scope("b12b")["accepted_b12a_device_sha"], ACCEPTED_B12A)
+        self.assertIn("DEVICE_PENDING", experiment_scope("b12b")["capability_status"])
+        project = (PROBE / "project.yml").read_text()
+        self.assertIn("org.remotegpu.experiments.mobileglues.features", project)
+        self.assertIn("RGPU_B12_FEATURE_PROBE=1", project)
+        source = (PROBE / "Shader/ShaderProbe.mm").read_text()
+        self.assertIn("features.glDrawArraysInstanced(GL_TRIANGLES,0,6,instanceCounts[index])", source)
+        self.assertLess(source.index("completeFence(features,gl,report,index)"), source.index("gl.glReadPixels(0,0,width,height"))
+        self.assertIn("sync.glClientWaitSync(lease.object,0,0)", source)
+        self.assertIn("std::chrono::seconds(5)", source)
+        self.assertIn("~Lease() { if (object) api.glDeleteSync(object); }", source)
+        self.assertIn("expectedInstancePixel(index,x,y)", source)
+        self.assertNotIn("glFinish(", source)
+        self.assertIn("NOT cross-context ordering", source)
 
 
 if __name__ == "__main__":

@@ -6,3 +6,8 @@
 void RGPURunShaderDrawProbe(NSMutableString *report,
     const std::function<void*(const char*)>& frontend,
     const std::function<void*(const char*)>& backend);
+#if RGPU_B12_FEATURE_PROBE
+void RGPURunInstancingSyncProbe(NSMutableString *report,
+    const std::function<void*(const char*)>& frontend,
+    const std::function<void*(const char*)>& backend);
+#endif
