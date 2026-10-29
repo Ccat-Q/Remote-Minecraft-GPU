@@ -1,6 +1,6 @@
 # B1.2d isolated Buffer Texture / Geometry capability probe
 
-Status: implemented for Actions build; **device pending**. Not full B1.2,
+Status: Actions iOS build and CI passed; **device pending**. Not full B1.2,
 VirGL integration, Ubuntu guest GL3.2, Minecraft or performance acceptance.
 Branch `experiment/b12d-mobileglues-core-probe`. Accepted
 [B1.2c `e989b4d`](evidence/b12c-device-2026-10-29/README.md) and B1.1/a/b
@@ -92,3 +92,43 @@ is meaningful compatibility evidence, not an invitation to override capabilities
 Next: actual device results, then targeted source fixes/blocker report. Full
 B1.2, limits, cross-context ordering, B1.3 guest integration and Minecraft remain
 unaccepted even if all representative B1.2d cases happen to pass.
+
+## Reproducible delivery
+
+- Code `528ab1ea3485241ea5c0399e9b35245a80e273c3`, branch
+  `experiment/b12d-mobileglues-core-probe`. Actual B1.2c evidence is preserved
+  separately in `ce0b9f9` on its accepted branch; no earlier records removed.
+- [iOS Actions 40896067592](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40896067592)
+  **passed**: ARM64 candidate compilation, export/linkage checks, standalone Core
+  target compile/package, exact `.capabilities` bundle/scope/accepted-source
+  ancestors and packaged framework hashes/isolation. No App compiler errors
+  or warnings found in the retained build log. No runtime result follows.
+- [Self-signable IPA artifact 12905989730](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40896067592/artifacts/12905989730):
+  `MobileGluesCoreProbe-unsigned.ipa`, SHA256
+  `b1bf1a294971373645f261e23b984b2c895cec48b5745ef69970a595e246a0e8`.
+  Downloaded checksum/ZIP integrity and embedded source/run/scope/accepted B1.1/a/b/c
+  provenance verified. No new Linux workload artifact is needed for this standalone
+  network-free device batch.
+- [Build diagnostics and complete LGPL corresponding source 12907561067](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40896067592/artifacts/12907561067):
+  actual compiler/linker output, exports, source recipe/pins, full provenance,
+  Xcode16.4/SDK18.5 toolchain and complete modified candidate/dependency source.
+  Downloaded archive integrity checked, not patch-only distribution.
+- [CI 40896067702](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40896067702)
+  **passed**: signed/float TBO update and Geometry CPU oracles / aggregation policy
+  under ASan/UBSan; retained B1.1/a/b/c, native vtest and double-slot tests;
+  17 MobileGlues source/isolation/provenance checks; 32 Swift tests; Linux
+  proxy/protocol and Mesa patch gates. All compilation Actions-only. NOT device
+  execution or shader capability proof.
+- Rebuilt unsigned candidate SHA256
+  `d8322151626f0c7e5774a5459e4ee46be3f913040feaaaeea746e22cd980cc8d`.
+  Exact MobileGlues recipe, adapted/upstream source hashes and dependency pins
+  match accepted B1.2c; no bit-identical binary claim. Packaged ANGLE EGL/GLESv2
+  hashes exactly match the accepted artifact reused without rebuild.
+- Actual changes: standalone target/UI/provenance and fresh-context test runner,
+  signed/float TBO and Geometry fixtures/draws/oracles, reused actual compile/link
+  logging, CI and approved concise docs/device steps. Formal `ios/Renderer`,
+  `ios/App`, `ios/RemoteGPU`, Provider bootstrap/recipe and ADR unchanged.
+
+New runtime errors/performance: **not measured yet**. The source risks above are
+not substituted for actual device errors. Next action is to install B1.2d and
+share its complete per-feature report, including BLOCKED and any crash logs.

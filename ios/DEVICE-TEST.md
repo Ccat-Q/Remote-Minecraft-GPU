@@ -262,6 +262,8 @@ No server restart. B1.1/a/b/c run first; signed/float Texture Buffer live update
 and Geometry are independent fresh-context tests with explicit PASS/BLOCKED.
 An explicit reattach success cannot waive failed updates. Geometry creation or
 translation failure leaves later stages NOT RUN. No full B1.2/guest acceptance.
+Ready-for-device code `528ab1e`, iOS Actions `40896067592`, CI `40896067702`
+passed. Use the Core Probe IPA linked in the procedure, not the earlier Raster IPA.
 
 ## B1.2c standalone Depth / Stencil / Blend (device accepted, limited scope)
 
