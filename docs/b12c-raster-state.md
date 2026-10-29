@@ -1,6 +1,6 @@
 # B1.2c isolated depth, stencil and blending probe
 
-Status: implemented for Actions build; **device acceptance pending**. This is
+Status: Actions build and CI passed; **device acceptance pending**. This is
 not full B1.2, GL3.2 conformance, VirGL/guest or Minecraft acceptance.
 
 Branch `experiment/b12c-mobileglues-raster-probe` retains accepted B1.1
@@ -61,3 +61,37 @@ NOT TESTED lines refer to those stages, not an implicit final capability claim.
 Texture Buffer, Geometry Shader, remaining required limits/semantics,
 cross-context ordering, B1.3 integration and actual Ubuntu guest GL3.2 remain
 unaccepted. No sustained performance, cancellation-safety or driver-leak verdict.
+
+## Actual delivery
+
+- Code `e989b4d86d70d1fa15fbbde119bcdac9287ac6ba`, branch
+  `experiment/b12c-mobileglues-raster-probe`. B1.2b actual evidence was separately
+  saved in `3cdfe97`; prior acceptance records remain intact.
+- [iOS Actions 40821114364](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40821114364)
+  **passed**: ARM64 compile, candidate exports/linkage, independent Raster target,
+  bundle/scope/accepted ancestors, exact packaged framework hashes and isolation.
+- [Self-signable IPA 12875005427](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40821114364/artifacts/12875005427):
+  `MobileGluesRasterProbe-unsigned.ipa`. SHA256
+  `f353153d2ac8e0fa138a1cbc8e6c6b1aef9b262d249e05a25e4cec281b548f9b`.
+  Downloaded checksum and ZIP integrity verified; embedded source/run/scope and
+  accepted B1.1/a/b source SHAs match this delivery.
+- [Diagnostics and complete LGPL corresponding source 12874846437](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40821114364/artifacts/12874846437):
+  actual build logs, linkage/export checks, dependency pins, toolchain, recipe,
+  provenance and complete modified candidate/dependency source, not patch-only.
+- [CI 40821114323](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40821114323)
+  **passed**: four complete CPU golden grids under ASan/UBSan, retained B1.1/a/b
+  tests, native vtest/double-slot tests, 14 MobileGlues source/isolation/provenance
+  tests, 32 Swift tests, Linux proxy/protocol and Mesa patch gates. No local
+  compilation; none of these results is device graphics execution.
+- Actual unsigned candidate SHA256
+  `ff8171a77c1dd8e41fce5ef6e1f0a7ec5c238eac91167d498c827be365949066`.
+  All adapted source hashes match accepted B1.2b; rebuilt binary is not assumed
+  bit-identical. Packaged EGL/GLESv2 hashes exactly match the accepted artifact.
+- Formal `ios/Renderer`, `ios/App`, `ios/RemoteGPU`, candidate recipe and Provider
+  bootstrap unchanged from accepted B1.2b. Only isolated Probe, CI and approved
+  concise docs changed. No new Linux workload artifact is needed for this local,
+  network-free iPhone batch.
+
+Next: actual B1.2c device report. Only the four executed cases can be accepted;
+then continue isolated Texture Buffer / Geometry and remaining functional gates.
+Do not start B1.3 or elevate VirGL caps based on this build.

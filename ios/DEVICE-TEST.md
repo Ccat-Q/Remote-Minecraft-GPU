@@ -263,6 +263,8 @@ then actual packed depth/stencil attachment, shader translation/compile/link,
 four complete 16x16 zero-mismatch outputs and all cleanup must succeed.
 This is not full raster conformance, Texture Buffer, Geometry, cross-context
 sync, B1.3/guest GL or performance acceptance. Do not infer device PASS from CI.
+Ready-for-device code `e989b4d`, iOS Actions `40821114364`, CI `40821114323`
+passed. Use the Raster IPA linked in its procedure, not the earlier Features IPA.
 
 ## B1.2b standalone Instancing + Sync (device accepted, limited scope)
 
