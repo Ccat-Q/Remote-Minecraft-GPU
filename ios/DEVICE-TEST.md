@@ -243,6 +243,10 @@ Actual backend source, frontend/backend logs and all actual pixels are retained.
 No server restart/pairing. [Exact scope and steps](../docs/b12-mobileglues-shaders.md).
 CI oracle fixtures are not iPhone shader results. Remaining feature tests,
 full B1.2, guest GL3.2 and Minecraft are unaccepted.
+First ready-to-install B1.2a source: `c6c443f`, iOS Actions `40818346056`, CI
+`40818346038` passed. Use the B1.2a IPA linked in its procedure, not B1.1's IPA.
+The candidate was recompiled from identical pinned/adapted source and has a new
+binary hash, so keep full provenance and run the included B1.1 regression too.
 
 ## Route B: subsequent feature and guest capability gates (unaccepted)
 

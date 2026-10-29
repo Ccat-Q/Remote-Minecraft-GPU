@@ -84,3 +84,20 @@ no version or extension claims are added here.
 Even a real B1.2a pass would not satisfy full B1.2, authorize formal VirGL
 replacement, or pass Ubuntu guest GL3.2/GLSL150. B1.3 remains gated on necessary
 local feature tests. No Minecraft, NeoForge or sustained-performance acceptance.
+
+## First reproducible delivery (device pending)
+
+- Source `c6c443facf52929f6caaa760f8bad675e4f4bde5`, branch `experiment/b12-mobileglues-shader-probe`.
+- Accepted B1.1 evidence is committed separately at `29c5759` on `experiment/b11-mobileglues-probe`; no earlier device failure record was removed.
+- [iOS Actions 40818346056](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40818346056) **passed**: candidate ARM64 build/link/exports, new App compilation, exact B1.2a bundle ID and scope, packaged framework hashes and no formal renderer/GL hard-link contamination.
+- [Self-signable IPA artifact 12873800505](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40818346056/artifacts/12873800505), file `MobileGluesShaderProbe-unsigned.ipa`.
+- [Diagnostics and LGPL corresponding source 12873227442](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40818346056/artifacts/12873227442): exact dependency pins, recipe, framework hashes, toolchain, actual compile/link logs and full modified candidate source.
+- [CI 40818346038](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40818346038) **passed**: actual CPU pixel oracle with ASan/UBSan, retained B1.1 provider/metadata plans and native vtest/two-slot tests, 11 MobileGlues source/isolation/provenance tests, 32 Swift tests, Linux protocol/proxy and Mesa patch gates. The pixel oracle is not an iPhone or GLSL execution test.
+- IPA SHA256 `133f36e34288edc23ce0562b0a01267aca09e3d7107951c2f923b7deac313cc5`; downloaded ZIP integrity, checksum and embedded source/run/scope verified.
+- This branch rebuilt the same candidate recipe/source because its binary cache was unavailable. Its **new unsigned binary hash** is `6b3f2c2f280a715b8c40257e687e5d32f9ce9c920a5fff38ba9f57c5e711a07b`, not the accepted B1.1 artifact's `63f17c...`. All adapted source hashes and dependency pins match B1.1; do not claim the binaries are bit-identical or infer device acceptance from that match. The B1.1 regression must run in this new App too.
+- ANGLE EGL/GLESv2 hashes remain exactly the accepted values; the sysroot was reused without rebuilding. No candidate feature, capability, version override or formal renderer change was made.
+
+Runtime shader compile/link, translated sources, actual draw pixels, cleanup
+and every B12_CASE still require the user's device report. No B1.2a device or
+GPU-performance data is available yet. On failure retain Full Report/crash logs
+and fix the concrete error before expanding the feature Gate.
