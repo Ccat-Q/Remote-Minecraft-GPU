@@ -134,6 +134,29 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
     dependencies: *probeProviders
+  MobileGluesRetestProbe:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Shader
+      - path: Generated/B11Provenance.json
+        buildPhase: resources
+      - path: Generated/Licenses
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.remotegpu.experiments.mobileglues.capabilities.retest
+        TARGETED_DEVICE_FAMILY: "1"
+        GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) RGPU_B12_SHADER_PROBE=1 RGPU_B12_FEATURE_PROBE=1 RGPU_B12_RASTER_PROBE=1 RGPU_B12_CORE_PROBE=1 RGPU_B12_STRICT_RETEST=1"
+    info:
+      path: Generated/B12d1Info.plist
+      properties:
+        CFBundleDisplayName: RemoteGPU B1.2d.1
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+    dependencies: *probeProviders
 schemes:
   MobileGluesCompatibilityProbe:
     build:
@@ -155,3 +178,7 @@ schemes:
     build:
       targets:
         MobileGluesCoreProbe: all
+  MobileGluesRetestProbe:
+    build:
+      targets:
+        MobileGluesRetestProbe: all

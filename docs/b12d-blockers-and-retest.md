@@ -32,7 +32,7 @@ status and returned EGL results remain evidence. Historical frontend GL0 and
 cleanup GL0 do not independently prove absence of errors or leaks. Preserve
 reports/manifests, qualify stronger claims, and rerun prior regressions strictly.
 
-## Minimal repair source prepared locally, NOT built or enabled
+## Minimal repair for existing B1.2d, NOT built or accepted yet
 
 tools/ci/prepare_mobileglues_b12d_retest.py is an explicit second adaptation
 after the unchanged base recipe. It checks three pinned file hashes, records
@@ -46,8 +46,10 @@ its own recipe/upstream/adapted hashes into the source manifest, and:
    App sampler-uniform injection or alternate backend.
 
 CI policy tests and mutation/hash guards are prepared, but **have not run**.
-All compilation remains Actions-only. The repair is deliberately not invoked by
-the baseline iOS workflow. Accepted artifacts, base provider recipe, dispatch
+All compilation remains Actions-only. The repair is invoked only by the
+independent b12d1 retest branch/target, never baseline scopes. This is a repair
+retest of the existing B1.2d, not another capability milestone.
+Accepted artifacts, base provider recipe, dispatch
 and formal renderer are unchanged. No full TBO/Geometry/live-update repair,
 new device acceptance or performance result is claimed.
 
@@ -57,28 +59,32 @@ That has much larger semantic/maintenance risk. The bounded repair is recommende
 first to obtain real errors and distinguish initial R8I failure from update
 failure; it must not waive any failing case or tolerance.
 
-## Publication blocker and remaining actions
+## Publication and remaining actions
 
-Git commit/push/branch creation was **not executed**: automatic permission review
-returned model-capacity errors and a timeout on the allowed retries. This is a
-review-service failure, not a determination that the work is unsafe. No bypass,
-local compilation, Actions run or new IPA occurred. Changes remain uncommitted
-on experiment/b12d-mobileglues-core-probe; the intended retest branch does not
-yet exist.
+Earlier automatic review capacity/timeouts delayed publication; no bypass or
+local build occurred. Review subsequently recovered: actual failure evidence
+was committed separately as `85b10b0` on the existing B1.2d branch, then
+`experiment/b12d1-mobileglues-retest` was created. The isolated repair implementation
+is prepared locally; Actions and device outcomes must be recorded when available.
 
-When review is available:
+Repair retest sequence:
 
-- Commit real failure evidence separately, then create the isolated retest
-  branch and commit repair work there. Preserve the accepted renderer.
-- Add a separate target/bundle and opt-in workflow, strict/baseline cache
-  separation and complete LGPL corresponding source.
-- Add an intentional invalid-enum negative control to verify strict error return
+- Separate target/bundle and opt-in workflow, strict/baseline cache
+  separation and complete LGPL corresponding source are prepared.
+- An intentional invalid-enum negative control verifies strict error return
   and drain on device, actual sampler/width uniform observations after draws,
-  and a separate raw-backend Geometry creation control. Do not substitute raw
+  and a separate raw-backend Geometry creation control. Never substitute raw
   objects for failed frontend objects.
 - Retain all signed/float initial/update/reattach and Geometry oracles, prior
   regressions and independent contexts. Run CI/build in Actions, publish/check
   a new IPA, then stop for actual device retest. Reattach cannot excuse updates.
+
+Install the delivered **RemoteGPU B1.2d.1** repair candidate, tap **Run Strict
+Retest**, then **Share Full Report** including failures. Bundle
+`org.remotegpu.experiments.mobileglues.capabilities.retest` keeps existing Apps.
+The negative control runs before regressions; failure stops the suite. Float
+TBO/live coherence/Geometry are not implemented by this minimal repair; a
+successful build must not be reported as a successful device capability gate.
 
 Maintenance estimates are qualitative: this diagnostic repair is bounded;
 full TBO coherence is medium/high scope; GS on a backend unable to create the

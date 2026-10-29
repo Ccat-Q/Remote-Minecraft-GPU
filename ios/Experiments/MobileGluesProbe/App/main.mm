@@ -10,7 +10,10 @@
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.systemBackgroundColor;
     self.run = [UIButton buttonWithType:UIButtonTypeSystem];
-#if RGPU_B12_CORE_PROBE
+#if RGPU_B12_STRICT_RETEST
+    self.title = @"B1.2d.1 Strict Retest";
+    [self.run setTitle:@"Run Strict Retest" forState:UIControlStateNormal];
+#elif RGPU_B12_CORE_PROBE
     self.title = @"B1.2d Buffer / Geometry";
     [self.run setTitle:@"Run Buffer / Geometry Probe" forState:UIControlStateNormal];
 #elif RGPU_B12_RASTER_PROBE
@@ -32,7 +35,9 @@
     [share addTarget:self action:@selector(shareReport) forControlEvents:UIControlEventTouchUpInside];
     self.report = [[UITextView alloc] init]; self.report.editable = NO;
     self.report.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightRegular];
-#if RGPU_B12_CORE_PROBE
+#if RGPU_B12_STRICT_RETEST
+    self.report.text = @"Separate B1.2d.1 bundle. Strict error negative control, then B1.1/a/b/c regressions and unchanged signed/float TBO and Geometry gates. Only error return and array-draw preparation repaired. Float, live-update and Geometry support are NOT claimed.\nShare Full Report even when BLOCKED; keep the accepted RemoteGPU and prior Probes installed.";
+#elif RGPU_B12_CORE_PROBE
     self.report.text = @"Separate B1.2d bundle. B1.1/a/b/c regressions run first. Signed and float Buffer Textures test initial data and live updates without reattach; explicit reattach is a separate diagnostic. Geometry creation/compile/link/draw tested independently.\nEach new feature has a fresh unshared context and PASS/BLOCKED result. No full GL3.2, guest or performance verdict. Share Full Report, including failures.";
 #elif RGPU_B12_RASTER_PROBE
     self.report.text = @"Separate B1.2c bundle. B1.1/B1.2a/B1.2b regressions run first, then four actual depth, stencil and separate RGB/Alpha blending outputs.\nNot full raster conformance, GL3.2, Texture Buffer, Geometry, cross-context sync or performance acceptance. Run once and Share Full Report.";
@@ -65,7 +70,9 @@
 }
 - (void)shareReport {
     NSURL *url = [[NSURL fileURLWithPath:NSTemporaryDirectory()]
-#if RGPU_B12_CORE_PROBE
+#if RGPU_B12_STRICT_RETEST
+        URLByAppendingPathComponent:@"RemoteGPU-B12d1-strict-report.txt"];
+#elif RGPU_B12_CORE_PROBE
         URLByAppendingPathComponent:@"RemoteGPU-B12d-report.txt"];
 #elif RGPU_B12_RASTER_PROBE
         URLByAppendingPathComponent:@"RemoteGPU-B12c-report.txt"];

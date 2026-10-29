@@ -13,9 +13,15 @@ ACCEPTED_B11 = "d95d32be3d003f3c2c6c5a84b2f87132e4f6c7b2"
 ACCEPTED_B12A = "c6c443facf52929f6caaa760f8bad675e4f4bde5"
 ACCEPTED_B12B = "f91d6838b1534a65a8c7e6eecc4830a2e47c572d"
 ACCEPTED_B12C = "e989b4d86d70d1fa15fbbde119bcdac9287ac6ba"
+B12D_FAILURE = "528ab1ea3485241ea5c0399e9b35245a80e273c3"
 
 
 def experiment_scope(scope):
+    if scope == "b12d1":
+        return {**experiment_scope("b12d"),
+                "experiment": "B1.2d.1 isolated strict-error / draw-preparation retest; NOT full TBO/Geometry repair or guest acceptance",
+                "b12d_failure_sha": B12D_FAILURE,
+                "capability_status": "DEVICE_PENDING: strict negative control, prior regressions and all per-feature gates required; B1.2d remains BLOCKED; no full B1.2, VirGL/guest or Minecraft acceptance"}
     if scope == "b11":
         return {"experiment": "B1.1 isolated frontend/backend provider and context test",
                 "capability_status": "UNVERIFIED: no guest/VirGL, GLSL 150 or complete GL 3.2 acceptance"}
@@ -40,6 +46,18 @@ def experiment_scope(scope):
             "capability_status": "DEVICE_PENDING: representative shader/dynamic output only; remaining features and guest/VirGL NOT ACCEPTED"}
 
 
+def verify_repair_scope(scope, recipe):
+    repair = recipe.get("diagnostic_repair")
+    if (scope == "b12d1") != bool(repair):
+        raise ValueError("Strict repair must be present ONLY in the independent b12d1 scope")
+    if scope == "b12d1":
+        from prepare_mobileglues_b12d_retest import HASHES
+        if repair.get("upstream_sha256") != HASHES:
+            raise ValueError("Strict repair pinned sources mismatch")
+        if set(repair.get("adapted_sha256", {})) != set(HASHES) | {"rgpu_diagnostic_errors.hpp"}:
+            raise ValueError("Strict repair source hash coverage mismatch")
+
+
 def verify_bundle(app):
     data = json.loads((app / "B11Provenance.json").read_text())
     expected = {"MobileGluesProbe": data["candidate_framework_sha256"]}
@@ -58,7 +76,7 @@ def verify_bundle(app):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify-app", type=Path)
-    parser.add_argument("--scope", choices=("b11", "b12a", "b12b", "b12c", "b12d"), default="b11")
+    parser.add_argument("--scope", choices=("b11", "b12a", "b12b", "b12c", "b12d", "b12d1"), default="b11")
     for name in ("angle", "recipe", "candidate", "output"):
         parser.add_argument("--" + name, type=Path)
     args = parser.parse_args()
@@ -69,18 +87,21 @@ def main():
         parser.error("Provide --angle --recipe --candidate --output, or --verify-app")
     angle = json.loads(args.angle.read_text())
     recipe = json.loads(args.recipe.read_text())
+    verify_repair_scope(args.scope, recipe)
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     if source != os.environ["GITHUB_SHA"] or recipe["mobileglues_sha"] != MOBILEGLUES:
         raise ValueError("Checkout/candidate provenance mismatch")
     subprocess.run(["git", "merge-base", "--is-ancestor", "6dd8b04c049da999b9dbd91e4c341f4a8b6d5e31", source], check=True)
-    if args.scope in ("b12a", "b12b", "b12c", "b12d"):
+    if args.scope in ("b12a", "b12b", "b12c", "b12d", "b12d1"):
         subprocess.run(["git", "merge-base", "--is-ancestor", ACCEPTED_B11, source], check=True)
-    if args.scope in ("b12b", "b12c", "b12d"):
+    if args.scope in ("b12b", "b12c", "b12d", "b12d1"):
         subprocess.run(["git", "merge-base", "--is-ancestor", ACCEPTED_B12A, source], check=True)
-    if args.scope in ("b12c", "b12d"):
+    if args.scope in ("b12c", "b12d", "b12d1"):
         subprocess.run(["git", "merge-base", "--is-ancestor", ACCEPTED_B12B, source], check=True)
-    if args.scope == "b12d":
+    if args.scope in ("b12d", "b12d1"):
         subprocess.run(["git", "merge-base", "--is-ancestor", ACCEPTED_B12C, source], check=True)
+    if args.scope == "b12d1":
+        subprocess.run(["git", "merge-base", "--is-ancestor", B12D_FAILURE, source], check=True)
     result = {
         **experiment_scope(args.scope),
         "source_sha": source, "actions_run": os.environ["GITHUB_RUN_ID"],

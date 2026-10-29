@@ -7,7 +7,7 @@ on:
         required: true
         default: "40636888480"
   push:
-    branches: [experiment/b11-mobileglues-probe, experiment/b12-mobileglues-shader-probe, experiment/b12b-mobileglues-features-probe, experiment/b12c-mobileglues-raster-probe, experiment/b12d-mobileglues-core-probe]
+    branches: [experiment/b11-mobileglues-probe, experiment/b12-mobileglues-shader-probe, experiment/b12b-mobileglues-features-probe, experiment/b12c-mobileglues-raster-probe, experiment/b12d-mobileglues-core-probe, experiment/b12d1-mobileglues-retest]
     paths:
       - ios/Experiments/MobileGluesProbe/**
       - tools/ci/*mobileglues*
@@ -27,8 +27,9 @@ jobs:
       RENDERER_RUN_ID: ${{ inputs.renderer_run_id || '40636888480' }}
       MG_SHA: 97558a69157b033b890958b1e49258c5b51a80c6
       CCACHE_DIR: ${{ github.workspace }}/.cache/b11-ccache
-      PROBE_SCOPE: ${{ github.ref_name == 'experiment/b12d-mobileglues-core-probe' && 'b12d' || github.ref_name == 'experiment/b12c-mobileglues-raster-probe' && 'b12c' || github.ref_name == 'experiment/b12b-mobileglues-features-probe' && 'b12b' || github.ref_name == 'experiment/b12-mobileglues-shader-probe' && 'b12a' || 'b11' }}
-      PROBE_APP: ${{ github.ref_name == 'experiment/b12d-mobileglues-core-probe' && 'MobileGluesCoreProbe' || github.ref_name == 'experiment/b12c-mobileglues-raster-probe' && 'MobileGluesRasterProbe' || github.ref_name == 'experiment/b12b-mobileglues-features-probe' && 'MobileGluesFeaturesProbe' || github.ref_name == 'experiment/b12-mobileglues-shader-probe' && 'MobileGluesShaderProbe' || 'MobileGluesCompatibilityProbe' }}
+      PROBE_SCOPE: ${{ github.ref_name == 'experiment/b12d1-mobileglues-retest' && 'b12d1' || github.ref_name == 'experiment/b12d-mobileglues-core-probe' && 'b12d' || github.ref_name == 'experiment/b12c-mobileglues-raster-probe' && 'b12c' || github.ref_name == 'experiment/b12b-mobileglues-features-probe' && 'b12b' || github.ref_name == 'experiment/b12-mobileglues-shader-probe' && 'b12a' || 'b11' }}
+      PROBE_APP: ${{ github.ref_name == 'experiment/b12d1-mobileglues-retest' && 'MobileGluesRetestProbe' || github.ref_name == 'experiment/b12d-mobileglues-core-probe' && 'MobileGluesCoreProbe' || github.ref_name == 'experiment/b12c-mobileglues-raster-probe' && 'MobileGluesRasterProbe' || github.ref_name == 'experiment/b12b-mobileglues-features-probe' && 'MobileGluesFeaturesProbe' || github.ref_name == 'experiment/b12-mobileglues-shader-probe' && 'MobileGluesShaderProbe' || 'MobileGluesCompatibilityProbe' }}
+      CANDIDATE_POLICY: ${{ github.ref_name == 'experiment/b12d1-mobileglues-retest' && 'strict-retest' || 'baseline' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,6 +70,11 @@ jobs:
           python3 tools/ci/prepare_mobileglues_probe.py --source _deps/mobileglues \
             --overlay ios/Experiments/MobileGluesProbe/Overlay --manifest _build/b11-diagnostics/MobileGluesRecipe.json
           python3 -m unittest discover -s tools/ci -p test_mobileglues_probe.py
+          python3 -m unittest discover -s tools/ci -p test_mobileglues_retest.py
+          if [ "$PROBE_SCOPE" = b12d1 ]; then
+            python3 tools/ci/prepare_mobileglues_b12d_retest.py --source _deps/mobileglues \
+              --overlay ios/Experiments/MobileGluesProbe/Overlay --manifest _build/b11-diagnostics/MobileGluesRecipe.json
+          fi
           git -C _deps/mobileglues diff -- MobileGlues-cpp > _build/b11-diagnostics/mobileglues-adaptation.patch
           cp ios/Experiments/MobileGluesProbe/Overlay/* _build/b11-diagnostics/
       - name: Install small build tools and fingerprint toolchain
@@ -82,7 +88,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: _build/mobileglues/MobileGluesProbe.framework
-          key: b11-framework-v1-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ env.MG_SHA }}-${{ hashFiles('tools/ci/prepare_mobileglues_probe.py', 'ios/Experiments/MobileGluesProbe/Overlay/**') }}
+          key: b11-framework-v2-${{ env.CANDIDATE_POLICY }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ env.MG_SHA }}-${{ hashFiles('tools/ci/prepare_mobileglues_probe.py', 'tools/ci/prepare_mobileglues_b12d_retest.py', 'ios/Experiments/MobileGluesProbe/Overlay/**') }}
       - name: Restore compiler results for partial or changed candidate builds
         uses: actions/cache/restore@v4
         id: compiler-cache
@@ -110,7 +116,7 @@ jobs:
           otool -L "$framework" | tee _build/b11-diagnostics/mobileglues-linkage.txt
           ! otool -L "$framework" | grep -E 'OpenGLES.framework|OpenGL.framework|libEGL|libGLESv2|virglrenderer|epoxy'
           nm -gU "$framework" > _build/b11-diagnostics/mobileglues-exports.txt
-          for name in rgpu_mg_bootstrap rgpu_mg_acquire_metal_display eglCreateContext eglMakeCurrent eglGetProcAddress glGetString glBindTexture glFramebufferTexture2D glReadPixels; do
+          for name in rgpu_mg_bootstrap rgpu_mg_acquire_metal_display eglCreateContext eglMakeCurrent eglGetProcAddress glGetString glBindTexture glFramebufferTexture2D glReadPixels glGetError glDrawArrays; do
             grep -E " _${name}$" _build/b11-diagnostics/mobileglues-exports.txt
           done
           python3 tools/ci/inspect_macho.py "$framework" > _build/b11-diagnostics/macho.txt
@@ -153,7 +159,10 @@ jobs:
           test -f "$app/Frameworks/MobileGluesProbe.framework/MobileGluesProbe"
           test ! -e "$app/Frameworks/virglrenderer.1.framework"
           test ! -e "$app/Frameworks/epoxy.0.framework"
-          if [ "$PROBE_SCOPE" = b12d ]; then
+          if [ "$PROBE_SCOPE" = b12d1 ]; then
+            test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")" = org.remotegpu.experiments.mobileglues.capabilities.retest
+            jq -e '.b12d_failure_sha == "528ab1ea3485241ea5c0399e9b35245a80e273c3" and .accepted_b12c_device_sha == "e989b4d86d70d1fa15fbbde119bcdac9287ac6ba" and .mobileglues_recipe.diagnostic_repair and (.experiment | startswith("B1.2d.1")) and (has("accepted_b12d_device_sha") | not)' "$app/B11Provenance.json"
+          elif [ "$PROBE_SCOPE" = b12d ]; then
             test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")" = org.remotegpu.experiments.mobileglues.capabilities
             jq -e '.accepted_b12c_device_sha == "e989b4d86d70d1fa15fbbde119bcdac9287ac6ba" and (.experiment | startswith("B1.2d"))' "$app/B11Provenance.json"
           elif [ "$PROBE_SCOPE" = b12c ]; then

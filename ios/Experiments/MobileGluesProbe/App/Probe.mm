@@ -141,7 +141,10 @@ void verifyPixels(Frontend& f, GLuint texture, NSMutableString *report, const ch
 
 NSString *RGPURunMobileGluesProbe(void) {
     NSMutableString *report = [NSMutableString stringWithString:
-#if RGPU_B12_CORE_PROBE
+#if RGPU_B12_STRICT_RETEST
+        @"B1.2d.1 ISOLATED STRICT ERROR / DRAW PREPARATION RETEST\n"
+         "Device acceptance pending. Error negative control then B1.1/a/b/c regressions and unchanged B1.2d gates. NOT full TBO/Geometry repair, full B1.2, VirGL or guest acceptance.\n"];
+#elif RGPU_B12_CORE_PROBE
         @"B1.2d ISOLATED TEXTURE BUFFER / GEOMETRY CAPABILITY PROBE\n"
          "Device acceptance pending. B1.1/B1.2a/B1.2b/B1.2c regressions run first. Each new feature uses a fresh unshared context. NOT full B1.2, VirGL or guest acceptance.\n"];
 #elif RGPU_B12_RASTER_PROBE
@@ -255,6 +258,28 @@ NSString *RGPURunMobileGluesProbe(void) {
             f.eglCheck(s.shared != EGL_NO_CONTEXT, report, "create shared frontend context");
             f.eglCheck(f.eglMakeCurrent(s.display, s.surface, s.surface, s.root), report, "make root current");
             require(f.eglGetCurrentContext() == s.root && f.eglGetCurrentDisplay() == s.display, "Frontend current-context identity mismatch");
+#if RGPU_B12_STRICT_RETEST
+            // Intentional, bounded negative control before any content regression.
+            auto rawError = symbol<decltype(&::glGetError)>(backendGLES,"glGetError","/GLESv2.framework/");
+            using DepthFunc = void (*)(GLenum);
+            auto depthFunc = symbol<DepthFunc>(frontend,"glDepthFunc","/MobileGluesProbe.framework/");
+            Dl_info depthOwner{}, frontOwner{};
+            require(dladdr(reinterpret_cast<void*>(depthFunc),&depthOwner) &&
+                dladdr(reinterpret_cast<void*>(f.glGetString),&frontOwner) && depthOwner.dli_fbase &&
+                depthOwner.dli_fbase == frontOwner.dli_fbase &&
+                reinterpret_cast<void*>(depthFunc) == reinterpret_cast<void*>(f.eglGetProcAddress("glDepthFunc")),
+                "Strict negative-control provider/direct-proc mismatch");
+            const auto priorFront = f.glGetError(), priorRaw = rawError();
+            [report appendFormat:@"B12D1_ERROR_CONTROL prior_front=0x%x prior_raw=0x%x provider=%s\n",priorFront,priorRaw,depthOwner.dli_fname];
+            require(priorFront == GL_NO_ERROR && priorRaw == GL_NO_ERROR,"Strict control entry has prior GL errors; not discarded");
+            depthFunc(static_cast<GLenum>(0xffffffffu));
+            const auto observed = f.glGetError(), drained = f.glGetError(), remainingRaw = rawError();
+            [report appendFormat:@"B12D1_ERROR_CONTROL invalid_depth_func actual=0x%x expected=0x%x next_front=0x%x remaining_raw=0x%x\n",
+                observed,GL_INVALID_ENUM,drained,remainingRaw];
+            require(observed == GL_INVALID_ENUM && drained == GL_NO_ERROR && remainingRaw == GL_NO_ERROR,
+                "Strict error negative control failed; regressions NOT RUN");
+            [report appendString:@"PASS: B1.2d.1 intentional invalid-enum error return/drain control ONLY. No capability acceptance.\n"];
+#endif
             [report appendFormat:@"Frontend GL_VERSION (unverified metadata): %s\nFrontend GLSL_VERSION (unverified metadata): %s\nFrontend Renderer: %s\nBackend actual GL: %s\nBackend actual GLSL: %s\nBackend actual Renderer: %s\n",
                 f.glGetString(GL_VERSION), f.glGetString(GL_SHADING_LANGUAGE_VERSION), f.glGetString(GL_RENDERER),
                 backendString(GL_VERSION), backendString(GL_SHADING_LANGUAGE_VERSION), backendString(GL_RENDERER)];

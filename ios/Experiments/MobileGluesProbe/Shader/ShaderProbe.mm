@@ -456,6 +456,18 @@ void RGPURunCapabilityProbe(NSMutableString *report,const std::function<void*(co
             geometryShader = gl.glCreateShader(GL_GEOMETRY_SHADER);
             const auto frontError = gl.glGetError(), rawError = backend.glGetError();
             [report appendFormat:@"B12D_CREATE_GEOMETRY object=%u frontend_GL=0x%x backend_GL=0x%x\n",geometryShader,frontError,rawError];
+#if RGPU_B12_STRICT_RETEST
+            // Raw creation is a separate diagnostic, never a substitute object.
+            const auto rawCreate = reinterpret_cast<decltype(&::glCreateShader)>(backendResolver("glCreateShader"));
+            const auto rawDelete = reinterpret_cast<decltype(&::glDeleteShader)>(backendResolver("glDeleteShader"));
+            const auto rawObject = rawCreate(GL_GEOMETRY_SHADER);
+            const auto controlError = backend.glGetError();
+            [report appendFormat:@"B12D1_RAW_GEOMETRY_CONTROL object=%u actual_GL=0x%x NOT_FRONTEND_SUBSTITUTION\n",rawObject,controlError];
+            if (rawObject) rawDelete(rawObject);
+            const auto controlCleanup = backend.glGetError();
+            [report appendFormat:@"B12D1_RAW_GEOMETRY_CONTROL cleanup_GL=0x%x\n",controlCleanup];
+            require(controlCleanup == GL_NO_ERROR,"Raw Geometry control cleanup failed");
+#endif
             require(geometryShader && frontError == GL_NO_ERROR && rawError == GL_NO_ERROR,
                 "Geometry shader creation rejected; compilation/link/draw NOT RUN (see actual creation errors)");
             compile(gl,backend,report,geometryShader,geometrySource,"geometry");
@@ -537,6 +549,21 @@ void RGPURunCapabilityProbe(NSMutableString *report,const std::function<void*(co
                 gl.glClearColor(0,0,0,1); gl.glClear(GL_COLOR_BUFFER_BIT);
                 gl.glDrawArrays(GL_TRIANGLES,0,6);
                 gl.check(report,"actual Texture Buffer shader draw/update");
+#if RGPU_B12_STRICT_RETEST
+                // Observe what the wrapper prepared; the App never writes these
+                // internal uniforms or reattaches to repair live-update output.
+                const auto rawLocation = reinterpret_cast<decltype(&::glGetUniformLocation)>(backendResolver("glGetUniformLocation"));
+                const auto rawUniform = reinterpret_cast<decltype(&::glGetUniformiv)>(backendResolver("glGetUniformiv"));
+                for (const char *name : {"uBuffer","u_BufferTexWidth","u_BufferTexHeight"}) {
+                    const GLint location = rawLocation(resources.program,name);
+                    GLint value = -1;
+                    if (location >= 0) rawUniform(resources.program,location,&value);
+                    const auto queryError = backend.glGetError();
+                    [report appendFormat:@"B12D1_RAW_UNIFORM feature=%s case=%d name=%s location=%d value=%d actual_GL=0x%x observation_ONLY\n",
+                        feature,test,name,location,value,queryError];
+                    require(queryError == GL_NO_ERROR,"Raw TBO uniform diagnostic failed");
+                }
+#endif
                 mismatches += capabilityPixels(gl,report,feature,test,operation,
                     [&](int x,int y) { return expectedBufferPixel(kind,test,x,y); });
             }
