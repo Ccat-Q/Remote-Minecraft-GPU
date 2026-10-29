@@ -1,7 +1,7 @@
 # B1.2d isolated Buffer Texture / Geometry capability probe
 
 Latest actual device verdict: **BLOCKED for all three new features**.
-[Concrete blockers, prepared minimal repair and publication blocker](b12d-blockers-and-retest.md).
+[Concrete blockers and built repair candidate awaiting device retest](b12d-blockers-and-retest.md).
 [Actual failures, captured sources and provenance](evidence/b12d-device-2026-10-29/README.md).
 R8I failed initial/update/reattach output; float TBO failed real compilation;
 Geometry allocation returned zero. Prior regressions retained matching pixels.

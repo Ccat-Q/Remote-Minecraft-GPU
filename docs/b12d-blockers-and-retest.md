@@ -1,4 +1,4 @@
-# B1.2d blockers and bounded retest preparation
+# B1.2d blockers and bounded repair retest
 
 Actual device status: all three B1.2d features **BLOCKED** at `528ab1e`.
 [Report summary, delivered provenance and shader failures](evidence/b12d-device-2026-10-29/README.md).
@@ -32,7 +32,7 @@ status and returned EGL results remain evidence. Historical frontend GL0 and
 cleanup GL0 do not independently prove absence of errors or leaks. Preserve
 reports/manifests, qualify stronger claims, and rerun prior regressions strictly.
 
-## Minimal repair for existing B1.2d, NOT built or accepted yet
+## Minimal repair for existing B1.2d, built / device retest pending
 
 tools/ci/prepare_mobileglues_b12d_retest.py is an explicit second adaptation
 after the unchanged base recipe. It checks three pinned file hashes, records
@@ -45,8 +45,9 @@ its own recipe/upstream/adapted hashes into the source manifest, and:
    existing prepareForDraw before the actual GLES draw. No duplicate export,
    App sampler-uniform injection or alternate backend.
 
-CI policy tests and mutation/hash guards are prepared, but **have not run**.
-All compilation remains Actions-only. The repair is invoked only by the
+CI policy/sanitizer tests and all six repair mutation/scope guards passed in
+Actions, alongside the existing 17 provider/source guards and 32 Swift tests.
+All compilation remained Actions-only. The repair is invoked only by the
 independent b12d1 retest branch/target, never baseline scopes. This is a repair
 retest of the existing B1.2d, not another capability milestone.
 Accepted artifacts, base provider recipe, dispatch
@@ -64,20 +65,45 @@ failure; it must not waive any failing case or tolerance.
 Earlier automatic review capacity/timeouts delayed publication; no bypass or
 local build occurred. Review subsequently recovered: actual failure evidence
 was committed separately as `85b10b0` on the existing B1.2d branch, then
-`experiment/b12d1-mobileglues-retest` was created. The isolated repair implementation
-is prepared locally; Actions and device outcomes must be recorded when available.
+`experiment/b12d1-mobileglues-retest` was created. Repair code
+`18400ad4e41995e995e3807ac2c96da745ad0a89` is committed/pushed. Both
+[CI 40901304416](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40901304416)
+and [iOS build 40901304444](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40901304444)
+passed. **No replacement device report exists yet.**
+
+### Verified repair-candidate delivery
+
+- [Self-signable IPA artifact 12908524604](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40901304444/artifacts/12908524604):
+  `MobileGluesRetestProbe-unsigned.ipa`, SHA256
+  `9acd7c35d9ba78bc2b077d6b0ee0bd16c47c95a8f783ab329c02e5e4f46bfa89`.
+  Downloaded SHA256SUMS and ZIP integrity passed. Embedded provenance has the
+  exact source/run, accepted B1.1/a/b/c chain and `b12d_failure_sha=528ab1e...`,
+  never an accepted B1.2d entry.
+- Only MobileGluesProbe/EGL/GLESv2 frameworks are embedded. Actual candidate
+  hash `df6ba87d320adbe1c89dc803f8c684068c9866470825bc55b089f2b01cdbcfd5`
+  differs from the failed candidate; actual EGL/GLESv2 hashes match the unchanged
+  accepted ANGLE sysroot. Hash scope is unsigned before external signing.
+- [Diagnostics and complete LGPL corresponding source 12908828615](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40901304444/artifacts/12908828615)
+  include the modified candidate/dependencies, both recipes, source hashes,
+  compiler output, exports and packaging/linkage checks. The opt-in repair recipe
+  SHA256 is `2d93233b0095b7d97907943253578772bdd433baea9521d73d97ca89d715ee68`.
+  Downloaded source archive integrity and all four adapted file hashes were
+  checked against the embedded recipe. Both repaired GL exports are present;
+  the App has no hard links to graphics providers.
+  The candidate compile retains upstream warnings; build success is not a claim
+  of warning-free source, correct device semantics or absence of leaks.
 
 Repair retest sequence:
 
 - Separate target/bundle and opt-in workflow, strict/baseline cache
-  separation and complete LGPL corresponding source are prepared.
+  separation and complete LGPL corresponding source are built and published.
 - An intentional invalid-enum negative control verifies strict error return
   and drain on device, actual sampler/width uniform observations after draws,
   and a separate raw-backend Geometry creation control. Never substitute raw
   objects for failed frontend objects.
-- Retain all signed/float initial/update/reattach and Geometry oracles, prior
-  regressions and independent contexts. Run CI/build in Actions, publish/check
-  a new IPA, then stop for actual device retest. Reattach cannot excuse updates.
+- All signed/float initial/update/reattach and Geometry oracles, prior
+  regressions and independent contexts are retained. Next is actual device
+  retest; reattach cannot excuse updates.
 
 Install the delivered **RemoteGPU B1.2d.1** repair candidate, tap **Run Strict
 Retest**, then **Share Full Report** including failures. Bundle
