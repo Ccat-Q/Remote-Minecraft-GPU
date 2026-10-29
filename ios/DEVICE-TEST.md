@@ -253,7 +253,12 @@ First ready-to-install B1.2a source: `c6c443f`, iOS Actions `40818346056`, CI
 The candidate was recompiled from identical pinned/adapted source and has a new
 binary hash, so keep full provenance and run the included B1.1 regression too.
 
-## B1.2c standalone Depth / Stencil / Blend (device pending)
+## B1.2c standalone Depth / Stencil / Blend (device accepted, limited scope)
+
+Source `e989b4d` passed actual iPhone execution: four cases / 1024 pixels / zero
+mismatches, packed depth24/stencil8 FBO, actual compile/link, B1.1/a/b regressions
+and cleanup. [Evidence/provenance](../docs/evidence/b12c-device-2026-10-29/README.md).
+Earlier pending build instructions below are historical; remaining gates unaccepted.
 
 Follow [the isolated raster-state procedure](../docs/b12c-raster-state.md).
 Install **RemoteGPU B1.2c** (`.mobileglues.raster`), preserving accepted Apps.

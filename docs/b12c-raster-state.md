@@ -1,7 +1,10 @@
 # B1.2c isolated depth, stencil and blending probe
 
-Status: Actions build and CI passed; **device acceptance pending**. This is
-not full B1.2, GL3.2 conformance, VirGL/guest or Minecraft acceptance.
+Latest verdict: **limited scope device PASSED** at `e989b4d`.
+[Actual report summary, captured shaders and full provenance](evidence/b12c-device-2026-10-29/README.md).
+Four complete outputs checked 1024 actual pixels / 0 mismatches; retained
+regressions and cleanup passed. Not full B1.2, GL3.2 conformance, VirGL/guest or
+Minecraft acceptance. The delivery-time pending instructions below remain historical.
 
 Branch `experiment/b12c-mobileglues-raster-probe` retains accepted B1.1
 `d95d32b`, B1.2a `c6c443f` and [B1.2b `f91d683`](evidence/b12b-device-2026-10-29/README.md).
@@ -92,6 +95,6 @@ unaccepted. No sustained performance, cancellation-safety or driver-leak verdict
   concise docs changed. No new Linux workload artifact is needed for this local,
   network-free iPhone batch.
 
-Next: actual B1.2c device report. Only the four executed cases can be accepted;
-then continue isolated Texture Buffer / Geometry and remaining functional gates.
-Do not start B1.3 or elevate VirGL caps based on this build.
+The subsequent actual device report passed the four executed cases only, as
+recorded above. Next: isolated Texture Buffer / Geometry and remaining functional
+gates. Do not start B1.3 or elevate VirGL caps based on this limited acceptance.
