@@ -142,8 +142,8 @@ void verifyPixels(Frontend& f, GLuint texture, NSMutableString *report, const ch
 NSString *RGPURunMobileGluesProbe(void) {
     NSMutableString *report = [NSMutableString stringWithString:
 #if RGPU_B12_STRICT_RETEST
-        @"B1.2d.1 ISOLATED STRICT ERROR / DRAW PREPARATION RETEST\n"
-         "Device acceptance pending. Error negative control then B1.1/a/b/c regressions and unchanged B1.2d gates. NOT full TBO/Geometry repair, full B1.2, VirGL or guest acceptance.\n"];
+        @"B1.2d.1 TBO REPAIR REVISION — SAME CAPABILITY GATES\n"
+         "Device acceptance pending. Typed TBO lowering and BufferData/SubData attachment propagation; strict error control then B1.1/a/b/c and unchanged B1.2d gates. Geometry remains BLOCKED on the existing backend. NOT full TBO, B1.2, VirGL or guest acceptance.\n"];
 #elif RGPU_B12_CORE_PROBE
         @"B1.2d ISOLATED TEXTURE BUFFER / GEOMETRY CAPABILITY PROBE\n"
          "Device acceptance pending. B1.1/B1.2a/B1.2b/B1.2c regressions run first. Each new feature uses a fresh unshared context. NOT full B1.2, VirGL or guest acceptance.\n"];

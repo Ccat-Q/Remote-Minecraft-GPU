@@ -1,7 +1,14 @@
 # B1.2d blockers and bounded repair retest
 
+Current implementation: [TBO propagation / typed-lowering repair revision](b12d-tbo-repair.md),
+not yet device accepted. Earlier diagnostic-only repair delivery is retained below.
+
 Actual device status: all three B1.2d features **BLOCKED** at `528ab1e`.
 [Report summary, delivered provenance and shader failures](evidence/b12d-device-2026-10-29/README.md).
+Latest [strict repair device report](evidence/b12d1-device-2026-10-29/README.md)
+at `18400ad`: error negative control and B1.1/a/b/c regressions passed; R8I
+initial/reattach now match, live SubData still stale. Float compile and Geometry
+creation still BLOCKED. The current TBO repair revision is not device accepted.
 No B1.3 integration, caps/version changes, backend migration or formal renderer
 change follows from these failures or is implemented here.
 
@@ -69,7 +76,7 @@ was committed separately as `85b10b0` on the existing B1.2d branch, then
 `18400ad4e41995e995e3807ac2c96da745ad0a89` is committed/pushed. Both
 [CI 40901304416](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40901304416)
 and [iOS build 40901304444](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/40901304444)
-passed. **No replacement device report exists yet.**
+passed. The replacement actual report is linked above; aggregate remains BLOCKED.
 
 ### Verified repair-candidate delivery
 

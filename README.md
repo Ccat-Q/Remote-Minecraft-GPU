@@ -39,7 +39,7 @@ Status as of 2026-10-28:
 | B1.2a device passed, limited scope | [GLSL150/dynamic-output target](docs/b12-mobileglues-shaders.md): `c6c443f` passed actual translation/compile/link and three dynamic VAO/VBO/FBO/texture outputs (768 pixels, zero mismatches). Not the full B1.2 or guest gate. |
 | B1.2b device passed, limited scope | [Instancing/same-context sync](docs/b12b-instancing-sync.md): `f91d683` passed 4/2/0 instance outputs (768 pixels / 0 mismatches), actual pending-to-complete Fences and retirement. No full feature, cross-context, performance or guest verdict. |
 | B1.2c device passed, limited scope | [Raster-state probe](docs/b12c-raster-state.md): `e989b4d` passed actual depth occlusion/write-mask, stencil compare/write-mask and separate blending (1024 pixels / 0 mismatches), retained regressions and cleanup. No full B1.2 or guest claim. |
-| B1.2d device BLOCKED | [Buffer / Geometry evidence](docs/b12d-buffer-geometry.md): R8I outputs wrong; float TBO compile failed; Geometry allocation zero. Prior pixel regressions passed. [Minimal repair IPA](docs/b12d-blockers-and-retest.md) built for strict device retest; no capability promotion. |
+| B1.2d device BLOCKED | [Strict device retest](docs/evidence/b12d1-device-2026-10-29/README.md): errors now observable, R8I initial/reattach fixed but live update stale; float/Geometry blocked. [TBO repair revision](docs/b12d-tbo-repair.md) in progress; no capability promotion. |
 | Later candidate experiments | MobileGL interfaces and UTM MoltenVK with a compatibility implementation; not developed concurrently with the selected B1.1 candidate. |
 
 The current blocker does **not** imply remote GPU is impossible. Two independent

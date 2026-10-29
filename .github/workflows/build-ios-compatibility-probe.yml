@@ -71,8 +71,11 @@ jobs:
             --overlay ios/Experiments/MobileGluesProbe/Overlay --manifest _build/b11-diagnostics/MobileGluesRecipe.json
           python3 -m unittest discover -s tools/ci -p test_mobileglues_probe.py
           python3 -m unittest discover -s tools/ci -p test_mobileglues_retest.py
+          python3 -m unittest discover -s tools/ci -p test_mobileglues_tbo.py
           if [ "$PROBE_SCOPE" = b12d1 ]; then
             python3 tools/ci/prepare_mobileglues_b12d_retest.py --source _deps/mobileglues \
+              --overlay ios/Experiments/MobileGluesProbe/Overlay --manifest _build/b11-diagnostics/MobileGluesRecipe.json
+            python3 tools/ci/prepare_mobileglues_tbo_repair.py --source _deps/mobileglues \
               --overlay ios/Experiments/MobileGluesProbe/Overlay --manifest _build/b11-diagnostics/MobileGluesRecipe.json
           fi
           git -C _deps/mobileglues diff -- MobileGlues-cpp > _build/b11-diagnostics/mobileglues-adaptation.patch
@@ -88,7 +91,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: _build/mobileglues/MobileGluesProbe.framework
-          key: b11-framework-v2-${{ env.CANDIDATE_POLICY }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ env.MG_SHA }}-${{ hashFiles('tools/ci/prepare_mobileglues_probe.py', 'tools/ci/prepare_mobileglues_b12d_retest.py', 'ios/Experiments/MobileGluesProbe/Overlay/**') }}
+          key: b11-framework-v2-${{ env.CANDIDATE_POLICY }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ env.MG_SHA }}-${{ hashFiles('tools/ci/prepare_mobileglues_probe.py', 'tools/ci/prepare_mobileglues_b12d_retest.py', 'tools/ci/prepare_mobileglues_tbo_repair.py', 'ios/Experiments/MobileGluesProbe/Overlay/**') }}
       - name: Restore compiler results for partial or changed candidate builds
         uses: actions/cache/restore@v4
         id: compiler-cache
@@ -162,6 +165,7 @@ jobs:
           if [ "$PROBE_SCOPE" = b12d1 ]; then
             test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")" = org.remotegpu.experiments.mobileglues.capabilities.retest
             jq -e '.b12d_failure_sha == "528ab1ea3485241ea5c0399e9b35245a80e273c3" and .accepted_b12c_device_sha == "e989b4d86d70d1fa15fbbde119bcdac9287ac6ba" and .mobileglues_recipe.diagnostic_repair and (.experiment | startswith("B1.2d.1")) and (has("accepted_b12d_device_sha") | not)' "$app/B11Provenance.json"
+            jq -e '.b12d1_failure_sha == "18400ad4e41995e995e3807ac2c96da745ad0a89" and .mobileglues_recipe.tbo_repair' "$app/B11Provenance.json"
           elif [ "$PROBE_SCOPE" = b12d ]; then
             test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")" = org.remotegpu.experiments.mobileglues.capabilities
             jq -e '.accepted_b12c_device_sha == "e989b4d86d70d1fa15fbbde119bcdac9287ac6ba" and (.experiment | startswith("B1.2d"))' "$app/B11Provenance.json"

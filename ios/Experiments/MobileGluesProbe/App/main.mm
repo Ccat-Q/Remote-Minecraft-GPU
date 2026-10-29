@@ -11,7 +11,7 @@
     self.view.backgroundColor = UIColor.systemBackgroundColor;
     self.run = [UIButton buttonWithType:UIButtonTypeSystem];
 #if RGPU_B12_STRICT_RETEST
-    self.title = @"B1.2d.1 Strict Retest";
+    self.title = @"B1.2d TBO Repair Retest";
     [self.run setTitle:@"Run Strict Retest" forState:UIControlStateNormal];
 #elif RGPU_B12_CORE_PROBE
     self.title = @"B1.2d Buffer / Geometry";
@@ -36,7 +36,7 @@
     self.report = [[UITextView alloc] init]; self.report.editable = NO;
     self.report.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightRegular];
 #if RGPU_B12_STRICT_RETEST
-    self.report.text = @"Separate B1.2d.1 bundle. Strict error negative control, then B1.1/a/b/c regressions and unchanged signed/float TBO and Geometry gates. Only error return and array-draw preparation repaired. Float, live-update and Geometry support are NOT claimed.\nShare Full Report even when BLOCKED; keep the accepted RemoteGPU and prior Probes installed.";
+    self.report.text = @"Existing B1.2d repair revision, same bundle and unchanged gates. Adds typed TBO lowering and BufferData/SubData attachment propagation. Strict error control and B1.1/a/b/c regressions retained. Geometry remains blocked; full TBO/GL3.2 support is NOT claimed.\nRun Strict Retest and Share Full Report even when BLOCKED; keep accepted RemoteGPU installed.";
 #elif RGPU_B12_CORE_PROBE
     self.report.text = @"Separate B1.2d bundle. B1.1/a/b/c regressions run first. Signed and float Buffer Textures test initial data and live updates without reattach; explicit reattach is a separate diagnostic. Geometry creation/compile/link/draw tested independently.\nEach new feature has a fresh unshared context and PASS/BLOCKED result. No full GL3.2, guest or performance verdict. Share Full Report, including failures.";
 #elif RGPU_B12_RASTER_PROBE

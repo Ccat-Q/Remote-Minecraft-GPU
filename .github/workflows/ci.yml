@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install API headers
-        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends libvirglrenderer-dev
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends libvirglrenderer-dev libgl-dev glslang-tools
       - name: Build and exercise native decoder with sanitizers
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
@@ -64,6 +64,16 @@ jobs:
           c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
             -Iios/Experiments/MobileGluesProbe/Overlay tests/b12d1_error_policy.cpp -o /tmp/b12d1-error-policy
           /tmp/b12d1-error-policy
+      - name: Test actual TBO dependency/range/typed lowering and upload state (NOT GPU)
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+            -Iios/Experiments/MobileGluesProbe/Overlay tests/b12d_tbo_repair.cpp -o /tmp/b12d-tbo-repair
+          /tmp/b12d-tbo-repair
+          /tmp/b12d-tbo-repair --emit-glsl > /tmp/b12d-lowered.frag
+          glslangValidator -S frag /tmp/b12d-lowered.frag
+          c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+            -Iios/Experiments/MobileGluesProbe/Overlay tests/b12d_tbo_upload.cpp -o /tmp/b12d-tbo-upload
+          /tmp/b12d-tbo-upload
 
   ios-build-compatibility:
     name: Pinned iOS build compatibility
@@ -78,6 +88,8 @@ jobs:
         run: python3 -m unittest discover -s tools/ci -p 'test_mobileglues_probe.py'
       - name: Verify opt-in strict error and array-draw repair guards (not device acceptance)
         run: python3 -m unittest discover -s tools/ci -p 'test_mobileglues_retest.py'
+      - name: Verify TBO repair pin/dependency/packaging guards (not device acceptance)
+        run: python3 -m unittest discover -s tools/ci -p 'test_mobileglues_tbo.py'
       - name: Verify device evidence checker (synthetic logs, NOT device acceptance)
         run: python3 -m unittest discover -s tools -p 'test_a21_device_evidence.py'
       - name: Verify configurable live hold shell policy (stub producer only)

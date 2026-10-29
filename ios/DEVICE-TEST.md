@@ -255,7 +255,7 @@ binary hash, so keep full provenance and run the included B1.1 regression too.
 
 ## B1.2d standalone Buffer / Geometry (device BLOCKED)
 
-Repair retest: [bounded strict-error/draw-preparation candidate](../docs/b12d-blockers-and-retest.md)
+Repair retest: [TBO repair revision and retained strict-error checks](../docs/b12d-tbo-repair.md)
 uses a separate `RemoteGPU B1.2d.1` bundle. This reruns the existing B1.2d gates,
 not a new capability milestone. Run Strict Retest and Share Full Report; the
 original three BLOCKED results stand until actual replacement evidence exists.

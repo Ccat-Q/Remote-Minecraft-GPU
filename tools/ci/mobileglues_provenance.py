@@ -14,13 +14,15 @@ ACCEPTED_B12A = "c6c443facf52929f6caaa760f8bad675e4f4bde5"
 ACCEPTED_B12B = "f91d6838b1534a65a8c7e6eecc4830a2e47c572d"
 ACCEPTED_B12C = "e989b4d86d70d1fa15fbbde119bcdac9287ac6ba"
 B12D_FAILURE = "528ab1ea3485241ea5c0399e9b35245a80e273c3"
+B12D1_FAILURE = "18400ad4e41995e995e3807ac2c96da745ad0a89"
 
 
 def experiment_scope(scope):
     if scope == "b12d1":
         return {**experiment_scope("b12d"),
-                "experiment": "B1.2d.1 isolated strict-error / draw-preparation retest; NOT full TBO/Geometry repair or guest acceptance",
+                "experiment": "B1.2d.1 TBO repair revision: typed lowering and live BufferData/SubData updates, strict-error regressions; NOT full TBO/Geometry or guest acceptance",
                 "b12d_failure_sha": B12D_FAILURE,
+                "b12d1_failure_sha": B12D1_FAILURE,
                 "capability_status": "DEVICE_PENDING: strict negative control, prior regressions and all per-feature gates required; B1.2d remains BLOCKED; no full B1.2, VirGL/guest or Minecraft acceptance"}
     if scope == "b11":
         return {"experiment": "B1.1 isolated frontend/backend provider and context test",
@@ -58,6 +60,16 @@ def verify_repair_scope(scope, recipe):
             raise ValueError("Strict repair source hash coverage mismatch")
 
 
+def verify_tbo_scope(scope, recipe):
+    repair = recipe.get("tbo_repair")
+    if (scope == "b12d1") != bool(repair):
+        raise ValueError("TBO repair must be present ONLY in the current b12d1 repair scope")
+    if scope == "b12d1":
+        from prepare_mobileglues_tbo_repair import HASHES, OVERLAYS
+        if repair.get("upstream_sha256") != HASHES or set(repair.get("adapted_sha256",{})) != set(HASHES) | set(OVERLAYS.values()):
+            raise ValueError("TBO repair source hash coverage/pin mismatch")
+
+
 def verify_bundle(app):
     data = json.loads((app / "B11Provenance.json").read_text())
     expected = {"MobileGluesProbe": data["candidate_framework_sha256"]}
@@ -88,6 +100,7 @@ def main():
     angle = json.loads(args.angle.read_text())
     recipe = json.loads(args.recipe.read_text())
     verify_repair_scope(args.scope, recipe)
+    verify_tbo_scope(args.scope, recipe)
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     if source != os.environ["GITHUB_SHA"] or recipe["mobileglues_sha"] != MOBILEGLUES:
         raise ValueError("Checkout/candidate provenance mismatch")
@@ -102,6 +115,7 @@ def main():
         subprocess.run(["git", "merge-base", "--is-ancestor", ACCEPTED_B12C, source], check=True)
     if args.scope == "b12d1":
         subprocess.run(["git", "merge-base", "--is-ancestor", B12D_FAILURE, source], check=True)
+        subprocess.run(["git", "merge-base", "--is-ancestor", B12D1_FAILURE, source], check=True)
     result = {
         **experiment_scope(args.scope),
         "source_sha": source, "actions_run": os.environ["GITHUB_RUN_ID"],
