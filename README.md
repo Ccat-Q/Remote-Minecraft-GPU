@@ -24,7 +24,8 @@ layers does not invalidate it.
 
 ## Status
 
-Status as of 2026-10-29. See the [current project/device summary](docs/current-status-2026-10-29.md).
+Status as of 2026-10-30. See the [accepted project/device summary](docs/current-status-2026-10-29.md)
+and [isolated MoltenVK Geometry experiment](docs/moltenvk-geometry-probe.md).
 
 | Category | Evidence / remaining boundary |
 | --- | --- |
@@ -40,7 +41,7 @@ Status as of 2026-10-29. See the [current project/device summary](docs/current-s
 | B1.2b device passed, limited scope | [Instancing/same-context sync](docs/b12b-instancing-sync.md): `f91d683` passed 4/2/0 instance outputs (768 pixels / 0 mismatches), actual pending-to-complete Fences and retirement. No full feature, cross-context, performance or guest verdict. |
 | B1.2c device passed, limited scope | [Raster-state probe](docs/b12c-raster-state.md): `e989b4d` passed actual depth occlusion/write-mask, stencil compare/write-mask and separate blending (1024 pixels / 0 mismatches), retained regressions and cleanup. No full B1.2 or guest claim. |
 | B1.2d device BLOCKED, TBO cases passed | [Latest device summary](docs/current-status-2026-10-29.md): `b234149` passed all six R8I/RGBA32F initial/live-update/reattach cases (1536 pixels, zero mismatches); strict control and prior regressions passed. Geometry creation remains rejected; no full B1.2 or guest promotion. |
-| Later candidate experiments | MobileGL interfaces and UTM MoltenVK with a compatibility implementation; not developed concurrently with the selected B1.1 candidate. |
+| Isolated Geometry experiment, device PENDING | Pinned UTM MoltenVK Vulkan Probe on an independent branch/bundle; no formal provider replacement. Source reports zero Geometry limits despite its feature bit. [Source/Actions/device steps](docs/moltenvk-geometry-probe.md). MobileGL is a read-only directed comparison, not a second backend implementation. |
 
 The current blocker does **not** imply remote GPU is impossible. Two independent
 routes now guide development:

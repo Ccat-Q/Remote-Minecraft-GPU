@@ -222,6 +222,11 @@ constructor or duplicate GL/EGL symbols affecting route A at app startup.
 
 ### B2 — MobileGL fallback investigation, not a second backend implementation
 
+2026-10-30 directed audit addendum: the pinned snapshot also has a real
+DirectVulkan Geometry stage path, not only DirectGLES. See
+[source comparison and bounded follow-up](mobilegl-geometry-comparison.md).
+No MobileGL build/backend implementation is authorized in this round.
+
 Reuse its explicit iOS CMake/loader/EGL interfaces and small integration-test
 scenarios where practical. Resolve the tinygl4angle/provider dependency before
 building a probe. Its frontend context handles/resource IDs may be virtual;
@@ -236,6 +241,14 @@ If a missing interface needs substantial new implementation, report it and
 the bounded work before proceeding. Do not replace the transport/game design.
 
 ### B3 — MoltenVK fallback, after a GL implementation is selected
+
+2026-10-30 explicit task authorization narrows/updates the ordering below:
+first deliver an **isolated Vulkan Geometry device Probe**, before selecting
+or implementing the GL frontend. This does not authorize a formal Vulkan backend,
+VirGL migration or Venus. [Implementation/device handoff](moltenvk-geometry-probe.md),
+[full inherited Zink requirements](geometry-backend-feature-matrix.md) and
+[unimplemented GL/VirGL bridge costs](geometry-backend-integration.md) record the
+scope. Prior accepted MobileGlues TBO/device evidence remains unchanged.
 
 Reuse UTM fork/source pins and Actions cache structure. First execute its
 feature tests on the phone, then validate the selected GL/Vulkan compatibility

@@ -1,7 +1,7 @@
 # Isolated UTM MoltenVK Geometry Probe
 
-Status: source implementation; Actions and iPhone execution **PENDING** until linked
-in [the experiment record](../../../../docs/moltenvk-geometry-probe.md).
+Status: first unsigned IPA and Actions checks passed at `28ba404`; iPhone execution
+**PENDING**. [IPA / Actions / hashes](../../../../docs/moltenvk-geometry-probe.md).
 
 This app links only the pinned UTM MoltenVK framework. It does not load ANGLE,
 MobileGlues, epoxy, virglrenderer, QUIC or RemoteGPU's display code. No ADR change.

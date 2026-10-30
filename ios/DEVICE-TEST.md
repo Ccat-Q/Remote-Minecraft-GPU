@@ -253,6 +253,21 @@ First ready-to-install B1.2a source: `c6c443f`, iOS Actions `40818346056`, CI
 The candidate was recompiled from identical pinned/adapted source and has a new
 binary hash, so keep full provenance and run the included B1.1 regression too.
 
+## Independent UTM MoltenVK Geometry Probe (device PENDING)
+
+The separate `RemoteGPU Geometry` app at `28ba404` has an
+[unsigned IPA / Actions / exact provenance](../docs/moltenvk-geometry-probe.md).
+Follow [install/run/share steps](Experiments/MoltenVKGeometryProbe/README.md#iphone-steps).
+Keep accepted RemoteGPU and MobileGlues apps installed. No server connection.
+
+This is a new Vulkan provider/process, not a promotion of MobileGlues B1.2d.
+Run once in the foreground, share report.txt, features.json, Provenance.json,
+actual/expected PNGs and any XFB binary. A crash retains the partial report;
+share it before rerunning. Each run keeps a distinct report directory.
+Zero reported Geometry limits cause BLOCKED/NOT_RUN, never capability overrides.
+Basic VS/FS output success and CI shader compilation are not Geometry PASS.
+No GL3.2/Zink/VirGL/guest acceptance is claimed.
+
 ## B1.2d standalone Buffer / Geometry (device BLOCKED)
 
 Repair retest: [TBO repair revision and retained strict-error checks](../docs/b12d-tbo-repair.md)

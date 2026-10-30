@@ -1,6 +1,6 @@
 # Architecture
 
-## Scope and evidence status (2026-10-29)
+## Scope and evidence status (2026-10-30)
 
 [Current project/device summary](current-status-2026-10-29.md) records the latest
 TBO representative passes and retained Geometry/full-B1.2 blockers. No architecture
@@ -25,7 +25,7 @@ unchanged; no video streaming or phone JVM is introduced.
 | Isolated B1.2b device passed | [Features target](b12b-instancing-sync.md) at `f91d683`: representative 4/2/0 instance outputs, actual pending-to-complete same-context Fences and retirement passed. Remaining features/full B1.2, cross-context and guest gates unaccepted. |
 | Isolated B1.2c device passed | [Raster target](b12c-raster-state.md) at `e989b4d`: four actual depth/stencil/blending outputs, 1024 pixels / 0 mismatches, retained regressions and cleanup passed. Not full B1.2 or guest acceptance. |
 | Isolated B1.2d device BLOCKED, TBO cases passed | [Latest device summary](current-status-2026-10-29.md): `b234149` passed six R8I/RGBA32F initial/live-update/reattach cases, strict error control and prior regressions. Geometry creation remains object 0/error 0x500 on frontend and raw backend. No full B1.2/B1.3/caps promotion. |
-| Later candidates only | MobileGL iOS interfaces and UTM MoltenVK with a suitable GL/Vulkan implementation. Not developed concurrently; none has passed the guest gate. |
+| Isolated Geometry experiment, no migration | [UTM MoltenVK Vulkan Probe](moltenvk-geometry-probe.md) is separately authorized for local feature/output tests; device PENDING. [MobileGL comparison](mobilegl-geometry-comparison.md) is source-only. Neither provides an accepted GL/VirGL host bridge or guest gate. |
 
 The completed [feasibility audit](../exa-results/remotegpu-feasibility-2026-10-12/audit.md)
 is the research baseline. The blocker applies to the current capability
@@ -127,8 +127,11 @@ changing sequence and 10 minutes. No initial 720p/30 requirement. A PASS is
 remote display evidence, not Minecraft compatibility.
 
 **B — Graphics capability:** investigate dispatch/context/iOS ARM64 interfaces;
-build one isolated candidate probe at a time. Prioritize MobileGlues + ANGLE
-Metal, then MobileGL, then UTM MoltenVK with a suitable compatibility layer.
+build one isolated candidate probe at a time. MobileGlues + ANGLE Metal remains
+the accepted partial-capability baseline. The 2026-10-30 task explicitly authorizes
+an independent UTM MoltenVK Vulkan Geometry Probe before choosing a GL frontend;
+MobileGL comparison is source-only. This updates the earlier candidate ordering,
+not the formal backend or approved ADRs.
 Require executed GLSL 150 and feature tests, not overridden strings/caps.
 Host-native desktop GL is not mandatory; the final Ubuntu Mesa guest must
 create genuinely executable GL >= 3.2 Core. Library linking, local draw and
