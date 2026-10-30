@@ -1,18 +1,21 @@
 # B1.2d blockers and bounded repair retest
 
-Current implementation: [TBO propagation / typed-lowering repair revision](b12d-tbo-repair.md),
-not yet device accepted. Earlier diagnostic-only repair delivery is retained below.
+Latest: [current project/device summary](current-status-2026-10-29.md) records
+`b234149` representative R8I/RGBA32F PASS (including live updates), Geometry
+BLOCKED and aggregate B1.2d BLOCKED. Earlier failure/diagnostic-only delivery below
+is historical; it must not be mistaken for the latest TBO verdict.
 
-Actual device status: all three B1.2d features **BLOCKED** at `528ab1e`.
+Original device status: all three B1.2d features **BLOCKED** at `528ab1e`.
 [Report summary, delivered provenance and shader failures](evidence/b12d-device-2026-10-29/README.md).
-Latest [strict repair device report](evidence/b12d1-device-2026-10-29/README.md)
+Intermediate [strict repair device report](evidence/b12d1-device-2026-10-29/README.md)
 at `18400ad`: error negative control and B1.1/a/b/c regressions passed; R8I
 initial/reattach now match, live SubData still stale. Float compile and Geometry
-creation still BLOCKED. The current TBO repair revision is not device accepted.
+creation still BLOCKED then. The subsequent TBO repair revision passed its two
+representative device gates; Geometry and full B1.2d remain blocked.
 No B1.3 integration, caps/version changes, backend migration or formal renderer
 change follows from these failures or is implemented here.
 
-## Concrete blockers
+## Original blockers at 528ab1e (historical)
 
 | Capability | Device evidence | Source evidence / modification scope |
 | --- | --- | --- |
@@ -39,7 +42,7 @@ status and returned EGL results remain evidence. Historical frontend GL0 and
 cleanup GL0 do not independently prove absence of errors or leaks. Preserve
 reports/manifests, qualify stronger claims, and rerun prior regressions strictly.
 
-## Minimal repair for existing B1.2d, built / device retest pending
+## Historical strict-only repair at 18400ad
 
 tools/ci/prepare_mobileglues_b12d_retest.py is an explicit second adaptation
 after the unchanged base recipe. It checks three pinned file hashes, records

@@ -257,8 +257,10 @@ binary hash, so keep full provenance and run the included B1.1 regression too.
 
 Repair retest: [TBO repair revision and retained strict-error checks](../docs/b12d-tbo-repair.md)
 uses a separate `RemoteGPU B1.2d.1` bundle. This reruns the existing B1.2d gates,
-not a new capability milestone. Run Strict Retest and Share Full Report; the
-original three BLOCKED results stand until actual replacement evidence exists.
+not a new capability milestone. Latest actual report at `b234149` passes all six
+R8I/RGBA32F cases and strict regressions; Geometry and aggregate B1.2d remain
+BLOCKED. See the [current summary and limits](../docs/current-status-2026-10-29.md).
+Historical reports are retained; no full B1.2/guest acceptance follows.
 
 Source `528ab1e` actually failed all three new features; [evidence and
 error-observability caveat](../docs/evidence/b12d-device-2026-10-29/README.md).

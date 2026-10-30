@@ -1,6 +1,11 @@
 # B1.2d isolated Buffer Texture / Geometry capability probe
 
-Latest actual device verdict: **BLOCKED for all three new features**.
+Latest [actual device summary](current-status-2026-10-29.md): representative
+R8I/RGBA32F TBO cases PASS at `b234149`; Geometry remains BLOCKED and the aggregate
+B1.2d gate is still BLOCKED. The original probe and failure description below
+are retained as historical evidence, not the latest TBO verdict.
+
+Original `528ab1e` device verdict: **BLOCKED for all three new features**.
 [Concrete blockers and built repair candidate awaiting device retest](b12d-blockers-and-retest.md).
 [Actual failures, captured sources and provenance](evidence/b12d-device-2026-10-29/README.md).
 R8I failed initial/update/reattach output; float TBO failed real compilation;

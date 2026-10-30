@@ -1,10 +1,14 @@
-# Existing B1.2d TBO repair revision — device pending
+# Existing B1.2d TBO repair revision — representative TBO device PASS, Geometry BLOCKED
 
 Same `experiment/b12d1-mobileglues-retest` branch, MobileGluesRetestProbe target
 and `.mobileglues.capabilities.retest` bundle. This repairs existing B1.2d gates,
 not a new milestone. [Previous actual strict retest](evidence/b12d1-device-2026-10-29/README.md)
 proved initial R8I/draw preparation fixed and SubData propagation still stale.
-All three required capability verdicts remain BLOCKED until actual new results.
+Latest actual report at `b234149`: both TBO features passed all three unchanged
+cases, 1536 pixels with zero mismatches; strict control and B1.1/a/b/c regressions
+passed. Geometry creation remains rejected, so aggregate B1.2d is still BLOCKED.
+See the [current project/device summary](current-status-2026-10-29.md) for the
+new evidence and exact acceptance limits. Historical failure records are retained.
 
 ## Reproducible repair-candidate delivery
 
@@ -29,9 +33,9 @@ All three required capability verdicts remain BLOCKED until actual new results.
   embedded and archived provenance are byte-identical. Repair recipe SHA256
   `b29a360d9dc93b370dd4e4be03a5ed212f5097e393f6ce929cf72aee632e62c5`.
   Upstream candidate warnings remain; this is not a warning-free-source claim.
-- **Device retest pending.** The previous `18400ad` actual report is preserved;
-  no accepted B1.2d field is introduced. Geometry still runs as a real gate and
-  may keep the aggregate BLOCKED even if both TBO features pass.
+- **Device retest received: representative R8I and RGBA32F PASS, Geometry BLOCKED.**
+  Previous `18400ad` evidence and the build-time pending manifest remain unchanged;
+  no accepted full B1.2d field is introduced. This is not full TBO conformance.
 
 ## Judgment and implementation scope
 
