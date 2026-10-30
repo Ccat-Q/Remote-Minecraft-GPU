@@ -1,0 +1,137 @@
+name: Build isolated iOS MoltenVK Geometry probe
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/moltenvk-geometry-probe]
+    paths:
+      - ios/Experiments/MoltenVKGeometryProbe/**
+      - tools/ci/*moltenvk_geometry*
+      - .github/workflows/build-ios-geometry-probe.yml
+permissions:
+  contents: read
+concurrency:
+  group: geometry-probe-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: macos-15
+    timeout-minutes: 100
+    env:
+      MVK_SHA: 2974cbbbd42593eeeaf993d954702f74ae09a239
+      GENERATED: ios/Experiments/MoltenVKGeometryProbe/Generated
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout immutable UTM Geometry fork (not formal renderer)
+        uses: actions/checkout@v4
+        with:
+          repository: utmapp/MoltenVK
+          ref: 2974cbbbd42593eeeaf993d954702f74ae09a239
+          path: _deps/moltenvk
+      - name: Tools and isolated toolchain fingerprint
+        id: toolchain
+        run: |
+          brew install xcodegen glslang spirv-tools
+          mkdir -p _build/geometry/diagnostics "$GENERATED/Licenses"
+          { xcodebuild -version; xcrun --sdk iphoneos --show-sdk-version; xcrun clang --version; } > _build/geometry/diagnostics/toolchain.txt
+          echo "fingerprint=$(shasum -a 256 _build/geometry/diagnostics/toolchain.txt | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+          python3 tools/ci/prepare_moltenvk_geometry_probe.py --source _deps/moltenvk --generated "$GENERATED"
+          python3 -m unittest discover -s tools/ci -p test_moltenvk_geometry_probe.py
+      - name: Restore exact isolated source dependencies and compiled framework
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            _deps/moltenvk/External
+            _deps/moltenvk/Package
+          key: geometry-mvk-v1-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ env.MVK_SHA }}-${{ hashFiles('tools/ci/prepare_moltenvk_geometry_probe.py') }}
+      - name: Build pinned dependencies and iOS ARM64 MoltenVK (upstream recipe only)
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: _deps/moltenvk
+        run: |
+          set -o pipefail
+          ./fetchDependencies --ios -v 2>&1 | tee ../../_build/geometry/diagnostics/fetchDependencies.log
+          xcodebuild build -project MoltenVKPackaging.xcodeproj -scheme 'MoltenVK Package (iOS only)' \
+            -destination 'generic/platform=iOS' -configuration Release CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO 2>&1 | tee ../../_build/geometry/diagnostics/moltenvk-build.log
+      - name: Verify immutable dependencies and preserve complete sources/licenses
+        run: |
+          python3 tools/ci/prepare_moltenvk_geometry_probe.py --source _deps/moltenvk --generated "$GENERATED" --compile-shaders
+          python3 tools/ci/test_moltenvk_geometry_probe.py
+          git -C _deps/moltenvk diff --exit-code
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil, subprocess
+          root=Path('_deps/moltenvk')
+          sources={'cereal':'cereal','Vulkan-Headers':'Vulkan-Headers','SPIRV-Cross':'SPIRV-Cross',
+                   'SPIRV-Tools':'SPIRV-Tools','Vulkan-Tools':'Vulkan-Tools','Volk':'Volk',
+                   'SPIRV-Headers':'SPIRV-Tools/external/spirv-headers'}
+          records=[]
+          target=Path('ios/Experiments/MoltenVKGeometryProbe/Generated/Licenses')
+          shutil.copy2(root/'LICENSE',target/'MoltenVK-LICENSE')
+          for name,relative in sources.items():
+              directory=root/'External'/relative
+              actual=subprocess.check_output(['git','-C',str(directory),'rev-parse','HEAD'],text=True).strip()
+              expected=(root/'ExternalRevisions'/f'{name}_repo_revision').read_text().strip()
+              assert actual==expected,(name,actual,expected)
+              records.append(f'{name} {actual}')
+              out=target/name; out.mkdir(exist_ok=True)
+              for item in directory.iterdir():
+                  if item.is_file() and any(s in item.name.lower() for s in ('license','copying','copyright')):
+                      shutil.copy2(item,out/item.name)
+          Path('_build/geometry/diagnostics/dependency-commits.txt').write_text('\n'.join(records)+'\n')
+          PY
+          # Full pinned source trees, including shader converter fork; never patch-only.
+          tar --exclude=.git --exclude='*/build' --exclude='*/Intermediates' --exclude=Package \
+            -czf _build/geometry/diagnostics/MoltenVK-complete-source.tar.gz -C _deps moltenvk
+          framework=$(find _deps/moltenvk/Package/Release/MoltenVK/dynamic -path '*/ios-arm64/MoltenVK.framework' -type d -print -quit)
+          test -n "$framework"
+          cp -R "$framework" _build/geometry/MoltenVK.framework
+          test "$(lipo -archs _build/geometry/MoltenVK.framework/MoltenVK)" = arm64
+          otool -L _build/geometry/MoltenVK.framework/MoltenVK | tee _build/geometry/diagnostics/framework-linkage.txt
+          ! otool -L _build/geometry/MoltenVK.framework/MoltenVK | grep -E 'GLESv2|OpenGLES|EGL.framework|virglrenderer|epoxy'
+      - name: Cache only verified candidate and exact dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            _deps/moltenvk/External
+            _deps/moltenvk/Package
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+      - name: Build independent app and package self-signable IPA
+        run: |
+          set -o pipefail
+          python3 tools/ci/prepare_moltenvk_geometry_probe.py --source _deps/moltenvk --generated "$GENERATED" \
+            --compile-shaders --framework _build/geometry/MoltenVK.framework
+          cp "$GENERATED/Provenance.json" _build/geometry/diagnostics/
+          cp -R "$GENERATED/Shaders" _build/geometry/diagnostics/
+          xcodegen generate --spec ios/Experiments/MoltenVKGeometryProbe/project.yml --project ios/Experiments/MoltenVKGeometryProbe
+          xcodebuild -project ios/Experiments/MoltenVKGeometryProbe/MoltenVKGeometryProbe.xcodeproj \
+            -scheme MoltenVKGeometryProbe -sdk iphoneos -configuration Release \
+            -derivedDataPath _build/geometry/app CODE_SIGNING_ALLOWED=NO build 2>&1 | tee _build/geometry/diagnostics/app-build.log
+          app=_build/geometry/app/Build/Products/Release-iphoneos/MoltenVKGeometryProbe.app
+          test -f "$app/Provenance.json"
+          cmp "$GENERATED/Provenance.json" "$app/Provenance.json"
+          cmp _build/geometry/MoltenVK.framework/MoltenVK "$app/Frameworks/MoltenVK.framework/MoltenVK"
+          test "$(find "$app/Frameworks" -maxdepth 1 -name '*.framework' | wc -l | tr -d ' ')" = 1
+          otool -L "$app/MoltenVKGeometryProbe" | tee _build/geometry/diagnostics/app-linkage.txt
+          ! otool -L "$app/MoltenVKGeometryProbe" | grep -E 'GLESv2|OpenGLES|EGL.framework|virglrenderer|epoxy|MobileGlues'
+          mkdir -p _stage/geometry/Payload
+          cp -R "$app" _stage/geometry/Payload/
+          cd _stage/geometry
+          zip -qr MoltenVKGeometryProbe-unsigned.ipa Payload
+          shasum -a 256 MoltenVKGeometryProbe-unsigned.ipa > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moltenvk-geometry-probe-${{ github.sha }}
+          path: |
+            _stage/geometry/*.ipa
+            _stage/geometry/SHA256SUMS
+          retention-days: 90
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: geometry-diagnostics-and-source-${{ github.run_id }}
+          path: _build/geometry/diagnostics/
+          retention-days: 90
+          if-no-files-found: warn

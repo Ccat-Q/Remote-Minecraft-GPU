@@ -1,0 +1,44 @@
+name: MoltenVKGeometryProbe
+options:
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    CLANG_CXX_LANGUAGE_STANDARD: c++20
+    CLANG_ENABLE_OBJC_ARC: YES
+    CODE_SIGNING_ALLOWED: NO
+    HEADER_SEARCH_PATHS: "$(SRCROOT)/Generated $(SRCROOT)/../../../_deps/moltenvk/MoltenVK/include"
+targets:
+  MoltenVKGeometryProbe:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - path: Generated/Provenance.json
+        buildPhase: resources
+      - path: Generated/Shaders
+        type: folder
+        buildPhase: resources
+      - path: Generated/Licenses
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.remotegpu.experiments.moltenvk.geometry
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: Generated/Info.plist
+      properties:
+        CFBundleDisplayName: RemoteGPU Geometry
+        UILaunchScreen: {}
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+    dependencies:
+      - sdk: UIKit.framework
+      - sdk: Metal.framework
+      - sdk: Foundation.framework
+      - sdk: QuartzCore.framework
+      - framework: ../../../_build/geometry/MoltenVK.framework
+        embed: true
+        link: true

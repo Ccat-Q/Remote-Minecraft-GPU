@@ -15,3 +15,5 @@ server.key
 /ios/RemoteGPUPrototype.xcodeproj/
 /ios/Experiments/MobileGluesProbe/Generated/
 /ios/Experiments/MobileGluesProbe/MobileGluesCompatibilityProbe.xcodeproj/
+/ios/Experiments/MoltenVKGeometryProbe/Generated/
+/ios/Experiments/MoltenVKGeometryProbe/MoltenVKGeometryProbe.xcodeproj/
