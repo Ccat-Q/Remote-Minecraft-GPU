@@ -50,6 +50,9 @@ context、资源互操作问题分开，影响范围与排错成本较低；因�
   Pipeline/VkResult、fence、driver debug-utils 日志。构建成功不填设备 PASS。
 - 无 Khronos validation layer 时明确 NOT_AVAILABLE/NOT_TESTED；零 driver 错误不等于
   已完成 Vulkan validation。持久化部分报告用于设备崩溃诊断。
+- XFB Oracle 遵循 [Vulkan primitive capture 规则](https://docs.vulkan.org/spec/latest/chapters/vertexpostproc.html#vertexpostproc-transform-feedback)：
+  strip 拆成独立三角形，四个三角形捕获十二个顶点；未启用 provoking-preservation 时允许
+  单个三角形内循环旋转，但不允许反转 winding、跨 primitive 乱序、数量错误或越界写。
 
 ## 本版决策门槛
 

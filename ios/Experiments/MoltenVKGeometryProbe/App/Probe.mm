@@ -12,9 +12,10 @@
 #include <stdexcept>
 #include <vector>
 #include "CapabilityDump.inc"
+#include "Oracle.hpp"
 
 namespace {
-constexpr uint32_t W=32, H=32;
+using namespace rgpu::geometry;
 std::mutex logMutex;
 std::atomic_uint validationErrors{0}, driverErrors{0};
 NSFileHandle *journal;
@@ -50,8 +51,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBits
 struct Buffer { VkBuffer handle{}; VkDeviceMemory memory{}; VkDeviceSize size{}; void *mapped{}; };
 struct Vertex { float x,y,r,g,b,a; };
 struct Parameters { float offset[4]; float tint[4]; };
-using Color=std::array<uint8_t,4>;
-using Pixels=std::array<Color,W*H>;
 struct Case {
     const char *name,*shader;
     VkPrimitiveTopology topology;
@@ -74,7 +73,7 @@ public:
     VkCommandBuffer command{}; VkFence fence{}; VkDescriptorSetLayout setLayout{};
     VkPipelineLayout layout{}; VkDescriptorPool descriptorPool{}; VkDescriptorSet descriptor{};
     VkPipeline pipeline{}; std::vector<VkShaderModule> modules;
-    Buffer vertex,uniform,readback,indirect,index,xfb;
+    Buffer vertex,uniform,readback,indirect,index,xfb,xfbCounter;
     PFN_vkCmdBindTransformFeedbackBuffersEXT bindXfb{};
     PFN_vkCmdBeginTransformFeedbackEXT beginXfb{};
     PFN_vkCmdEndTransformFeedbackEXT endXfb{};
@@ -229,6 +228,8 @@ public:
             @"depthClipEnable":@(dc.depthClipEnable),@"maxTransformFeedbackBuffers":@(xfbLimits.maxTransformFeedbackBuffers),
             @"maxTransformFeedbackBufferSize":@(xfbLimits.maxTransformFeedbackBufferSize),
             @"maxTransformFeedbackBufferDataStride":@(xfbLimits.maxTransformFeedbackBufferDataStride),
+            @"maxTransformFeedbackStreamDataSize":@(xfbLimits.maxTransformFeedbackStreamDataSize),
+            @"maxTransformFeedbackBufferDataSize":@(xfbLimits.maxTransformFeedbackBufferDataSize),
             @"validationLayerEnabled":@(validation),@"evidenceClass":@"DECLARATIONS_ONLY; per-case execution logged separately"});
         vkGetPhysicalDeviceQueueFamilyProperties(physical,&count,nullptr);
         std::vector<VkQueueFamilyProperties> queues(count); vkGetPhysicalDeviceQueueFamilyProperties(physical,&count,queues.data());
@@ -262,8 +263,10 @@ public:
         indirect=buffer(sizeof(VkDrawIndexedIndirectCommand),VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT);
         index=buffer(6*sizeof(uint16_t),VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
         uint16_t indices[]={0,1,2,3,4,5}; memcpy(index.mapped,indices,sizeof(indices)); flush(index);
-        if(transformFeedback && xfbLimits.maxTransformFeedbackBufferSize>=1024)
+        if(transformFeedback && xfbLimits.maxTransformFeedbackBufferSize>=1024) {
             xfb=buffer(1024,VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT);
+            xfbCounter=buffer(4,VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT);
+        }
         VkImageCreateInfo im{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO}; im.imageType=VK_IMAGE_TYPE_2D; im.format=VK_FORMAT_R8G8B8A8_UNORM;
         im.extent={W,H,1}; im.mipLevels=im.arrayLayers=1; im.samples=VK_SAMPLE_COUNT_1_BIT;
         im.tiling=VK_IMAGE_TILING_OPTIMAL; im.usage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -363,7 +366,10 @@ public:
         if(revision==2) { params.offset[0]=.125f; params.tint[1]=.5f; }
         memcpy(uniform.mapped,&params,sizeof(params)); flush(uniform);
         memset(readback.mapped,0xcd,(size_t)readback.size); flush(readback);
-        if(c.capture) { memset(xfb.mapped,0xcd,(size_t)xfb.size); flush(xfb); }
+        if(c.capture) {
+            memset(xfb.mapped,0xcd,(size_t)xfb.size); flush(xfb);
+            memset(xfbCounter.mapped,0xcd,4); flush(xfbCounter);
+        }
         if(c.indirect) {
             if(c.indexed) { VkDrawIndexedIndirectCommand args{c.vertices,1,0,0,0}; memcpy(indirect.mapped,&args,sizeof(args)); }
             else { VkDrawIndirectCommand args{c.vertices,1,0,0}; memcpy(indirect.mapped,&args,sizeof(args)); }
@@ -382,7 +388,7 @@ public:
         if(c.indirect && c.indexed) { vkCmdBindIndexBuffer(command,index.handle,0,VK_INDEX_TYPE_UINT16); vkCmdDrawIndexedIndirect(command,indirect.handle,0,1,sizeof(VkDrawIndexedIndirectCommand)); }
         else if(c.indirect) vkCmdDrawIndirect(command,indirect.handle,0,1,sizeof(VkDrawIndirectCommand));
         else vkCmdDraw(command,c.vertices,1,0,0);
-        if(c.capture) endXfb(command,0,0,nullptr,nullptr);
+        if(c.capture) endXfb(command,0,1,&xfbCounter.handle,&offset);
         vkCmdEndRenderPass(command);
         VkBufferImageCopy copy{}; copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1}; copy.imageExtent={W,H,1};
         vkCmdCopyImageToBuffer(command,image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback.handle,1,&copy);
@@ -391,6 +397,8 @@ public:
         vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&barrier,0,nullptr);
         if(c.capture) {
             barrier.srcAccessMask=VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT; barrier.buffer=xfb.handle;
+            vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT,VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&barrier,0,nullptr);
+            barrier.srcAccessMask=VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT; barrier.buffer=xfbCounter.handle;
             vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT,VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&barrier,0,nullptr);
         }
         check(vkEndCommandBuffer(command),"end command buffer"); check(vkResetFences(device,1,&fence),"reset completed fence");
@@ -405,16 +413,35 @@ public:
             invalidate(xfb);
             NSData *bytes=[NSData dataWithBytes:xfb.mapped length:(NSUInteger)xfb.size];
             [bytes writeToURL:[RGPUGeometryReportDirectory() URLByAppendingPathComponent:[NSString stringWithFormat:@"%s-%d-xfb.bin",c.name,revision]] atomically:YES];
-            // Exact stream ordering/values must match the emitted eight records.
+            // Vulkan XFB decomposes strips into independent primitives (not the
+            // eight EmitVertex records). Four triangles = twelve captured vertices.
+            // Without transformFeedbackPreservesProvokingVertex the first vertex
+            // may rotate cyclically, but the winding and primitive order may not.
             auto f=(const float*)xfb.mapped; unsigned mismatches=0;
-            for(int j=0;j<2;++j) for(int i=0;i<4;++i) {
-                float expected[]={data[0].x+params.offset[0]+j*.875f+(i%2)*.5f,
-                    data[0].y+params.offset[1]+(i/2)*.5f,0,1,
-                    data[0].r*params.tint[0],data[0].g*params.tint[1],0,1};
-                for(int k=0;k<8;++k) if(!std::isfinite(f[(j*4+i)*8+k]) || std::abs(f[(j*4+i)*8+k]-expected[k])>1e-6f) ++mismatches;
+            constexpr int triangles[2][3]={{0,1,2},{2,1,3}};
+            for(int j=0;j<2;++j) for(int triangle=0;triangle<2;++triangle) {
+                unsigned best=24;
+                for(int rotation=0;rotation<3;++rotation) {
+                    unsigned errors=0;
+                    for(int v=0;v<3;++v) {
+                        int i=triangles[triangle][(v+rotation)%3];
+                        float expected[]={data[0].x+params.offset[0]+j*.875f+(i%2)*.5f,
+                            data[0].y+params.offset[1]+(i/2)*.5f,0,1,
+                            data[0].r*params.tint[0],data[0].g*params.tint[1],0,1};
+                        for(int k=0;k<8;++k) {
+                            float actual=f[((j*2+triangle)*3+v)*8+k];
+                            if(!std::isfinite(actual) || std::abs(actual-expected[k])>1e-6f) ++errors;
+                        }
+                    }
+                    best=std::min(best,errors);
+                }
+                mismatches+=best;
             }
-            log(@"XFB case=%s revision=%d expectedRecords=8 checkedFloats=64 mismatch=%u (remaining allocation retained in bin)",c.name,revision,mismatches);
-            if(mismatches) throw std::runtime_error("Geometry transform feedback output mismatch");
+            invalidate(xfbCounter); uint32_t capturedBytes=0; memcpy(&capturedBytes,xfbCounter.mapped,4);
+            unsigned tailWrites=0;
+            for(size_t i=384;i<(size_t)xfb.size;++i) if(((const uint8_t*)xfb.mapped)[i]!=0xcd) ++tailWrites;
+            log(@"XFB case=%s revision=%d expectedRecords=12 checkedFloats=96 mismatch=%u capturedBytes=%u expectedBytes=384 tailWrites=%u",c.name,revision,mismatches,capturedBytes,tailWrites);
+            if(mismatches || capturedBytes!=384 || tailWrites) throw std::runtime_error("Geometry transform feedback output/count mismatch");
         }
         return pixels;
     }
@@ -447,43 +474,20 @@ public:
     }
 };
 
-Pixels expected(const Case &c,int revision) {
-    Pixels result; result.fill({0,0,0,255});
-    if(!c.shader) { result.fill(revision?Color{0,255,0,255}:Color{255,0,0,255}); return result; }
-    float ox=-.875f+(revision?.125f:0)+(revision==2?.125f:0), oy=-.75f+(revision?.125f:0);
-    if(c.kind==1 || c.kind==2) { ox=-.65625f+(revision?.125f:0)+(revision==2?.125f:0); oy=-.65625f+(revision?.125f:0); }
-    Color base=revision?Color{0,uint8_t(revision==2?128:255),0,255}:Color{255,0,0,255};
-    for(uint32_t y=0;y<H;++y) for(uint32_t x=0;x<W;++x) {
-        float px=(x+.5f)/16-1, py=(y+.5f)/16-1;
-        for(int j=0;j<2;++j) {
-            float left=ox+(c.kind==3?0:j*.875f), top=oy+(c.kind==3?j*.875f:0);
-            bool covered=px>=left && px<left+.5f && py>=top && py<top+.5f;
-            if(c.kind==1) covered=px>=left && px<left+.5f && std::abs(py-top)<.02f;
-            if(c.kind==2) covered=std::abs(px-left)<.02f && std::abs(py-top)<.02f;
-            if(!covered) continue;
-            Color color=base;
-            if((c.kind==3 || c.kind==4) && j) std::swap(color[0],color[2]);
-            if(c.kind==5) color={uint8_t(std::lround((px-left)*510)),uint8_t(std::lround((py-top)*510)),128,255};
-            result[y*W+x]=color;
-        }
-    }
-    return result;
-}
 void saveImage(const Pixels &pixels,NSString *name) {
     NSData *data=[NSData dataWithBytes:pixels.data() length:sizeof(pixels)];
     CGDataProviderRef provider=CGDataProviderCreateWithCFData((__bridge CFDataRef)data);
     CGColorSpaceRef space=CGColorSpaceCreateDeviceRGB();
-    CGImageRef image=CGImageCreate(W,H,8,32,W*4,space,kCGBitmapByteOrderDefault|kCGImageAlphaLast,provider,nullptr,false,kCGRenderingIntentDefault);
+    CGImageRef image=CGImageCreate(W,H,8,32,W*4,space,CGBitmapInfo(kCGBitmapByteOrderDefault)|CGBitmapInfo(kCGImageAlphaLast),provider,nullptr,false,kCGRenderingIntentDefault);
     NSData *png=UIImagePNGRepresentation([UIImage imageWithCGImage:image]);
     if(!png || ![png writeToURL:[RGPUGeometryReportDirectory() URLByAppendingPathComponent:name] atomically:YES])
         throw std::runtime_error("Cannot retain actual/oracle image");
     CGImageRelease(image); CGColorSpaceRelease(space); CGDataProviderRelease(provider);
 }
 bool compare(const Case &c,int revision,const Pixels &actual) {
-    auto oracle=expected(c,revision); unsigned mismatch=0, nonClear=0;
+    auto oracle=expected(c.shader!=nullptr,c.kind,revision); unsigned mismatch=0, nonClear=0;
     for(size_t i=0;i<actual.size();++i) {
-        bool equal=true;
-        for(int channel=0;channel<4;++channel) if(std::abs(int(actual[i][channel])-int(oracle[i][channel]))>(channel==3?0:1)) equal=false;
+        bool equal=matches(actual[i],oracle[i]);
         if(!equal) { if(mismatch<8) log(@"MISMATCH x=%lu y=%lu actual=%u,%u,%u,%u expected=%u,%u,%u,%u",i%W,i/W,actual[i][0],actual[i][1],actual[i][2],actual[i][3],oracle[i][0],oracle[i][1],oracle[i][2],oracle[i][3]); ++mismatch; }
         if(actual[i]!=Color{0,0,0,255}) ++nonClear;
     }
@@ -508,18 +512,22 @@ bool legal(const Engine &e,const Case &c) {
 
 NSURL *RGPUGeometryReportDirectory(void) {
     NSURL *documents=[NSFileManager.defaultManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
-    NSURL *folder=[documents URLByAppendingPathComponent:@"GeometryReport" isDirectory:YES];
+    NSURL *folder=[documents URLByAppendingPathComponent:@"GeometryReports" isDirectory:YES];
+    NSString *latest=[NSUserDefaults.standardUserDefaults stringForKey:@"GeometryLatestReport"];
+    if(latest.length) folder=[folder URLByAppendingPathComponent:latest isDirectory:YES];
     [NSFileManager.defaultManager createDirectoryAtURL:folder withIntermediateDirectories:YES attributes:nil error:nil]; return folder;
 }
 NSString *RGPURunGeometryProbe(void) {
     @autoreleasepool {
+        NSString *run=[NSString stringWithFormat:@"%lld-%@",(long long)(NSDate.date.timeIntervalSince1970*1000),NSUUID.UUID.UUIDString];
+        [NSUserDefaults.standardUserDefaults setObject:run forKey:@"GeometryLatestReport"];
         NSURL *file=[RGPUGeometryReportDirectory() URLByAppendingPathComponent:@"report.txt"];
         [NSData.data writeToURL:file atomically:YES]; journal=[NSFileHandle fileHandleForWritingToURL:file error:nil];
         if(!journal) return @"Cannot create persistent report; no GPU tests run.";
         validationErrors=0; driverErrors=0;
         log(@"ISOLATED UTM MOLTENVK GEOMETRY PROBE v1\nDevice acceptance initially PENDING. No GL/Zink/VirGL/guest verdict.\nDiagnostic GPU->CPU readback ONLY. No global deviceWaitIdle, capability overrides or backend substitution.");
         struct utsname hardware{}; uname(&hardware);
-        log(@"Device=%s OS=%@",hardware.machine,NSProcessInfo.processInfo.operatingSystemVersionString);
+        log(@"Device=%s OS=%@ diagnosticRun=%@",hardware.machine,NSProcessInfo.processInfo.operatingSystemVersionString,run);
         NSData *provenance=[NSData dataWithContentsOfURL:[NSBundle.mainBundle URLForResource:@"Provenance" withExtension:@"json"]];
         if(provenance) {
             [provenance writeToURL:[RGPUGeometryReportDirectory() URLByAppendingPathComponent:@"Provenance.json"] atomically:YES];
@@ -553,7 +561,9 @@ NSString *RGPURunGeometryProbe(void) {
                 if(!legal(e,c)) {
                     log(@"CASE %s BLOCKED reason=reported_geometry_feature_or_limits_do_not_permit_shader; pipeline/submit/readback NOT_RUN; values never overridden",c.name); ++blocked; continue;
                 }
-                if(c.capture && (!e.transformFeedback || !e.xfb.handle || !e.bindXfb || !e.beginXfb || !e.endXfb || e.xfbLimits.maxTransformFeedbackBufferDataStride<32)) {
+                if(c.capture && (!e.transformFeedback || !e.xfb.handle || !e.xfbCounter.handle || !e.bindXfb || !e.beginXfb || !e.endXfb ||
+                    e.xfbLimits.maxTransformFeedbackBuffers<1 || e.xfbLimits.maxTransformFeedbackBufferDataStride<32 ||
+                    e.xfbLimits.maxTransformFeedbackBufferDataSize<32 || e.xfbLimits.maxTransformFeedbackStreamDataSize<32)) {
                     log(@"CASE %s UNSUPPORTED reason=transform_feedback_feature_limit_or_entry_missing; NOT_RUN",c.name); ++blocked; continue;
                 }
                 try {
@@ -571,7 +581,7 @@ NSString *RGPURunGeometryProbe(void) {
                 }
             }
             log(@"SUMMARY geometry_cases_pass=%u blocked_or_unsupported=%u validation=%@ validation_errors=%u driver_errors=%u",pass,blocked,e.validation?@"ENABLED":@"NOT_AVAILABLE_NOT_TESTED",validationErrors.load(),driverErrors.load());
-            log(@"G4/G5 apply ONLY to actually executed cases; blocked cases do not establish update/sync/lifecycle success.\nXFB non-geometry baseline/streams/counters and full limits: NOT_TESTED.\nDECISION: no automatic GO; device report and GL/VirGL integration review required. Zink/GL3.2/guest/Minecraft NOT_TESTED.");
+            log(@"G4/G5 apply ONLY to actually executed cases; blocked cases do not establish update/sync/lifecycle success.\nXFB non-geometry baseline/multiple streams/counter resume/full limits: NOT_TESTED.\nDECISION: no automatic GO; device report and GL/VirGL integration review required. Zink/GL3.2/guest/Minecraft NOT_TESTED.");
         } catch(const std::exception &error) { log(@"PROBE BLOCKED error=%s. Unexecuted cases NOT_RUN. Share partial report.",error.what()); }
         log(@"END_REPORT"); [journal closeFile]; journal=nil;
         return [NSString stringWithContentsOfURL:file encoding:NSUTF8StringEncoding error:nil]?:@"Read report.txt in Files.";

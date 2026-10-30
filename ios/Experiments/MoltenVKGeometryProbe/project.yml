@@ -36,6 +36,7 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
     dependencies:
       - sdk: UIKit.framework
+      - sdk: CoreGraphics.framework
       - sdk: Metal.framework
       - sdk: Foundation.framework
       - sdk: QuartzCore.framework

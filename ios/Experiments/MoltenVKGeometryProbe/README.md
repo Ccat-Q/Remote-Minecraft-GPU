@@ -30,8 +30,9 @@ no unrecorded dependency upgrade is made.
 - Every attempted GS case repeats three vertex/uniform parameter revisions (G4)
   using persistent resources, with bounded per-submission fence completion before
   host read, update/reuse and eventual release (G5). No global device/queue idle.
-- X1: GS transform feedback; eight ordered position/color records and pixel oracle.
-  Non-GS transform feedback, streams/counters and full extension coverage NOT_TESTED.
+- X1: GS transform feedback; four independent triangles/twelve position+color records,
+  allowed cyclic vertex rotation with preserved winding, exact byte counter and pixel
+  oracle. Non-GS feedback, multiple streams/counter resume/full extension NOT_TESTED.
 - I1/I2: GS non-indexed/indexed indirect draw, independently counted; the pinned
   implementation explicitly does not execute these paths. A blocked prerequisite
   never becomes a skip-PASS.
@@ -52,7 +53,8 @@ images; do not loosen an oracle to hide a driver mismatch.
    once. No server connection or network permissions are needed.
 3. Tap **Share Report + Features + Images**. Send `report.txt`, `features.json`,
    `Provenance.json`, all actual/expected PNGs and any `xfb.bin` files, including
-   failures. Files are also in Files → On My iPhone → RemoteGPU Geometry → GeometryReport.
+   failures. Files are also in Files → On My iPhone → RemoteGPU Geometry → GeometryReports.
+   Each run has a separate directory; previous reports/images are preserved.
 4. After a crash, relaunch and share the persisted partial report *before* rerunning;
    collect an iOS crash report if available. Relaunch to repeat a completed run.
 

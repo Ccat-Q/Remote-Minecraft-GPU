@@ -88,7 +88,7 @@ Geometry 限制属于 Vulkan 实现需真实报告并满足所用 shader 的约�
 | maxGeometryOutputVertices | BLOCKED | 源码为 0；本代表用例最多声明 8。 |
 | maxGeometryTotalOutputComponents | BLOCKED | 源码为 0；不能只看顶点数。 |
 | GS triangles/lines/points、strip、插值/ID/invocation | NOT_TESTED | 每例独立日志；前置 BLOCKED 不成为 skip-PASS。 |
-| GS + transform feedback | NOT_TESTED | X1 捕获 ordered position/color 与像素；streams/counters/非 GS 基线另未覆盖。 |
+| GS + transform feedback | NOT_TESTED | X1 独立三角形捕获、允许规范内循环顶点旋转、字节 counter 与像素；多 streams/counter resume/非 GS 基线未覆盖。 |
 | GS + indirect / indexed indirect | UNSUPPORTED | 固定源码两路径明确 return；实际图像测试仍受限额门槛阻塞，无设备 PASS。 |
 | R8I/RGBA32F TBO on Vulkan/Zink | NOT_TESTED | MobileGlues TBO PASS 不可搬用；当前 Probe 不测试 TBO。 |
 | 纹理尺寸/数组/mip/压缩/采样/缓冲格式 | NOT_TESTED | 全 core limits + 四格式位，非逐格式执行。 |

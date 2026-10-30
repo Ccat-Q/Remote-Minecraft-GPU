@@ -6,6 +6,7 @@ on:
     paths:
       - ios/Experiments/MoltenVKGeometryProbe/**
       - tools/ci/*moltenvk_geometry*
+      - tests/moltenvk_geometry_oracle.cpp
       - .github/workflows/build-ios-geometry-probe.yml
 permissions:
   contents: read
@@ -13,7 +14,17 @@ concurrency:
   group: geometry-probe-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  oracle:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exercise actual shared CPU oracle with sanitizers (not device evidence)
+        run: |
+          c++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+            -Iios/Experiments/MoltenVKGeometryProbe/App tests/moltenvk_geometry_oracle.cpp -o /tmp/geometry-oracle
+          /tmp/geometry-oracle
   probe:
+    needs: oracle
     runs-on: macos-15
     timeout-minutes: 100
     env:
