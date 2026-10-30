@@ -2,6 +2,7 @@
 #import <UIKit/UIKit.h>
 #include <vulkan/vulkan.h>
 #include <sys/utsname.h>
+#include <dlfcn.h>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -108,6 +109,12 @@ public:
         check(vkInvalidateMappedMemoryRanges(device,1,&range),"vkInvalidateMappedMemoryRanges");
     }
     void initialize() {
+        Dl_info owner{};
+        if(!dladdr((void*)vkCreateInstance,&owner) || !owner.dli_fname)
+            throw std::runtime_error("Cannot verify Vulkan provider ownership");
+        log(@"ACTUAL_VULKAN_PROVIDER %s",owner.dli_fname);
+        if(!strstr(owner.dli_fname,"/MoltenVK.framework/MoltenVK"))
+            throw std::runtime_error("Unexpected Vulkan provider; no substitution allowed");
         uint32_t count=0, loaderVersion=VK_API_VERSION_1_0;
         auto version=(PFN_vkEnumerateInstanceVersion)vkGetInstanceProcAddr(nullptr,"vkEnumerateInstanceVersion");
         if(version) check(version(&loaderVersion),"vkEnumerateInstanceVersion");
@@ -135,9 +142,7 @@ public:
         ci.enabledExtensionCount=(uint32_t)enabled.size(); ci.ppEnabledExtensionNames=enabled.data();
         const char *layer="VK_LAYER_KHRONOS_validation";
         if(validation) { ci.enabledLayerCount=1; ci.ppEnabledLayerNames=&layer; }
-        bool debug=std::find(enabled.begin(),enabled.end(),VK_EXT_DEBUG_UTILS_EXTENSION_NAME)!=enabled.end();
-        // Compare string contents, not literal addresses (including other compilers).
-        debug=std::any_of(enabled.begin(),enabled.end(),[](auto n){return !strcmp(n,VK_EXT_DEBUG_UTILS_EXTENSION_NAME);});
+        bool debug=std::any_of(enabled.begin(),enabled.end(),[](auto n){return !strcmp(n,VK_EXT_DEBUG_UTILS_EXTENSION_NAME);});
         if(debug) ci.pNext=&dbg;
         check(vkCreateInstance(&ci,nullptr,&instance),"vkCreateInstance");
         if(debug) {
@@ -159,6 +164,52 @@ public:
         if(has(VK_EXT_TRANSFORM_FEEDBACK_EXTENSION_NAME)) { tf.pNext=f2.pNext; f2.pNext=&tf; }
         if(has(VK_EXT_DEPTH_CLIP_ENABLE_EXTENSION_NAME)) { dc.pNext=f2.pNext; f2.pNext=&dc; }
         vkGetPhysicalDeviceFeatures2(physical,&f2); transformFeedback=tf.transformFeedback; depthClip=dc.depthClipEnable;
+        // Core features are dumped completely. Extension features needed by the
+        // pinned Zink requirement matrix are queried only when valid to query.
+        NSMutableDictionary *extra=[NSMutableDictionary dictionary];
+        auto query=[&](void *structure) {
+            VkPhysicalDeviceFeatures2 q{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+            q.pNext=structure; vkGetPhysicalDeviceFeatures2(physical,&q);
+        };
+        if(properties.apiVersion>=VK_API_VERSION_1_2) {
+            VkPhysicalDeviceVulkan12Features f{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES}; query(&f);
+            extra[@"vulkan12"]=@{@"scalarBlockLayout":@(f.scalarBlockLayout),@"timelineSemaphore":@(f.timelineSemaphore),
+                @"imagelessFramebuffer":@(f.imagelessFramebuffer),@"uniformBufferStandardLayout":@(f.uniformBufferStandardLayout),
+                @"hostQueryReset":@(f.hostQueryReset),@"bufferDeviceAddress":@(f.bufferDeviceAddress)};
+        }
+        if(has("VK_EXT_robustness2")) {
+            VkPhysicalDeviceRobustness2FeaturesEXT f{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT}; query(&f);
+            extra[@"VK_EXT_robustness2"]=@{@"nullDescriptor":@(f.nullDescriptor),@"robustBufferAccess2":@(f.robustBufferAccess2),@"robustImageAccess2":@(f.robustImageAccess2)};
+        }
+        if(has("VK_EXT_custom_border_color")) {
+            VkPhysicalDeviceCustomBorderColorFeaturesEXT f{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT}; query(&f);
+            extra[@"VK_EXT_custom_border_color"]=@{@"customBorderColors":@(f.customBorderColors),@"customBorderColorWithoutFormat":@(f.customBorderColorWithoutFormat)};
+        }
+        if(has("VK_EXT_line_rasterization")) {
+            VkPhysicalDeviceLineRasterizationFeaturesEXT f{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_EXT}; query(&f);
+            extra[@"VK_EXT_line_rasterization"]=@{@"rectangularLines":@(f.rectangularLines),@"bresenhamLines":@(f.bresenhamLines),@"smoothLines":@(f.smoothLines),
+                @"stippledRectangularLines":@(f.stippledRectangularLines),@"stippledBresenhamLines":@(f.stippledBresenhamLines),@"stippledSmoothLines":@(f.stippledSmoothLines)};
+        }
+        if(has("VK_EXT_provoking_vertex")) {
+            VkPhysicalDeviceProvokingVertexFeaturesEXT f{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROVOKING_VERTEX_FEATURES_EXT}; query(&f);
+            extra[@"VK_EXT_provoking_vertex"]=@{@"provokingVertexLast":@(f.provokingVertexLast),@"transformFeedbackPreservesProvokingVertex":@(f.transformFeedbackPreservesProvokingVertex)};
+        }
+        if(has("VK_EXT_border_color_swizzle")) {
+            VkPhysicalDeviceBorderColorSwizzleFeaturesEXT f{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BORDER_COLOR_SWIZZLE_FEATURES_EXT}; query(&f);
+            extra[@"VK_EXT_border_color_swizzle"]=@{@"borderColorSwizzle":@(f.borderColorSwizzle),@"borderColorSwizzleFromImage":@(f.borderColorSwizzleFromImage)};
+        }
+        if(has("VK_EXT_conditional_rendering")) {
+            VkPhysicalDeviceConditionalRenderingFeaturesEXT f{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONDITIONAL_RENDERING_FEATURES_EXT}; query(&f);
+            extra[@"VK_EXT_conditional_rendering"]=@{@"conditionalRendering":@(f.conditionalRendering),@"inheritedConditionalRendering":@(f.inheritedConditionalRendering)};
+        }
+        if(has("VK_EXT_scalar_block_layout")) {
+            VkPhysicalDeviceScalarBlockLayoutFeaturesEXT f{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT}; query(&f);
+            extra[@"VK_EXT_scalar_block_layout"]=@{@"scalarBlockLayout":@(f.scalarBlockLayout)};
+        }
+        if(properties.apiVersion>=VK_API_VERSION_1_3 || has("VK_KHR_dynamic_rendering")) {
+            VkPhysicalDeviceDynamicRenderingFeatures f{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES}; query(&f);
+            extra[@"dynamicRendering"]=@{@"dynamicRendering":@(f.dynamicRendering)};
+        }
         VkPhysicalDeviceProperties2 p2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
         if(has(VK_EXT_TRANSFORM_FEEDBACK_EXTENSION_NAME)) { p2.pNext=&xfbLimits; vkGetPhysicalDeviceProperties2(physical,&p2); }
         NSMutableArray *heaps=[NSMutableArray array], *types=[NSMutableArray array];
@@ -172,6 +223,7 @@ public:
         saveJSON(@"features.json",@{@"apiVersion":@(properties.apiVersion),@"deviceName":@(properties.deviceName),
             @"vendorID":@(properties.vendorID),@"deviceID":@(properties.deviceID),@"driverVersion":@(properties.driverVersion),
             @"coreFeatures":dumpVkPhysicalDeviceFeatures(features),@"limits":dumpVkPhysicalDeviceLimits(properties.limits),
+            @"zinkRelevantExtensionFeatures":extra,@"unqueriedExtensionFeatures":@"NOT_TESTED; extension presence alone is not a feature-bit or execution PASS",
             @"extensions":extensionReport,@"memoryHeaps":heaps,@"memoryTypes":types,@"formats":formats,
             @"transformFeedback":@(tf.transformFeedback),@"geometryStreams":@(tf.geometryStreams),
             @"depthClipEnable":@(dc.depthClipEnable),@"maxTransformFeedbackBuffers":@(xfbLimits.maxTransformFeedbackBuffers),
@@ -447,8 +499,8 @@ bool compare(const Case &c,int revision,const Pixels &actual) {
 bool legal(const Engine &e,const Case &c) {
     const auto &l=e.properties.limits;
     bool allowed=e.features.geometryShader && l.maxGeometryShaderInvocations>=c.invocations &&
-        l.maxGeometryInputComponents>=4 && l.maxGeometryOutputComponents>=(c.capture?16u:8u) &&
-        l.maxGeometryOutputVertices>=c.outputVertices && l.maxGeometryTotalOutputComponents>=c.outputVertices*(c.capture?16u:8u);
+        l.maxGeometryInputComponents>=4 && l.maxGeometryOutputComponents>=(c.capture?16u:c.kind==2?9u:8u) &&
+        l.maxGeometryOutputVertices>=c.outputVertices && l.maxGeometryTotalOutputComponents>=c.outputVertices*(c.capture?16u:c.kind==2?9u:8u);
     if(c.kind==2) allowed=allowed && e.features.shaderTessellationAndGeometryPointSize;
     return allowed;
 }
@@ -479,6 +531,7 @@ NSString *RGPURunGeometryProbe(void) {
             e.createPipeline(control);
             bool controlOK=true;
             for(int r=0;r<2;++r) controlOK=compare(control,r,e.draw(control,r)) && controlOK;
+            controlOK=controlOK && validationErrors==0 && driverErrors==0;
             log(@"CASE C0_VULKAN_CONTROL %@; never counts as Geometry execution",controlOK?@"PASS_DEVICE_EXECUTED":@"BLOCKED");
             if(!controlOK) throw std::runtime_error("Basic Vulkan output control failed; Geometry not attempted");
             std::vector<Case> cases={
