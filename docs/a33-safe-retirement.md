@@ -1,6 +1,20 @@
 # A3.3 first slice: safe retirement and ownership isolation
 
-Date: 2026-11-10. Status: **IMPLEMENTED, statically reviewed; CI and device gates NOT_RUN**.
+Date: 2026-11-10. Status: **IMPLEMENTED / CI_PASS; device gates NOT_RUN**.
+
+Implementation: `40392d377700bad9cbca8ecb176558d1f53e6a36`, branch
+`feature/reverse-vtest-hardening` (not merged to main).
+
+- [CI / Swift fault models and regressions](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/42843557128): success.
+- [Linux native rendering gate](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/42843557366): success.
+- [Unsigned iPhone full build](https://github.com/Ccat-Q/Remote-Minecraft-GPU/actions/runs/42843557141): success.
+- IPA artifact ID `13777072794`, name `ios-interop-prototype-40392d377700bad9cbca8ecb176558d1f53e6a36`,
+  archive digest `sha256:22ef339d97ebc501cba8d372b5a0221702c03facdf4dc8fd02cf03f2c4724e32`.
+  This is the GitHub artifact archive digest, **not the inner IPA hash**.
+- Diagnostics artifact ID `13775179940`. Both artifacts were unexpired when checked.
+
+All builds/tests above ran only in GitHub Actions. No new real-device acceptance
+is inferred. The installed App must be matched to this source before device retesting.
 This is not continuous rendering, a backend migration, or a new A3.2 device pass.
 Existing finite-frame and 64×64 admission limits remain unchanged.
 
@@ -88,7 +102,7 @@ All compilation and tests must run in GitHub Actions only. Required gates:
 4. Driver-hang model: watchdog must report isolation without native cleanup success;
    it cannot establish that a real hung GPU will recover or that resources were freed.
 
-At document creation no local builds/tests, Actions dispatch, commit or push were
-performed for this slice. User approval is required before publishing and running
-new builds. Existing device evidence is not overwritten. Update this status only
-with actual Actions and device results, separately labeled.
+The initial document recorded unexecuted verification gates. After explicit user
+approval, this slice was committed and pushed and the Actions receipts above were
+verified. No local compilation/tests, main merge or deployment occurred. Existing
+device evidence was not overwritten; real-device A3.3 acceptance remains pending.
