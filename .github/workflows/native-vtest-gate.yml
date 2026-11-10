@@ -26,6 +26,32 @@ on:
       - tools/test_a21_device_evidence.py
       - tools/test_a21_case_policy.py
       - .github/workflows/native-vtest-gate.yml
+  pull_request:
+    paths:
+      - ios/Renderer/RGPUVTestSession.*
+      - ios/Renderer/RGPUVirglAPI.hpp
+      - linux/tools/native-vtest-server.cpp
+      - linux/tools/remote-present-verifier.hpp
+      - linux/tools/shared-scanout-test.hpp
+      - cmd/remotegpu-vtest-receiver/**
+      - cmd/remotegpu-proxy/**
+      - internal/proxy/**
+      - tests/gl_remote_present.c
+      - tests/mesa_present_gate.py
+      - tests/native_vtest_lifetime.cpp
+      - tests/a2_virgl_pattern.cpp
+      - ios/Renderer/RGPUVirglPattern.hpp
+      - ios/Renderer/RGPUFrameCopy.hpp
+      - tests/a21_shared_copy.cpp
+      - tests/a32_double_snapshot.cpp
+      - ios/Renderer/RGPUDisplaySlots.hpp
+      - ios/Renderer/RGPUBufferedPresent.hpp
+      - deploy/run-gl-remote-present.sh
+      - deploy/run-a21-case.sh
+      - tools/a21_device_evidence.py
+      - tools/test_a21_device_evidence.py
+      - tools/test_a21_case_policy.py
+      - .github/workflows/native-vtest-gate.yml
   workflow_dispatch:
     inputs:
       linux_run_id:
@@ -49,10 +75,13 @@ jobs:
       LINUX_RUN_ID: ${{ inputs.linux_run_id || '40676968489' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22.x"
-          cache: true
+          # PR code must not populate shared build/module caches.
+          cache: ${{ github.event_name != 'pull_request' }}
           cache-dependency-path: go.sum
       - name: Download verified Mesa and renderer bundle
         run: |

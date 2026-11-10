@@ -250,27 +250,15 @@ func bridge(ctx context.Context, unix net.Conn, stream quic.Stream, present *net
 	// presentation marker into the reverse direction.
 	go func() {
 		defer workers.Done()
+		var replySequence uint64
 		for {
-			e, err := protocol.Read(stream)
+			n, err := forwardRendererReply(stream, unix, &replySequence)
 			if err != nil {
-				fail(err)
-				return
-			}
-			if e.Type != protocol.TypeVTest {
-				fail(fmt.Errorf("remotegpu: unexpected renderer envelope %d", e.Type))
-				return
-			}
-			_, data, err := protocol.ParseVTestChunk(e.Payload)
-			if err != nil {
-				fail(err)
-				return
-			}
-			if _, err = unix.Write(data); err != nil {
 				fail(err)
 				return
 			}
 			if stats != nil {
-				stats.ObserveDownload(len(data))
+				stats.ObserveDownload(n)
 			}
 		}
 	}()
@@ -337,6 +325,42 @@ func bridge(ctx context.Context, unix net.Conn, stream quic.Stream, present *net
 	case err := <-done:
 		return err
 	}
+}
+
+// forwardRendererReply is the actual renderer-to-Mesa write boundary. Validate
+// the complete envelope before exposing any of its bytes to the local client.
+// The caller owns lastSequence and must terminate the session on any error.
+func forwardRendererReply(renderer io.Reader, mesa io.Writer, lastSequence *uint64) (int, error) {
+	e, err := protocol.Read(renderer)
+	if err != nil {
+		return 0, err
+	}
+	if e.Type != protocol.TypeVTest {
+		return 0, fmt.Errorf("remotegpu: unexpected renderer envelope %d", e.Type)
+	}
+	if e.Flags != 0 {
+		return 0, fmt.Errorf("remotegpu: unsupported renderer envelope flags %d", e.Flags)
+	}
+	sequence, data, err := protocol.ParseVTestChunk(e.Payload)
+	if err != nil {
+		return 0, err
+	}
+	if *lastSequence == ^uint64(0) {
+		return 0, errors.New("remotegpu: renderer reply sequence exhausted; reconnect required")
+	}
+	expected := *lastSequence + 1
+	if sequence != expected {
+		return 0, fmt.Errorf("remotegpu: renderer reply sequence gap: expected %d, received %d", expected, sequence)
+	}
+	n, err := mesa.Write(data)
+	if err != nil {
+		return n, err
+	}
+	if n != len(data) {
+		return n, io.ErrShortWrite
+	}
+	*lastSequence = sequence
+	return n, nil
 }
 
 func LoadTLS(certFile, keyFile string) (*tls.Config, error) {
