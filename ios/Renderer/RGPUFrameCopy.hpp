@@ -29,6 +29,7 @@ class SingleFrameCopy {
     GLsync done_ = nullptr;
     RGPUIOSurfaceTarget target_;
     bool closed_ = false;
+    bool cleanupAttempted_ = false;
     bool copied_ = false;
     bool reusable_ = false;
     unsigned width_ = 0, height_ = 0;
@@ -165,27 +166,30 @@ public:
     }
     bool close() {
         if (closed_) return true;
-        bool ok = true;
+        if (cleanupAttempted_) return false; // Permanent quarantine, no retry.
+        cleanupAttempted_ = true;
+        // Observe Metal BEFORE touching any GL/context/target ownership. A
+        // terminal Metal error remains an error, never successful retirement.
+        if (!target_.metalTerminal() || target_.metalFailed()) return false;
         if (copy_ != EGL_NO_CONTEXT) {
-            // Includes failure paths: drain GPU before dropping borrowed source
-            // attachments/IOSurface. glFinish is diagnostic-only, never transport.
             const auto surface = target_.surface != EGL_NO_SURFACE ? target_.surface : host_.surface;
-            if (eglMakeCurrent(host_.display, surface, surface, copy_)) {
-                // Cancellation/error drain ONLY. Successful A2/A3 frames have
-                // observed their copy fence, so steady-state never glFinish.
-                if (!copied_) glFinish();
-                if (done_) { glDeleteSync(done_); done_ = nullptr; }
-                if (read_) { glDeleteFramebuffers(1, &read_); read_ = 0; }
-            } else ok = false;
-            try { host_.resume(); } catch (...) { ok = false; }
-            if (!eglDestroyContext(host_.display, copy_)) ok = false;
-            else copy_ = EGL_NO_CONTEXT;
+            if (!eglMakeCurrent(host_.display, surface, surface, copy_)) return false;
+            // Exceptional drain only; driver glFinish can block indefinitely.
+            // A CPU deadline is NOT evidence of bounded driver cleanup.
+            if (!copied_) glFinish();
+            if (glGetError() != GL_NO_ERROR) return false;
+            if (done_) { glDeleteSync(done_); done_ = nullptr; }
+            if (read_) { glDeleteFramebuffers(1, &read_); read_ = 0; }
+            if (glGetError() != GL_NO_ERROR) return false;
+            try { host_.resume(); } catch (...) { return false; }
+            if (!eglDestroyContext(host_.display, copy_)) return false;
+            copy_ = EGL_NO_CONTEXT;
         }
-        if (!target_.close()) ok = false;
-        closed_ = ok;
-        return ok;
+        if (!target_.close()) return false;
+        closed_ = true;
+        return true;
     }
-    ~SingleFrameCopy() { close(); }
+    ~SingleFrameCopy() noexcept { try { close(); } catch (...) {} }
 private:
     EGLint major_ = 0;
 };

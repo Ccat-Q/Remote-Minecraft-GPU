@@ -47,21 +47,34 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
     std::unique_ptr<ANGLEHost> _host;
     RGPUDisplayCancellation *_cancellation;
     std::unique_ptr<AsyncFrame> _asyncFrame;
+    std::unique_ptr<AsyncFrame> _syncFrame; // Own copy + source pin across exceptions.
+    RGPURemoteDisplayEndpoint *_quarantineOwner; // Intentional process-lifetime root on failure.
+    BOOL _cleanupSucceeded;
+    BOOL _closeAttempted;
     NSUInteger _asyncPresentStage;
     std::unique_ptr<rgpu::interop::BufferedPresent> _buffered;
 }
 + (instancetype)createWithCancellation:(RGPUDisplayCancellation *)cancellation error:(NSError **)error {
+    auto endpoint = [[self alloc] init];
     try {
-        auto endpoint = [[self alloc] init];
         endpoint->_cancellation = cancellation;
         endpoint->_host = std::make_unique<ANGLEHost>();
         endpoint->_host->initialize(false); // No TRANSFER_GET in display diagnostic.
         endpoint->_host->session->setCancellationCheck([cancellation] { return bool(cancellation.cancelled); });
         endpoint->_host->suspend();
         return endpoint;
-    } catch (const std::exception& failed) { failure(error, @"Remote renderer initialization", failed); return nil; }
+    } catch (const std::exception& failed) {
+        // The global init API has no checked rollback contract. Keep the entire
+        // owner, not an unowned released pointer; nil makes Swift quarantine.
+        endpoint->_closeAttempted = YES;
+        endpoint->_quarantineOwner = endpoint;
+        failure(error, @"Remote renderer initialization failed; native owner retained; process restart required", failed);
+        return nil;
+    }
 }
+- (BOOL)cleanupSucceeded { return _cleanupSucceeded; }
 - (NSString *)hostReport {
+    if (_closeAttempted && !_cleanupSucceeded) return @"Remote display endpoint quarantined; restart required";
     if (!_host) return @"Remote display endpoint closed";
     try {
         _host->resume();
@@ -78,7 +91,7 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
 }
 - (NSArray<NSData *> *)submitVTest:(NSData *)bytes error:(NSError **)error {
     try {
-        rgpu::interop::require(_host && !_cancellation.cancelled && !_asyncFrame &&
+        rgpu::interop::require(_host && !_closeAttempted && !_syncFrame && !_cancellation.cancelled && !_asyncFrame &&
             (!_buffered || _buffered->canAdvance()),
             "Display session closed/cancelled or snapshot barrier active");
         _host->resume();
@@ -95,10 +108,9 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
 - (NSString *)presentPayload:(NSData *)payload layer:(CAMetalLayer *)layer error:(NSError **)error {
     using namespace rgpu::interop;
     NSMutableString *report = [NSMutableString string];
-    bool retained = false;
     uint32_t resource = 0;
     try {
-        require(_host && !_cancellation.cancelled && !_asyncFrame && !_buffered && payload.length == 48, "Invalid/closed PRESENT");
+        require(_host && !_closeAttempted && !_cancellation.cancelled && !_asyncFrame && !_syncFrame && !_buffered && payload.length == 48, "Invalid/closed PRESENT");
         _host->resume();
         auto bytes = static_cast<const uint8_t *>(payload.bytes);
         const auto frame = bigEndian(bytes, 8), handle = bigEndian(bytes + 8, 8), after = bigEndian(bytes + 16, 8);
@@ -118,7 +130,9 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
         // for explicit image/format verification instead of guessed scaling.
         require(desc.width == 64 && desc.height == 64, "A2.1 requires the A1 64x64 window");
         resource = uint32_t(handle);
-        _host->session->retainForPresent(resource); retained = true;
+        _syncFrame = std::make_unique<AsyncFrame>();
+        _syncFrame->resource = resource; _syncFrame->frame = frame;
+        _host->session->retainForPresent(resource); _syncFrame->retained = true;
         const auto fence = _host->session->fenceForPresent(); // At THIS command boundary.
         [report appendFormat:@"REMOTE_PRESENT frame=%llu resource=%u after=%llu; producer fence=%u captured; later vtest PAUSED\n",
             (unsigned long long)frame, resource, (unsigned long long)after, fence];
@@ -134,27 +148,26 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
         [report appendFormat:@"Resource: handle=%u tex_id=%u format=%u %ux%u depth=%u flags=0x%x stride=%u; target=%u samples=%u array=%u last_level=%u\n",
             info.handle, info.tex_id, info.virgl_format, info.width, info.height, info.depth, info.flags, info.stride,
             desc.target, desc.samples, desc.arraySize, desc.lastLevel];
-        {
-            RGPUDisplayCancellation *cancellation = _cancellation;
-            SingleFrameCopy copy(*_host, [cancellation] { return bool(cancellation.cancelled); });
-            copy.copy(layer, info, desc, report, true); // A1 Gallium window, NOT A2.0 fixture rows.
-            _host->session->releaseFromPresent(resource); retained = false;
-            [report appendString:@"Snapshot complete; source pin released. No later source writes preceded snapshot completion.\n"];
-            copy.display(report);
-            require(copy.close(), "Remote snapshot cleanup failed");
-        }
+        RGPUDisplayCancellation *cancellation = _cancellation;
+        _syncFrame->copy = std::make_unique<SingleFrameCopy>(*_host, [cancellation] { return bool(cancellation.cancelled); });
+        auto& copy = *_syncFrame->copy;
+        copy.copy(layer, info, desc, report, true); // A1 Gallium window, NOT A2.0 fixture rows.
+        _host->session->releaseFromPresent(resource); _syncFrame->retained = false;
+        [report appendString:@"Snapshot complete; source pin released. No later source writes preceded snapshot completion.\n"];
+        copy.display(report);
+        require(copy.close(), "Remote snapshot cleanup failed");
         eglCheck(report, "Remote copy teardown");
         const auto& counts = _host->session->commandCounts();
         [report appendFormat:@"Counts: SUBMIT_CMD=%llu TRANSFER_PUT=%llu TRANSFER_GET=%llu; Metal displayed frame=%llu\n",
             (unsigned long long)counts[6], (unsigned long long)counts[5], (unsigned long long)counts[4], (unsigned long long)frame];
         require(counts[4] == 0, "Display TRANSFER_GET forbidden");
         _host->suspend();
+        _syncFrame.reset(); // Explicit copy cleanup succeeded before release.
         return report;
     } catch (const std::exception& failed) {
         [report appendFormat:@"Before endpoint teardown GL=0x%x EGL=0x%x\n", glGetError(), eglGetError()];
-        if (_host) {
-            try { _host->resume(); if (retained) _host->session->releaseFromPresent(resource); _host->suspend(); } catch (...) {}
-        }
+        // Keep copy, target and any outstanding source pin owned by endpoint.
+        if (_host) { try { _host->suspend(); } catch (...) {} }
         failure(error, report, failed); return nil;
     }
 }
@@ -162,7 +175,7 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
 - (BOOL)beginAsyncPresent:(NSData *)payload layer:(CAMetalLayer *)layer error:(NSError **)error {
     using namespace rgpu::interop;
     try {
-        require(_host && !_cancellation.cancelled && !_asyncFrame && !_buffered && payload.length == 48,
+        require(_host && !_closeAttempted && !_syncFrame && !_cancellation.cancelled && !_asyncFrame && !_buffered && payload.length == 48,
                 "Invalid/closed/overlapping async PRESENT");
         _host->resume();
         const auto *bytes = static_cast<const uint8_t *>(payload.bytes);
@@ -195,7 +208,7 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
 - (NSString *)pollAsyncPresentWithError:(NSError **)error {
     using namespace rgpu::interop;
     try {
-        require(_host && _asyncFrame && !_cancellation.cancelled, "Async frame closed/cancelled");
+        require(_host && !_closeAttempted && _asyncFrame && !_cancellation.cancelled, "Async frame closed/cancelled");
         auto& f = *_asyncFrame;
         require(f.elapsedMs() < 10000, "Async GPU phase timeout (local monotonic 10s)");
         _host->resume();
@@ -242,7 +255,7 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
 }
 - (BOOL)enableDoubleBufferingWithRetirementDelayMs:(NSUInteger)delay error:(NSError **)error {
     try {
-        rgpu::interop::require(_host && !_asyncFrame && !_buffered && !_cancellation.cancelled &&
+        rgpu::interop::require(_host && !_closeAttempted && !_syncFrame && !_asyncFrame && !_buffered && !_cancellation.cancelled &&
             _host->session->commandCounts()[8] == 0, "Double-buffer mode must be selected before vtest context creation");
         RGPUDisplayCancellation *cancel = _cancellation;
         rgpu::interop::require(delay <= 1000, "Diagnostic retirement delay exceeds 1000ms");
@@ -255,7 +268,7 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
 - (NSString *)bufferedStatistics { return _buffered ? _buffered->statistics() : @"Double buffering not enabled"; }
 - (RGPUBufferedDisplayEvent *)beginBufferedPresent:(NSData *)payload layer:(CAMetalLayer *)layer error:(NSError **)error {
     try {
-        rgpu::interop::require(_host && _buffered && !_cancellation.cancelled, "Double-buffer session closed");
+        rgpu::interop::require(_host && !_closeAttempted && _buffered && !_cancellation.cancelled, "Double-buffer session closed");
         _host->resume(); auto result = _buffered->begin(payload, layer); _host->suspend();
         return result;
     } catch (const std::exception& failed) {
@@ -265,7 +278,7 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
 }
 - (NSArray<RGPUBufferedDisplayEvent *> *)pollBufferedWithError:(NSError **)error {
     try {
-        rgpu::interop::require(_host && _buffered && !_cancellation.cancelled, "Double-buffer poll closed/cancelled");
+        rgpu::interop::require(_host && !_closeAttempted && _buffered && !_cancellation.cancelled, "Double-buffer poll closed/cancelled");
         _host->resume(); auto result = _buffered->poll(); _host->suspend();
         return result;
     } catch (const std::exception& failed) {
@@ -274,33 +287,44 @@ void failure(NSError **error, NSString *report, const std::exception& failed) {
     }
 }
 - (NSString *)close {
-    if (!_host) return @"Native display endpoint already closed";
+    if (_cleanupSucceeded) return @"Native checked cleanup already succeeded";
+    if (_closeAttempted) return @"Native cleanup unconfirmed; owner quarantined permanently; restart required";
+    _closeAttempted = YES;
+    // Root the entire object before any fallible cleanup. Swift also retains
+    // this endpoint on failure. Break the native root ONLY on observed success.
+    _quarantineOwner = self;
     NSMutableString *drain = [NSMutableString string];
-    if (_buffered) {
-        try { _host->resume(); [drain appendString:_buffered->close()]; }
-        catch (const std::exception& failed) { [drain appendFormat:@"A32_CLEANUP_ERROR %s\n", failed.what()]; }
-        _buffered.reset(); // Slots and shared-context teardown precede ANGLEHost.
-    }
-    if (_asyncFrame) {
-        [drain appendString:_asyncFrame->report];
-        // Cancellation/error path ONLY: drain an incomplete GL copy before
-        // unpinning its source. Metal keeps its independent IOSurface lease.
-        // No queued poll retains this native object after serial close.
-        try {
-            _host->resume();
-            if (_asyncFrame->copy) rgpu::interop::require(_asyncFrame->copy->close(), "Cancelled copy cleanup failed");
-            _host->resume();
-            if (_asyncFrame->retained) _host->session->releaseFromPresent(_asyncFrame->resource);
-            [drain appendFormat:@"A3_CANCEL frame=%llu phase=%u source_cleanup=returned; exceptional drain, NOT steady state\n",
-                (unsigned long long)_asyncFrame->frame, _asyncFrame->stage];
-        } catch (const std::exception& failed) {
-            [drain appendFormat:@"A3 cleanup error: %s\n", failed.what()];
+    try {
+        rgpu::interop::require(bool(_host), "No host available for checked cleanup");
+        _host->resume();
+        if (_buffered) {
+            [drain appendString:_buffered->close()];
+            _buffered.reset(); // Only explicit pool cleanup success permits reset.
         }
-        _asyncFrame.reset();
+        for (auto frame : {&_syncFrame, &_asyncFrame}) {
+            if (!*frame) continue;
+            auto& f = **frame;
+            [drain appendString:f.report];
+            if (f.copy) rgpu::interop::require(f.copy->close(), "Copy cleanup unconfirmed: Metal pending/error or GL/EGL failure");
+            _host->resume();
+            // Even a producer-only cancelled frame needs an observed drain
+            // before its pin is dropped. Driver calls are NOT time bounded.
+            if (f.retained) {
+                glFinish();
+                rgpu::interop::require(glGetError() == GL_NO_ERROR, "Producer cleanup drain failed; pin retained");
+                _host->session->releaseFromPresent(f.resource);
+                f.retained = false;
+            }
+            frame->reset();
+        }
+        _host->checkedCleanup();
+        _host.reset(); // Destructor no-op after checkedCleanup success.
+        _cleanupSucceeded = YES;
+        _quarantineOwner = nil;
+        [drain appendString:@"Native checked cleanup observed success (not driver leak certification); no display readback.\n"];
+    } catch (const std::exception& failed) {
+        [drain appendFormat:@"NATIVE_QUARANTINED cleanupSucceeded=NO: %s; remaining endpoint/copy/target/pins/session/host retained; no automatic retry; process restart required. Driver drains may block.\n", failed.what()];
     }
-    const auto counts = _host->session->commandCounts();
-    _host.reset(); // Serialized owner queue; restores EGL before GL teardown.
-    return [drain stringByAppendingFormat:@"Native session/context/resources cleanup returned. SUBMIT_CMD=%llu TRANSFER_PUT=%llu TRANSFER_GET=%llu. Reconnect requires a separate session; leak profiling remains separate.",
-        (unsigned long long)counts[6], (unsigned long long)counts[5], (unsigned long long)counts[4]];
+    return drain;
 }
 @end

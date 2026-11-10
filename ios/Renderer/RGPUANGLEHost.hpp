@@ -24,6 +24,9 @@ public:
     std::unique_ptr<rgpu::VTestSession> session;
     virgl_renderer_callbacks callbacks{}; // Outlives virgl_renderer_init.
     bool initialized = false;
+    bool initializationUncertain = false;
+    bool cleanupAttempted = false, cleanupSucceeded = false;
+    bool callbackCleanupFailed = false;
     int lastMajor = 0, lastMinor = 0;
     EGLint lastContextError = EGL_SUCCESS;
     NSString *versionAttempts = @"";
@@ -112,9 +115,15 @@ public:
         };
         callbacks.destroy_gl_context = [](void* cookie, void* context) {
             auto& host = *static_cast<ANGLEHost*>(cookie);
-            if (eglGetCurrentContext() == context)
-                eglMakeCurrent(host.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-            eglDestroyContext(host.display, context);
+            if (eglGetCurrentContext() == context &&
+                !eglMakeCurrent(host.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+                host.callbackCleanupFailed = true;
+                return; // Do not destroy a context that could not be unbound.
+            }
+            if (!eglDestroyContext(host.display, context)) {
+                host.callbackCleanupFailed = true;
+                return; // Preserve the handle for quarantine evidence.
+            }
             if (host.suspendedContext == context) host.suspendedContext = EGL_NO_CONTEXT;
             host.contexts.erase(std::remove(host.contexts.begin(), host.contexts.end(), context), host.contexts.end());
             if (host.root == context) host.root = EGL_NO_CONTEXT;
@@ -125,6 +134,7 @@ public:
         };
         // No USE_EGL: use caller contexts and borrowed ANGLE display (v4),
         // rather than initializing an unrelated internal platform winsys.
+        initializationUncertain = true; // A failed global init has no checked rollback contract.
         if (virgl_renderer_init(this, VIRGL_RENDERER_USE_GLES, &callbacks)) {
             char message[256];
             std::snprintf(message, sizeof(message),
@@ -133,6 +143,7 @@ public:
             throw std::runtime_error(message);
         }
         initialized = true;
+        initializationUncertain = false;
         session = std::make_unique<rgpu::VTestSession>(1, allowReadbacks);
     }
     void resume() {
@@ -145,7 +156,51 @@ public:
         if (!eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT))
             throw std::runtime_error("Cannot unbind native EGL context from renderer queue");
     }
+    // Explicit, one-shot retirement. This observes API results, not a driver
+    // leak certification. The void virgl/session APIs expose no rollback;
+    // failure after their invocation retains the remaining host permanently.
+    void checkedCleanup() {
+        if (cleanupSucceeded) return;
+        if (cleanupAttempted) throw std::runtime_error("Host cleanup already failed; quarantine requires restart");
+        cleanupAttempted = true;
+        if (initializationUncertain || callbackCleanupFailed)
+            throw std::runtime_error("Unconfirmed global initialization/context cleanup; quarantine");
+        if (initialized) {
+            resume(); // Failure MUST precede session destruction.
+            glFinish(); // Producer drain can block in driver; not time-bounded.
+            if (glGetError() != GL_NO_ERROR)
+                throw std::runtime_error("Producer drain failed; session retained");
+            session.reset(); // Legacy void cleanup boundary, no rollback API.
+            if (callbackCleanupFailed || glGetError() != GL_NO_ERROR)
+                throw std::runtime_error("Session cleanup reported failure; remaining host retained");
+            virgl_renderer_cleanup(this);
+            initialized = false;
+            if (callbackCleanupFailed)
+                throw std::runtime_error("Renderer context cleanup failed; remaining host retained");
+        }
+        if (display != EGL_NO_DISPLAY) {
+            if (!eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT))
+                throw std::runtime_error("Host cleanup unbind failed");
+            while (!contexts.empty()) {
+                auto context = contexts.back();
+                if (!eglDestroyContext(display, context)) throw std::runtime_error("Host context destroy failed");
+                contexts.pop_back();
+                if (root == context) root = EGL_NO_CONTEXT;
+                if (suspendedContext == context) suspendedContext = EGL_NO_CONTEXT;
+            }
+            if (surface != EGL_NO_SURFACE) {
+                if (!eglDestroySurface(display, surface)) throw std::runtime_error("Host surface destroy failed");
+                surface = EGL_NO_SURFACE;
+            }
+            if (!eglTerminate(display)) throw std::runtime_error("Host display terminate failed");
+            display = EGL_NO_DISPLAY;
+        }
+        cleanupSucceeded = true;
+    }
     ~ANGLEHost() {
+        if (cleanupSucceeded) return;
+        // Remote endpoints retain this host on checked failure, so this legacy
+        // best-effort destructor is NOT their retirement-success signal.
         // Dispatch queues serialize work but do not guarantee a fixed OS
         // thread. Restore EGL before deleting session-owned GL resources.
         if (initialized) {

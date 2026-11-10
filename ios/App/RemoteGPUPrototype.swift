@@ -2,11 +2,20 @@ import UIKit
 import Metal
 import QuartzCore
 
+// Frozen once at process startup. Saving a preference never changes the mode
+// of an existing controller or permits legacy GL to enter this process.
+private enum NativeProcessMode: String, Sendable {
+    case safeRemote, legacyDiagnostics
+    static let preferenceKey = "native.process-mode.next-launch"
+    static let current = NativeProcessMode(rawValue: UserDefaults.standard.string(forKey: preferenceKey) ?? "") ?? .safeRemote
+}
+
 @main
 final class PrototypeDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        _ = NativeProcessMode.current // Freeze before any controller can save a new preference.
         let window = UIWindow(frame: UIScreen.main.bounds)
         window.rootViewController = ProbeController()
         window.makeKeyAndVisible()
@@ -26,6 +35,84 @@ final class ProbeController: UIViewController {
     private var probe: RGPUIOSurfaceProbe?
     private var controls: [UIButton] = []
     private var nativeBusy = false
+    private var credentialOperation: UUID?
+    private var retirementRevision: UInt64 = 0
+    private var retirementToken: UUID?
+    private var retirementPhase: RemoteGPUSessionRetirement.Phase?
+    private var remoteReportFinished = false
+
+    // A controller-local flag cannot arbitrate process-global virgl ownership.
+    private var globalNativeAdmissionAllowed: Bool {
+        RemoteGPUSessionRetirement.shared.snapshot?.allowsReconnect ?? true
+    }
+    private var canBeginNativeOperation: Bool { !nativeBusy && globalNativeAdmissionAllowed }
+
+    private func requireProcessMode(_ required: NativeProcessMode) -> Bool {
+        guard NativeProcessMode.current != required else { return true }
+        let target = required == .safeRemote ? "安全 Remote 模式" : "旧诊断模式（不具备 A3.3 安全退休保证）"
+        let alert = UIAlertController(title: "需要重启 App 切换模式", message: "当前进程模式不可改变。此入口需要\(target)。可保存下次启动模式，完全退出并重新启动 App 后生效；当前不会执行原生调用。", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        alert.addAction(UIAlertAction(title: "保存下次启动模式", style: .default) { [weak self] _ in
+            self?.saveNextProcessMode(required)
+        })
+        present(alert, animated: true)
+        return false
+    }
+
+    private func saveNextProcessMode(_ mode: NativeProcessMode) {
+        UserDefaults.standard.set(mode.rawValue, forKey: NativeProcessMode.preferenceKey)
+        let alert = UIAlertController(title: "已保存，仅下次启动生效", message: "请完全退出并重新启动 App。当前进程仍为\(NativeProcessMode.current == .safeRemote ? "安全 Remote 模式" : "旧诊断模式（无 A3.3 保证）")；保存设置不会停止会话、释放隔离资源或直接运行另一模式。", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "知道了", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func unlockNativeControlsIfSafe() {
+        guard globalNativeAdmissionAllowed else { return }
+        nativeBusy = false
+        controls.forEach { $0.isEnabled = true }
+    }
+
+    private func completeRemoteRetirementIfSafe(sessionID: String) {
+        guard remoteDisplayConnection?.sessionID == sessionID,
+              retirementPhase == .retired, remoteReportFinished,
+              globalNativeAdmissionAllowed else { return }
+        UIApplication.shared.isIdleTimerDisabled = false
+        frameBadge.text = "Disconnected — retained image is NOT live evidence"
+        remoteDisplayConnection = nil
+        unlockNativeControlsIfSafe()
+        remoteDisplayButton.setTitle("一键测试连接", for: .normal)
+    }
+    private func applyRetirement(_ incoming: RemoteGPUSessionRetirement.Snapshot, sessionID: String) {
+        // An event may have waited on the main queue while the watchdog advanced
+        // this owner. Never revive running UI from that stale queued event.
+        guard let current = RemoteGPUSessionRetirement.shared.snapshot,
+              current.token == incoming.token else { return }
+        let snapshot = current.revision >= incoming.revision ? current : incoming
+        guard remoteDisplayConnection?.sessionID == sessionID,
+              retirementToken == nil || retirementToken == snapshot.token,
+              snapshot.revision > retirementRevision else { return }
+        retirementToken = snapshot.token
+        retirementRevision = snapshot.revision
+        retirementPhase = snapshot.phase
+        if snapshot.phase != .running {
+            UIApplication.shared.isIdleTimerDisabled = false
+            nativeBusy = true
+            controls.forEach { $0.isEnabled = false }
+            shareControl?.isEnabled = true
+            testSettingsButton.isEnabled = true // Mode preference only; native actions retain guards.
+            frameBadge.text = "\(snapshot.phase.rawValue) — retained image is NOT live evidence"
+            if snapshot.phase != .retired {
+                report.text = "Renderer \(snapshot.phase.rawValue); native ownership remains isolated. Cleanup is not confirmed; reconnect and diagnostics remain blocked."
+            }
+        }
+        completeRemoteRetirementIfSafe(sessionID: sessionID)
+    }
+
+    private func invalidateRemoteLiveUI() {
+        UIApplication.shared.isIdleTimerDisabled = false
+        frameBadge.text = "Stopping — retained image is NOT live evidence"
+    }
+
     private var capabilityConnection: NativeCapabilityConnection?
     private var remoteDisplayConnection: NativeRemoteDisplayConnection?
     private let remoteDisplayButton = UIButton(type: .system)
@@ -45,7 +132,9 @@ final class ProbeController: UIViewController {
         view.backgroundColor = .systemBackground
         report.isEditable = false
         report.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        report.text = "RemoteGPU device interop gate\nTap Render Probe. Expect an orange triangle on a dark background."
+        report.text = NativeProcessMode.current == .safeRemote
+            ? "安全 Remote 模式：使用远程显示；旧诊断需保存模式并重启 App。"
+            : "旧诊断模式：保留既有本机诊断行为，不具备 A3.3 安全退休保证。远程显示需重启到安全模式。"
         let button = UIButton(type: .system)
         button.setTitle("Render Probe", for: .normal)
         button.addTarget(self, action: #selector(render), for: .touchUpInside)
@@ -66,6 +155,10 @@ final class ProbeController: UIViewController {
         testSettingsButton.setTitle("测试设置", for: .normal)
         testSettingsButton.showsMenuAsPrimaryAction = true
         testSettingsButton.menu = UIMenu(children: [
+            UIMenu(title: "进程隔离模式（保存后须完全重启 App）", children: [
+                UIAction(title: "下次启动：安全 Remote（默认）") { [weak self] _ in self?.saveNextProcessMode(.safeRemote) },
+                UIAction(title: "下次启动：旧诊断（无 A3.3 保证）") { [weak self] _ in self?.saveNextProcessMode(.legacyDiagnostics) }
+            ]),
             UIAction(title: "使用 A2.1 同步诊断（默认）") { [weak self] _ in self?.selectDisplayMode(.synchronous) },
             UIAction(title: "使用 A3.1 单槽异步测试") { [weak self] _ in self?.selectDisplayMode(.asyncSingleSlot) },
             UIAction(title: "使用 A3.2 双槽异步测试") { [weak self] _ in self?.selectDisplayMode(.asyncDoubleSlot) },
@@ -128,6 +221,8 @@ final class ProbeController: UIViewController {
 
     @objc private func enteredBackground() {
         // A suspended foreground probe cannot attest to an uninterrupted hold.
+        guard remoteDisplayConnection != nil else { return }
+        invalidateRemoteLiveUI()
         remoteDisplayConnection?.stop(reason: "Application backgrounded; foreground hold interrupted")
     }
 
@@ -139,8 +234,10 @@ final class ProbeController: UIViewController {
     }
 
     @objc private func connectRemoteDisplay() {
+        guard requireProcessMode(.safeRemote) else { return }
         if let connection = remoteDisplayConnection {
             remoteDisplayButton.isEnabled = false
+            invalidateRemoteLiveUI()
             connection.stop()
             return
         }
@@ -148,8 +245,9 @@ final class ProbeController: UIViewController {
     }
 
     @objc private func quickConnectRemoteDisplay() {
+        guard requireProcessMode(.safeRemote) else { return }
         if remoteDisplayConnection != nil { connectRemoteDisplay(); return }
-        guard !nativeBusy else { return }
+        guard canBeginNativeOperation else { return }
         withTestProfile(status: "正在读取本机测试配置…", operation: { try $0.load() }) { [weak self] result in
             guard let self else { return }
             switch result {
@@ -164,17 +262,24 @@ final class ProbeController: UIViewController {
     private func withTestProfile<Value: Sendable>(status: String,
         operation: @escaping @Sendable (RemoteGPUTestProfileStore) throws -> Value,
         completion: @escaping @MainActor @Sendable (Result<Value, Error>) -> Void) {
-        guard !nativeBusy else { return }
+        guard canBeginNativeOperation else { return }
         nativeBusy = true
         controls.forEach { $0.isEnabled = false }
         report.text = status
         let store = testProfileStore
+        let operationID = UUID()
+        credentialOperation = operationID
+        let ownerAtStart = RemoteGPUSessionRetirement.shared.snapshot
+        let sessionAtStart = remoteDisplayConnection?.sessionID
         credentialsQueue.async {
             let result = Result { try operation(store) }
             DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.nativeBusy = false
-                self.controls.forEach { $0.isEnabled = true }
+                guard let self, self.credentialOperation == operationID else { return }
+                self.credentialOperation = nil
+                guard self.remoteDisplayConnection?.sessionID == sessionAtStart,
+                      RemoteGPUSessionRetirement.shared.snapshot == ownerAtStart,
+                      self.globalNativeAdmissionAllowed else { return }
+                self.unlockNativeControlsIfSafe()
                 completion(result)
             }
         }
@@ -191,7 +296,7 @@ final class ProbeController: UIViewController {
     }
 
     private func clearTestProfile() {
-        guard !nativeBusy else { return }
+        guard canBeginNativeOperation else { return }
         let prompt = UIAlertController(title: "清除测试连接？", message: "仅删除本机保存的配置，不撤销服务端 Token。下次一键连接需要重新配置。", preferredStyle: .alert)
         prompt.addAction(UIAlertAction(title: "取消", style: .cancel))
         prompt.addAction(UIAlertAction(title: "清除", style: .destructive) { [weak self] _ in
@@ -211,7 +316,7 @@ final class ProbeController: UIViewController {
     }
 
     private func presentRemoteForm(remember: Bool, connectAfterSave: Bool, saved: RemoteGPUTestProfile? = nil) {
-        guard !nativeBusy else { return }
+        guard canBeginNativeOperation else { return }
         guard UIApplication.shared.applicationState == .active else {
             report.text = "App 不在前台，未打开配置。回到前台后请再次操作。"
             return
@@ -238,7 +343,7 @@ final class ProbeController: UIViewController {
         }
         form.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         form.addAction(UIAlertAction(title: remember ? (connectAfterSave ? "保存并连接" : "保存") : "Connect", style: .default) { [weak self, weak form] _ in
-            guard let self, let fields = form?.textFields,
+            guard let self, self.canBeginNativeOperation, let fields = form?.textFields,
                 let host = fields[0].text?.trimmingCharacters(in: .whitespacesAndNewlines), !host.isEmpty,
                 let port = UInt16(fields[1].text ?? ""), port != 0,
                 let token = fields[2].text, !token.isEmpty else {
@@ -265,6 +370,7 @@ final class ProbeController: UIViewController {
     }
 
     private func completeRemoteSetup(_ profile: RemoteGPUTestProfile, connectAfterSave: Bool) {
+        guard canBeginNativeOperation else { return }
         UserDefaults.standard.set(profile.host, forKey: "a21.host")
         UserDefaults.standard.set(String(profile.port), forKey: "a21.port")
         if connectAfterSave { startRemoteDisplay(profile) }
@@ -272,7 +378,8 @@ final class ProbeController: UIViewController {
     }
 
     private func startRemoteDisplay(_ profile: RemoteGPUTestProfile) {
-        guard !nativeBusy else { return }
+        guard requireProcessMode(.safeRemote) else { return }
+        guard canBeginNativeOperation else { return }
         guard UIApplication.shared.applicationState == .active else {
             report.text = "App 不在前台，未发起连接。回到前台后请再次点击一键测试连接。"
             return
@@ -292,39 +399,70 @@ final class ProbeController: UIViewController {
         UIApplication.shared.isIdleTimerDisabled = true
         frameBadge.isHidden = false
         frameBadge.text = "PRESENT 0 — waiting (not remote evidence)"
+        retirementToken = nil
+        retirementRevision = 0
+        retirementPhase = nil
+        remoteReportFinished = false
+        credentialOperation = nil
+        connection.onRetirement = { [weak self] snapshot in
+            self?.applyRetirement(snapshot, sessionID: sessionID)
+        }
         connection.onDisplayed = { [weak self] frame in
-            guard let self, self.remoteDisplayConnection?.sessionID == sessionID else { return }
+            guard let self, self.remoteDisplayConnection?.sessionID == sessionID,
+                  self.retirementPhase == .running,
+                  let owner = RemoteGPUSessionRetirement.shared.snapshot,
+                  owner.token == self.retirementToken, owner.acceptsWork else { return }
             self.frameBadge.text = "Metal completed PRESENT \(frame) — verify pixels"
         }
         connection.onReport = { [weak self] text, finished in
             guard let self, self.remoteDisplayConnection?.sessionID == sessionID else { return }
-            self.report.text = text
+            // Reconcile before considering report text, including when the first
+            // running event has not reached UIKit yet (retirementToken is nil).
+            if let current = self.remoteDisplayConnection?.retirementSnapshot {
+                self.applyRetirement(current, sessionID: sessionID)
+            }
+            guard self.remoteDisplayConnection?.sessionID == sessionID else { return }
             if finished {
-                UIApplication.shared.isIdleTimerDisabled = false
-                self.frameBadge.text = "Disconnected — retained image is NOT live evidence"
-                self.remoteDisplayConnection = nil
-                self.nativeBusy = false
-                self.controls.forEach { $0.isEnabled = true }
-                self.remoteDisplayButton.setTitle("一键测试连接", for: .normal)
+                self.remoteReportFinished = true
+                if self.retirementToken == nil,
+                   self.remoteDisplayConnection?.retirementSnapshot == nil {
+                    // Admission failed before this wrapper acquired any native owner.
+                    // Never infer retirement of the OTHER process-global owner.
+                    self.report.text = text
+                    UIApplication.shared.isIdleTimerDisabled = false
+                    self.frameBadge.text = "Not connected — no live remote evidence"
+                    self.remoteDisplayConnection = nil
+                    self.unlockNativeControlsIfSafe()
+                    self.remoteDisplayButton.setTitle("一键测试连接", for: .normal)
+                    return
+                }
+                if self.retirementPhase == .retired { self.report.text = text }
+                self.completeRemoteRetirementIfSafe(sessionID: sessionID)
+            } else if self.retirementPhase == nil || self.retirementPhase == .running {
+                // A queued report from before stop must not overwrite retirement.
+                if let owner = RemoteGPUSessionRetirement.shared.snapshot,
+                   owner.token == self.retirementToken, !owner.acceptsWork { return }
+                self.report.text = text
             }
         }
         connection.start()
     }
 
     private func selectDisplayMode(_ mode: RemoteGPUDisplayMode, retirementDelayMs: UInt = 0) {
-        guard !nativeBusy else { return }
+        guard canBeginNativeOperation else { return }
         displayMode = mode
         self.retirementDelayMs = mode == .asyncDoubleSlot ? retirementDelayMs : 0
         report.text = "已选择 \(mode.schedulerName)；点击一键测试连接。回收延迟诊断=\(self.retirementDelayMs)ms（不计为 GPU 工作时间）。A2.1 / A3.1 基本门槛已验收，A3.2 双槽尚待真机验收。仍限 16 个 PRESENT / 64×64，不代表性能验收通过。"
     }
 
     @objc private func connectCapability() {
+        guard requireProcessMode(.legacyDiagnostics) else { return }
         if let connection = capabilityConnection {
             connectButton.isEnabled = false
             connection.stop()
             return
         }
-        guard !nativeBusy else { return }
+        guard canBeginNativeOperation else { return }
         let form = UIAlertController(title: "Ubuntu capability probe", message: "Use a hostname/certificate trusted by iOS. UDP port must be reachable. This mode rejects PRESENT and GPU readback.", preferredStyle: .alert)
         form.addTextField { field in
             field.placeholder = "Ubuntu TLS hostname"
@@ -335,7 +473,7 @@ final class ProbeController: UIViewController {
         form.addTextField { field in field.placeholder = "Pairing token"; field.isSecureTextEntry = true }
         form.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         form.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self, weak form] _ in
-            guard let self, let fields = form?.textFields,
+            guard let self, self.canBeginNativeOperation, let fields = form?.textFields,
                   let host = fields[0].text?.trimmingCharacters(in: .whitespacesAndNewlines), !host.isEmpty,
                   let portText = fields[1].text, let port = UInt16(portText), port != 0,
                   let token = fields[2].text, !token.isEmpty else {
@@ -375,9 +513,10 @@ final class ProbeController: UIViewController {
     }
 
     @objc private func nativeCaps() {
+        guard requireProcessMode(.legacyDiagnostics) else { return }
         // Terminating EGLDisplay is process-global: diagnostic modes cannot
         // overlap. The native one-shot gate cleans up before it returns.
-        guard !nativeBusy else { return }
+        guard canBeginNativeOperation else { return }
         frameBadge.isHidden = true
         probe = nil
         nativeBusy = true
@@ -398,7 +537,8 @@ final class ProbeController: UIViewController {
     }
 
     @objc private func resourceInterop() {
-        guard !nativeBusy else { return }
+        guard requireProcessMode(.legacyDiagnostics) else { return }
+        guard canBeginNativeOperation else { return }
         frameBadge.isHidden = true
         probe = nil // Tear down the separate local-triangle display first.
         setDisplayAspect(9.0 / 16.0)
@@ -418,7 +558,8 @@ final class ProbeController: UIViewController {
     }
 
     @objc private func render() {
-        guard !nativeBusy else { return }
+        guard requireProcessMode(.legacyDiagnostics) else { return }
+        guard canBeginNativeOperation else { return }
         frameBadge.isHidden = true
         setDisplayAspect(9.0 / 16.0)
         do {

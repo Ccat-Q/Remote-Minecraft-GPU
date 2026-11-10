@@ -30,6 +30,7 @@ class BufferedPresent {
     CAMetalLayer *layer_;
     unsigned allocations_ = 0, reuse_ = 0, retired_ = 0;
     unsigned retirementDelayMs_;
+    bool closing_ = false;
     bool closed_ = false;
     static uint64_t read(const uint8_t *bytes, size_t count) {
         uint64_t value = 0; for (size_t i = 0; i < count; ++i) value = (value << 8) | bytes[i]; return value;
@@ -50,7 +51,7 @@ public:
         queue_ = [device newCommandQueue];
         require(queue_ != nil, "Double-buffer shared Metal queue missing");
     }
-    bool canAdvance() const { return !closed_ && state_.canAdvance(); }
+    bool canAdvance() const { return !closing_ && !closed_ && state_.canAdvance(); }
     unsigned pending() const { return state_.inUse(); }
     NSString *statistics() const {
         return [NSString stringWithFormat:@"A32_POOL capacity=2 occupied=%u high_water=%u allocated=%u reused=%u retired=%u source_barrier=%@ iosurface_bytes_estimate=%u retirement_delay_ms=%u (not total renderer GPU memory; delay is diagnostic, NOT GPU work)",
@@ -148,27 +149,31 @@ public:
     }
     NSString *close() {
         if (closed_) return @"A32 pool already closed";
-        closed_ = true; state_.cancel();
+        require(!closing_, "Buffered cleanup previously failed; quarantine requires restart");
+        closing_ = true; state_.cancel();
         NSMutableString *report = [NSMutableString string];
         unsigned released = 0, cancelledFrames = 0;
         for (auto& slot : storage_) {
             if (slot.work) { [report appendString:slot.work->report]; ++cancelledFrames; }
-            try {
-                if (slot.copy) {
-                    require(slot.copy->close(), "Buffered slot cleanup failed");
-                    if (slot.initialized) ++released;
-                    slot.copy.reset();
-                }
-                host_.resume();
-                if (slot.work && slot.work->retained)
-                    host_.session->releaseFromPresent(uint32_t(slot.work->ticket.resource));
-            } catch (const std::exception& failed) { [report appendFormat:@"A32_CLEANUP_ERROR %s\n", failed.what()]; }
+            // Propagate the first failure. The owning endpoint quarantines the
+            // entire pool; never reset a failed slot or silently retry it.
+            if (slot.copy) require(slot.copy->close(), "Buffered slot cleanup failed (Metal pending/error or GL/EGL failure)");
+            host_.resume();
+            if (slot.work && slot.work->retained) {
+                glFinish(); // Producer-only cancellation; driver may block.
+                require(glGetError() == GL_NO_ERROR, "Buffered producer drain failed; pin retained");
+                host_.session->releaseFromPresent(uint32_t(slot.work->ticket.resource));
+                slot.work->retained = false;
+            }
+            if (slot.copy && slot.initialized) ++released;
+            slot.copy.reset();
             slot.work.reset();
         }
-        [report appendFormat:@"A32_POOL_CLOSE allocated=%u released=%u cancelled_frames=%u; incomplete-copy drains are teardown-only; pending Metal holds independent IOSurface lease\n",
+        closed_ = true;
+        [report appendFormat:@"A32_POOL_CLOSE allocated=%u released=%u cancelled_frames=%u; Metal terminal observed; exceptional GL drains may block in driver\n",
             allocations_, released, cancelledFrames];
         return report;
     }
-    ~BufferedPresent() { if (!closed_) close(); }
+    ~BufferedPresent() noexcept { if (!closing_ && !closed_) { try { close(); } catch (...) {} } }
 };
 }

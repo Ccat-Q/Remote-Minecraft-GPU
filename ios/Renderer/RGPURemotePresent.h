@@ -27,6 +27,8 @@ NS_ASSUME_NONNULL_BEGIN
 // Separate from RGPUVTestEndpoint: Capability Probe still cannot PRESENT.
 @interface RGPURemoteDisplayEndpoint : NSObject
 @property(nonatomic, readonly) NSString *hostReport;
+// True ONLY after explicit checked cleanup; false means retain/quarantine endpoint.
+@property(nonatomic, readonly) BOOL cleanupSucceeded;
 + (nullable instancetype)createWithCancellation:(RGPUDisplayCancellation *)cancellation
     error:(NSError **)error NS_SWIFT_NAME(create(cancellation:));
 - (nullable NSArray<NSData *> *)submitVTest:(NSData *)bytes error:(NSError **)error NS_SWIFT_NAME(submit(_:));

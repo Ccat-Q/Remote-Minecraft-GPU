@@ -10,6 +10,17 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
     private let order = RemoteGPUSerialDisplayOrder()
     private var endpoint: RGPURemoteDisplayEndpoint?
     private var transport: RemoteGPUQUICRenderConnection?
+    // Only these handoff fields are accessed outside rendererQueue. Never hold
+    // this lock while dispatching callbacks or invoking native/Network APIs.
+    private let retirementLock = NSLock()
+    private var ownerToken: UUID?
+    private var admissionTransport: RemoteGPUQUICRenderConnection?
+    private var retirementRequested = false
+    private var retirementHold: NativeRemoteDisplayConnection?
+    private let ownership = RemoteGPUSessionRetirement.shared
+    private let finishAdmission = RemoteGPUFinishAdmission()
+    private let retirementWatchdog = DispatchQueue(label: "org.remotegpu.retirement-watchdog")
+    private var initializationAttempted = false
     private let host: String
     private let port: UInt16
     private let token: String
@@ -38,6 +49,12 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
     private var asyncBegan: TimeInterval = 0
     var onReport: ((String, Bool) -> Void)?
     var onDisplayed: ((UInt64) -> Void)?
+    var onRetirement: ((RemoteGPUSessionRetirement.Snapshot) -> Void)?
+    var retirementSnapshot: RemoteGPUSessionRetirement.Snapshot? {
+        retirementLock.lock(); let token = ownerToken; retirementLock.unlock()
+        guard let snapshot = ownership.snapshot, snapshot.token == token else { return nil }
+        return snapshot
+    }
     private var processedSequence: UInt64 { mode == .asyncDoubleSlot ? bufferedOrder.processedSequence : order.processedSequence }
     private var displayedFrame: UInt64 { mode == .asyncDoubleSlot ? bufferedOrder.displayedFrame : order.displayedFrame }
 
@@ -48,10 +65,22 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
         self.retirementDelayMs = retirementDelayMs
     }
     func start() {
+        retirementLock.lock()
+        guard ownerToken == nil, !retirementRequested else { retirementLock.unlock(); return }
+        guard let acquired = ownership.acquire() else {
+            retirementLock.unlock()
+            DispatchQueue.main.async { self.onReport?("Native renderer ownership unavailable; previous session has not safely retired.", true) }
+            return
+        }
+        ownerToken = acquired
+        retirementHold = self // Retain the native root even if UIKit disappears.
+        retirementLock.unlock()
+        publishRetirement()
         rendererQueue.async {
             self.evidence = RemoteGPUDisplayEvidence(sessionID: self.sessionID, startedAt: ProcessInfo.processInfo.systemUptime)
             guard !self.closed && !self.cancellation.isCancelled else { self.finish("Cancelled before start"); return }
             do {
+                self.initializationAttempted = true
                 self.endpoint = try RGPURemoteDisplayEndpoint.create(cancellation: self.cancellation)
                 if self.mode == .asyncDoubleSlot { try self.endpoint?.enableDoubleBuffering(retirementDelayMs: self.retirementDelayMs) }
                 self.header = self.endpoint?.hostReport ?? ""
@@ -69,6 +98,15 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                 timer.resume()
                 let connection = RemoteGPUQUICRenderConnection(host: self.host, port: self.port, pairingToken: self.token)
                 self.transport = connection
+                self.retirementLock.lock()
+                let stoppedBeforeHandoff = self.retirementRequested
+                if !stoppedBeforeHandoff { self.admissionTransport = connection }
+                self.retirementLock.unlock()
+                if stoppedBeforeHandoff {
+                    connection.close()
+                    self.finish("Cancelled during native initialization")
+                    return
+                }
                 let activity = self.streamActivity
                 connection.onStreamBytes = { activity.record(at: ProcessInfo.processInfo.systemUptime) }
                 connection.onBatch = { [weak self] batch, complete in
@@ -87,16 +125,16 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
                 connection.onEvent = { [weak self] event in
                     guard let self else { return }
                     switch event {
-                    case .failed, .closed: self.cancellation.cancel()
-                    default: break
-                    }
-                    self.rendererQueue.async {
-                        guard !self.closed else { return }
-                        switch event {
-                        case .ready: self.report("QUIC ready; run Ubuntu gl-remote-present. Waiting for REAL vtest/PRESENT.")
-                        case .failed(let error): self.finish("NETWORK FAILED: \(String(describing: error))")
-                        case .closed: self.finish("Peer stream ended. Cleaning up, NOT a successful live-session hold or reconnect.")
-                        case .envelope: self.finish("Unexpected unbounded envelope delivery")
+                    case .failed(let error):
+                        self.stop(reason: "NETWORK FAILED: \(String(describing: error))")
+                    case .closed:
+                        self.stop(reason: "Peer stream ended. Cleaning up, NOT a successful live-session hold or reconnect.")
+                    case .envelope:
+                        self.stop(reason: "Unexpected unbounded envelope delivery")
+                    case .ready:
+                        self.rendererQueue.async {
+                            guard !self.closed && !self.cancellation.isCancelled else { return }
+                            self.report("QUIC ready; run Ubuntu gl-remote-present. Waiting for REAL vtest/PRESENT.")
                         }
                     }
                 }
@@ -106,8 +144,32 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
         }
     }
     func stop(reason: String = "User cancelled display session") {
-        cancellation.cancel() // Immediate atomic signal even while rendererQueue waits.
+        requestRetirement()
+        guard finishAdmission.scheduleOnce() else { return }
         rendererQueue.async { self.finish(reason) }
+    }
+    private func publishRetirement() {
+        guard let snapshot = retirementSnapshot else { return }
+        DispatchQueue.main.async { self.onRetirement?(snapshot) }
+    }
+    // Independent of rendererQueue: driver calls there may never return.
+    // The watchdog reports quarantine only; it never accesses native objects.
+    private func requestRetirement() {
+        cancellation.cancel()
+        retirementLock.lock()
+        let first = !retirementRequested
+        retirementRequested = true
+        let token = ownerToken
+        let connection = admissionTransport
+        admissionTransport = nil
+        retirementLock.unlock()
+        connection?.close()
+        guard first, let token else { return }
+        ownership.requestStop(token)
+        publishRetirement()
+        retirementWatchdog.asyncAfter(deadline: .now() + 5) { [self] in
+            if ownership.timeout(token) { publishRetirement() }
+        }
     }
     private func append(_ text: String) {
         history.append(text)
@@ -145,6 +207,9 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
     private func finish(_ status: String) {
         guard !closed else { return }
         closed = true
+        requestRetirement()
+        retirementLock.lock(); let token = ownerToken; retirementLock.unlock()
+        if let token { ownership.markRetiring(token); publishRetirement() }
         timer?.cancel(); timer = nil
         completionTimer?.cancel(); completionTimer = nil
         cancellation.cancel()
@@ -155,11 +220,19 @@ final class NativeRemoteDisplayConnection: @unchecked Sendable {
         batchCursor.release()
         if mode == .asyncDoubleSlot, let endpoint { append(endpoint.bufferedStatistics) }
         append(endpoint?.close() ?? "No native session allocated")
-        endpoint = nil
-        asyncPresent = nil
-        bufferedBegan.removeAll()
-        append("A21_SESSION_CLOSED session=\(sessionID) displayed=\(displayedFrame) cleanup_returned=YES reason=\(status)")
-        report(status, finished: true)
+        // A thrown native initializer has no confirmed cleanup outcome. Keep the
+        // process owner quarantined rather than infer success from a nil wrapper.
+        let cleanupSucceeded = endpoint?.cleanupSucceeded ?? !initializationAttempted
+        if let token { ownership.complete(token, success: cleanupSucceeded) }
+        if cleanupSucceeded {
+            endpoint = nil
+            asyncPresent = nil
+            bufferedBegan.removeAll()
+            retirementLock.lock(); retirementHold = nil; retirementLock.unlock()
+        }
+        append("A33_RETIREMENT session=\(sessionID) displayed=\(displayedFrame) cleanup_returned=YES cleanup_confirmed=\(cleanupSucceeded ? "YES" : "NO") reason=\(status); driver leak profiling NOT_TESTED")
+        publishRetirement()
+        report(status, finished: cleanupSucceeded)
     }
     private func consumePendingBatch() {
         guard !closed else { return }

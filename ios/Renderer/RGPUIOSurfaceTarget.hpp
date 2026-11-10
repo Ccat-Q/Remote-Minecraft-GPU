@@ -135,9 +135,17 @@ public:
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
+    // NotEnqueued/Enqueued has not been committed and may be discarded.
+    // Error is terminal for lifetime safety, but is NOT cleanup success.
+    bool metalTerminal() const {
+        return !completion_ || completion_.status < MTLCommandBufferStatusCommitted ||
+            completion_.status == MTLCommandBufferStatusCompleted ||
+            completion_.status == MTLCommandBufferStatusError;
+    }
+    bool metalFailed() const { return completion_ && completion_.status == MTLCommandBufferStatusError; }
     bool close() {
-        // Successful path has consumed Metal already. On cancel/timeout the
-        // completion block independently retains the IOSurface backing store.
+        if (!metalTerminal() || metalFailed()) return false;
+        // Never destroy cross-API storage while Metal consumption is pending.
         if (surface != EGL_NO_SURFACE) {
             if (!eglDestroySurface(display_, surface)) return false;
             surface = EGL_NO_SURFACE;
